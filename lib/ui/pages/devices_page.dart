@@ -152,7 +152,7 @@ class _DevicesPageState extends ConsumerState<DevicesPage> {
                 ListTile(
                   leading: Icon(outputIcon(out.kind), color: AppColors.accent, size: 32),
                   title: Text(out.name, style: const TextStyle(color: AppColors.accent, fontWeight: FontWeight.bold)),
-                  subtitle: const Text('正在播放'),
+                  subtitle: const Text('音訊輸出'),
                 ),
                 if (!_granted)
                   ListTile(
