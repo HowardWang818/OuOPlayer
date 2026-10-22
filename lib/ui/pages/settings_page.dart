@@ -1,0 +1,119 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart';
+
+import '../../providers/providers.dart';
+import '../widgets/dialogs.dart';
+import 'devices_page.dart';
+
+Future<bool> ensureStoragePermission() async {
+  if (!Platform.isAndroid) return true;
+  final audio = await Permission.audio.request();
+  if (audio.isGranted) return true;
+  // Android 12 and lower use the legacy storage permission.
+  final storage = await Permission.storage.request();
+  return storage.isGranted;
+}
+
+Future<void> rescanLibrary(BuildContext context, WidgetRef ref) async {
+  if (!await ensureStoragePermission()) {
+    if (context.mounted) toast(context, '需要音樂檔案存取權限才能掃描');
+    return;
+  }
+  final s = ref.read(settingsProvider);
+  final dirs = {...s.musicDirs, s.downloadDir}.toList();
+  final added = await ref.read(scannerProvider).scan(dirs);
+  if (context.mounted) toast(context, '掃描完成，新增 $added 首歌曲');
+}
+
+class SettingsPage extends ConsumerWidget {
+  const SettingsPage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(settingsProvider);
+    final n = ref.read(settingsProvider.notifier);
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final scan = ref.watch(scanProgressProvider).value;
+
+    Widget header(String t) => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+          child: Text(t, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+        );
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('設定')),
+      body: ListView(padding: const EdgeInsets.only(bottom: 32), children: [
+        header('外觀'),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: SegmentedButton<ThemeMode>(
+            segments: const [
+              ButtonSegment(value: ThemeMode.dark, icon: Icon(Icons.dark_mode), label: Text('深色')),
+              ButtonSegment(value: ThemeMode.light, icon: Icon(Icons.light_mode), label: Text('淺色')),
+              ButtonSegment(value: ThemeMode.system, icon: Icon(Icons.brightness_auto), label: Text('跟隨系統')),
+            ],
+            selected: {s.themeMode},
+            onSelectionChanged: (v) => n.setTheme(v.first),
+          ),
+        ),
+        header('音樂資料夾'),
+        for (final d in s.musicDirs)
+          ListTile(
+            leading: const Icon(Icons.folder_outlined),
+            title: Text(d, maxLines: 2, overflow: TextOverflow.ellipsis),
+            trailing: IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () => n.setMusicDirs([...s.musicDirs]..remove(d)),
+            ),
+          ),
+        ListTile(
+          leading: const Icon(Icons.create_new_folder_outlined),
+          title: const Text('新增資料夾'),
+          onTap: () async {
+            await ensureStoragePermission();
+            final dir = await FilePicker.getDirectoryPath(dialogTitle: '選擇音樂資料夾');
+            if (dir != null && !s.musicDirs.contains(dir)) n.setMusicDirs([...s.musicDirs, dir]);
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.refresh),
+          title: const Text('重新掃描音樂庫'),
+          subtitle: scan != null && scan.running ? Text(scan.total == 0 ? '搜尋中…' : '${scan.done}/${scan.total}') : null,
+          onTap: scan?.running == true ? null : () => rescanLibrary(context, ref),
+        ),
+        header('下載'),
+        ListTile(
+          leading: const Icon(Icons.download_outlined),
+          title: const Text('下載位置'),
+          subtitle: Text(s.downloadDir, style: TextStyle(color: muted)),
+          onTap: () async {
+            final dir = await FilePicker.getDirectoryPath(dialogTitle: '選擇下載位置');
+            if (dir != null) n.setDownloadDir(dir);
+          },
+        ),
+        if (Platform.isAndroid) ...[
+          header('藍牙'),
+          SwitchListTile(
+            secondary: const Icon(Icons.bluetooth_audio),
+            title: const Text('藍牙耳機連線時自動播放'),
+            subtitle: const Text('接續上次的播放佇列；斷線時一律自動暫停'),
+            value: s.btAutoPlay,
+            onChanged: n.setBtAutoPlay,
+          ),
+          ListTile(
+            leading: const Icon(Icons.devices),
+            title: const Text('藍牙裝置'),
+            subtitle: const Text('掃描、配對與連接'),
+            onTap: () => Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => const DevicesPage())),
+          ),
+        ],
+        header('關於'),
+        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 1.0.0')),
+      ]),
+    );
+  }
+}
