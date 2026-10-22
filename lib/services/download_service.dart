@@ -191,6 +191,7 @@ class DownloadService {
       await File(part).delete();
       if (ytdlp == null) throw '這個網址是網頁，不是音訊檔';
       t
+        ..title = t.url // let yt-dlp's file name become the title
         ..progress = 0
         ..detail = '改用 yt-dlp…';
       _emit();

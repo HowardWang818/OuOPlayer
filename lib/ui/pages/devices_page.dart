@@ -43,6 +43,8 @@ class _DevicesPageState extends ConsumerState<DevicesPage> {
     }
     _subs
       ..add(_bt.found.listen((d) {
+        // Unnamed results are BLE beacons (phones, tags, watches), not headphones.
+        if (d.name == d.address) return;
         if (!_bonded.any((b) => b.address == d.address)) setState(() => _found[d.address] = d);
       }))
       ..add(_bt.scanning.listen((v) => setState(() => _scanning = v)))
@@ -121,7 +123,10 @@ class _DevicesPageState extends ConsumerState<DevicesPage> {
       subtitle: Text(d.connected ? '已連線' : (d.bonded ? '已配對' : d.address), style: TextStyle(color: muted)),
       trailing: _busy == d.address
           ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
-          : TextButton(onPressed: () => _connect(d), child: Text(!d.bonded ? '配對' : (d.connected ? '中斷連線' : '連線'))),
+          // Paired non-audio devices (bands, PCs) can't be an audio output.
+          : d.bonded && !d.audio
+              ? null
+              : TextButton(onPressed: () => _connect(d), child: Text(!d.bonded ? '配對' : (d.connected ? '中斷連線' : '連線'))),
     );
   }
 

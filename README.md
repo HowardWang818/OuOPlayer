@@ -38,7 +38,14 @@ flutter build apk --release --split-per-abi  # → build/app/outputs/flutter-apk
 Windows 版需把整個 `Release` 資料夾一起複製才能執行。手機一般安裝 `app-arm64-v8a-release.apk`。
 
 ## 發佈版本
-1. 修改 `pubspec.yaml` 的 `version:`（例如 `1.0.1+2`）
+版本規則（從 0.0.0 起算）：
+- 第三位：小更新、修 bug（0.0.1 → 0.0.2）
+- 第二位：大更新或新功能（0.0.2 → 0.1.0）
+- 第一位：只有正式版才會用到（→ 1.0.0）
+
+`+` 後面的數字是建置編號，每次發佈都要加 1（Android 安裝更新需要遞增）。
+
+1. 修改 `pubspec.yaml` 的 `version:`（例如 `0.0.2+3`），並同步 `lib/ui/pages/settings_page.dart` 裡「關於」顯示的版本
 2. 執行：
    ```bash
    powershell -ExecutionPolicy Bypass -File scripts/release.ps1
