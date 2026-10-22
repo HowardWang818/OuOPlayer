@@ -1,0 +1,138 @@
+import 'dart:io';
+
+import 'package:audio_service/audio_service.dart';
+
+/// Where a track came from.
+class TrackSource {
+  static const local = 'local';
+  static const url = 'url';
+  static const podcast = 'podcast';
+  static const download = 'download';
+}
+
+class Track {
+  final String id;
+  final String uri;
+  final String title;
+  final String artist;
+  final String album;
+  final int? durationMs;
+  final String? art;
+  final String source;
+  final int? trackNo;
+  final int addedAt;
+
+  const Track({
+    required this.id,
+    required this.uri,
+    required this.title,
+    this.artist = '未知演出者',
+    this.album = '未知專輯',
+    this.durationMs,
+    this.art,
+    this.source = TrackSource.local,
+    this.trackNo,
+    this.addedAt = 0,
+  });
+
+  bool get isRemote => uri.startsWith('http://') || uri.startsWith('https://');
+
+  Duration? get duration => durationMs == null ? null : Duration(milliseconds: durationMs!);
+
+  factory Track.fromUrl(String url, {String? title, String? artist, String? album, String? art, String source = TrackSource.url, int? durationMs}) {
+    final name = Uri.tryParse(url)?.pathSegments.where((s) => s.isNotEmpty).lastOrNull ?? url;
+    return Track(
+      id: url,
+      uri: url,
+      title: title ?? Uri.decodeComponent(name),
+      artist: artist ?? '網路串流',
+      album: album ?? '網路串流',
+      art: art,
+      source: source,
+      durationMs: durationMs,
+      addedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  factory Track.fromMap(Map<String, Object?> m) => Track(
+        id: m['id'] as String,
+        uri: m['uri'] as String,
+        title: m['title'] as String,
+        artist: (m['artist'] as String?) ?? '未知演出者',
+        album: (m['album'] as String?) ?? '未知專輯',
+        durationMs: m['duration_ms'] as int?,
+        art: m['art'] as String?,
+        source: (m['source'] as String?) ?? TrackSource.local,
+        trackNo: m['track_no'] as int?,
+        addedAt: (m['added_at'] as int?) ?? 0,
+      );
+
+  Map<String, Object?> toMap() => {
+        'id': id,
+        'uri': uri,
+        'title': title,
+        'artist': artist,
+        'album': album,
+        'duration_ms': durationMs,
+        'art': art,
+        'source': source,
+        'track_no': trackNo,
+        'added_at': addedAt,
+      };
+
+  Uri? get artUri {
+    final a = art;
+    if (a == null || a.isEmpty) return null;
+    if (a.startsWith('http')) return Uri.tryParse(a);
+    return Uri.file(a);
+  }
+
+  MediaItem toMediaItem() => MediaItem(
+        id: uri,
+        title: title,
+        artist: artist,
+        album: album,
+        duration: duration,
+        artUri: artUri,
+        extras: {'track': toMap()},
+      );
+
+  static Track fromMediaItem(MediaItem item) {
+    final m = item.extras?['track'];
+    if (m is Map) return Track.fromMap(m.cast<String, Object?>());
+    return Track.fromUrl(item.id, title: item.title, artist: item.artist, album: item.album);
+  }
+
+  bool get fileExists => isRemote || File(uri).existsSync();
+}
+
+class Album {
+  final String name;
+  final String artist;
+  final String? art;
+  final int count;
+  const Album(this.name, this.artist, this.art, this.count);
+}
+
+class Artist {
+  final String name;
+  final String? art;
+  final int count;
+  const Artist(this.name, this.art, this.count);
+}
+
+class Playlist {
+  final int id;
+  final String name;
+  final int count;
+  final String? art;
+  const Playlist(this.id, this.name, this.count, this.art);
+}
+
+class Podcast {
+  final String feedUrl;
+  final String title;
+  final String author;
+  final String? image;
+  const Podcast(this.feedUrl, this.title, this.author, this.image);
+}
