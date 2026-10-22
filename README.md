@@ -37,6 +37,19 @@ flutter build apk --release --split-per-abi  # → build/app/outputs/flutter-apk
 ```
 Windows 版需把整個 `Release` 資料夾一起複製才能執行。手機一般安裝 `app-arm64-v8a-release.apk`。
 
+## 發佈版本
+1. 修改 `pubspec.yaml` 的 `version:`（例如 `1.0.1+2`）
+2. 執行：
+   ```bash
+   powershell -ExecutionPolicy Bypass -File scripts/release.ps1
+   ```
+3. 產出：
+   - `release/windows/v<版本>/OuOPlayer/`（可直接執行的資料夾）與 `OuOPlayer-<版本>-windows-x64.zip`
+   - `release/android/v<版本>/OuOPlayer-<版本>-<abi>.apk`（一般手機用 `arm64-v8a`）
+4. 提交並打標籤：`git commit -am "Release v<版本>"`、`git tag v<版本>`
+
+已存在的版本資料夾不會被覆蓋（要重建請加 `-Force`）。`release/` 不納入 git，避免儲存庫被大型執行檔塞滿。
+
 ## 專案結構
 ```
 lib/
