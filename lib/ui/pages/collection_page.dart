@@ -14,11 +14,11 @@ import '../widgets/track_selection.dart';
 import '../widgets/track_tile.dart';
 import 'folder_page.dart';
 
-enum CollectionKind { album, artist, playlist, favorites, allSongs, folder }
+enum CollectionKind { album, artist, playlist, favorites, allSongs, folder, smart }
 
 /// Album / artist / playlist / liked-songs page with a Spotify-like header.
 class CollectionPage extends ConsumerWidget {
-  const CollectionPage._(this.kind, {this.name = '', this.playlistId, this.folder});
+  const CollectionPage._(this.kind, {this.name = '', this.playlistId, this.folder, this.smart});
 
   factory CollectionPage.album(String album) => CollectionPage._(CollectionKind.album, name: album);
   factory CollectionPage.artist(String artist) => CollectionPage._(CollectionKind.artist, name: artist);
@@ -29,7 +29,11 @@ class CollectionPage extends ConsumerWidget {
   /// A music folder; [folder] null means all local music (Android's 「本地音樂」).
   factory CollectionPage.folder(String? folder, String name) => CollectionPage._(CollectionKind.folder, name: name, folder: folder);
 
+  /// Read-only playlist built from play counts.
+  factory CollectionPage.smart(SmartList list) => CollectionPage._(CollectionKind.smart, name: list.label, smart: list);
+
   final CollectionKind kind;
+  final SmartList? smart;
   final String name;
   final int? playlistId;
   final String? folder;
@@ -43,11 +47,12 @@ class CollectionPage extends ConsumerWidget {
       CollectionKind.favorites => ref.watch(favoritesProvider),
       CollectionKind.allSongs => ref.watch(tracksProvider),
       CollectionKind.folder => ref.watch(folderTracksProvider(folder)),
+      CollectionKind.smart => ref.watch(smartTracksProvider(smart!)),
     };
     final source = tracksAsync.value ?? const <Track>[];
     // Shown order; [order] maps each row back to its place in [source] so
     // removing from a playlist hits the right song.
-    final sortScope = kind.name;
+    final sortScope = kind == CollectionKind.smart ? 'smart_${smart!.name}' : kind.name;
     final sort = TrackSort.decode(ref.watch(sortProvider(sortScope)));
     final order = sort.order(source);
     final tracks = [for (final i in order) source[i]];
@@ -64,6 +69,7 @@ class CollectionPage extends ConsumerWidget {
       CollectionKind.artist => '演出者',
       CollectionKind.playlist => '播放清單',
       CollectionKind.folder => folder == null ? '本機' : '資料夾',
+      CollectionKind.smart => '智慧播放清單 • ${smart!.description}',
       _ => '播放清單',
     };
     final totalMs = tracks.fold<int>(0, (s, t) => s + (t.durationMs ?? 0));
@@ -210,6 +216,11 @@ class CollectionPage extends ConsumerWidget {
                   CollectionKind.playlist => '自訂順序',
                   CollectionKind.favorites => '按讚順序',
                   CollectionKind.album => '曲目順序',
+                  CollectionKind.smart => switch (smart!) {
+                      SmartList.mostPlayed => '播放次數',
+                      SmartList.notPlayedLately => '最久沒聽的在前',
+                      _ => '最近加入的在前',
+                    },
                   _ => '預設順序',
                 },
                 onChanged: (v) => ref.read(sortProvider(sortScope).notifier).set(v.encode()),

@@ -248,6 +248,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   AppDatabase get _db => ref.read(dbProvider);
 
+  /// Re-reads every setting (after restoring a backup).
+  Future<void> reload() async => state = await AppSettings.load(_db);
+
   void setTheme(ThemeMode m) {
     state = state.copyWith(themeMode: m);
     _db.setSetting('theme', m.name);
@@ -427,6 +430,10 @@ final podcastsProvider = FutureProvider<List<Podcast>>((ref) {
   ref.watch(dbRevisionProvider);
   return ref.watch(dbProvider).podcasts();
 });
+final smartTracksProvider = FutureProvider.family<List<Track>, SmartList>((ref, kind) {
+  ref.watch(dbRevisionProvider);
+  return ref.watch(dbProvider).smartTracks(kind);
+});
 final albumTracksProvider = FutureProvider.family<List<Track>, String>((ref, album) {
   ref.watch(dbRevisionProvider);
   return ref.watch(dbProvider).albumTracks(album);
@@ -443,6 +450,10 @@ final searchProvider = FutureProvider.family<List<Track>, String>((ref, q) {
   ref.watch(dbRevisionProvider);
   if (q.trim().isEmpty) return Future.value(const []);
   return ref.watch(dbProvider).search(q.trim());
+});
+final podcastProgressProvider = FutureProvider((ref) {
+  ref.watch(dbRevisionProvider);
+  return ref.watch(dbProvider).podcastProgress();
 });
 final podcastFeedProvider = FutureProvider.family<PodcastFeed, String>((ref, url) => ref.watch(podcastServiceProvider).fetch(url));
 

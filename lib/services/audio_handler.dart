@@ -45,6 +45,39 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   int seekSeconds = 15;
 
   List<Track> get tracks => List.unmodifiable(_tracks);
+  /// Podcast resume points: saved every few seconds while an episode plays,
+  /// on pause and when the episode changes.
+  Timer? _podcastTimer;
+  Track? _podcastTrack;
+
+  /// Within this much of the end an episode counts as finished.
+  static const podcastFinishedMargin = Duration(seconds: 30);
+
+  Future<void> _savePodcast({bool? finished, bool notify = true}) async {
+    final t = _podcastTrack;
+    if (t == null) return;
+    final pos = player.position;
+    final dur = player.duration ?? t.duration;
+    final done = finished ?? (dur != null && dur > Duration.zero && pos >= dur - podcastFinishedMargin);
+    await _db.savePodcastProgress(t.uri, done ? Duration.zero : pos, dur, finished: done, notify: notify);
+  }
+
+  /// Leaving an episode saves where it was; starting one jumps back there.
+  Future<void> _onPodcastTrack(Track t, int index) async {
+    if (_podcastTrack != null && !identical(_podcastTrack, t)) await _savePodcast();
+    _podcastTimer?.cancel();
+    _podcastTrack = null;
+    if (t.source != TrackSource.podcast) return;
+    _podcastTrack = t;
+    final saved = (await _db.podcastProgress())[t.uri];
+    if (saved != null && !saved.finished && saved.position > const Duration(seconds: 10) && player.currentIndex == index) {
+      await player.seek(saved.position, index: index);
+    }
+    _podcastTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (player.playing) _savePodcast(notify: false);
+    });
+  }
+
   Track? get currentTrack {
     final i = player.currentIndex;
     return i == null || i >= _tracks.length ? null : _tracks[i];
@@ -79,7 +112,13 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       mediaItem.add(item.copyWith(duration: d));
     });
     player.processingStateStream.listen((s) {
-      if (s == ProcessingState.completed) _onQueueEnd();
+      if (s == ProcessingState.completed) {
+        if (_podcastTrack != null) _savePodcast(finished: true);
+        _onQueueEnd();
+      }
+    });
+    player.playingStream.listen((playing) {
+      if (!playing && _podcastTrack != null) _savePodcast();
     });
   }
 
@@ -98,6 +137,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     mediaItem.add(item.duration == null && player.duration != null ? item.copyWith(duration: player.duration) : item);
     _applyTrackSettings(t);
     _applyPreviewLoop();
+    _onPodcastTrack(t, i);
     if (record && t.source != TrackSource.preview) _db.addHistory(t);
     _scheduleSave();
   }
@@ -277,6 +317,24 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   /// Drops every queue entry for [trackId] (e.g. its file was deleted),
   /// moving on to the next song first if it is the one playing.
+  /// Shows edited song details in the queue and the notification.
+  void updateTrackInfo(Track t) {
+    var changed = false;
+    for (var i = 0; i < _tracks.length; i++) {
+      if (_tracks[i].id == t.id) {
+        _tracks[i] = t;
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    queue.add(_tracks.map((x) => x.toMediaItem()).toList());
+    if (currentTrack?.id == t.id) {
+      final item = t.toMediaItem();
+      mediaItem.add(player.duration == null ? item : item.copyWith(duration: player.duration));
+    }
+    _scheduleSave();
+  }
+
   Future<void> removeTrack(String trackId) async {
     if (currentTrack?.id == trackId) {
       final others = _tracks.any((t) => t.id != trackId);
