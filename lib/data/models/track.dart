@@ -129,6 +129,15 @@ class Playlist {
   const Playlist(this.id, this.name, this.count, this.art);
 }
 
+/// A library entry for a music folder (Windows), or all local music when
+/// [path] is null (Android's 「本地音樂」).
+class LibraryFolder {
+  final String? path;
+  final String name;
+  final int count;
+  const LibraryFolder(this.path, this.name, this.count);
+}
+
 class Podcast {
   final String feedUrl;
   final String title;

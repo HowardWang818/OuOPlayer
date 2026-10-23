@@ -127,6 +127,7 @@ class _Sidebar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final playlists = ref.watch(playlistsProvider).value ?? const [];
+    final folders = ref.watch(libraryFoldersProvider).value ?? const [];
     final isDark = Theme.of(context).brightness == Brightness.dark;
     Widget panel(Widget child) => Container(
           decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(8)),
@@ -181,6 +182,13 @@ class _Sidebar extends ConsumerWidget {
             title: const Text('已按讚的歌曲'),
             onTap: () => onPush(CollectionPage.favorites()),
           ),
+          for (final f in folders)
+            ListTile(
+              leading: folderIcon(context, f, 44),
+              title: Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text('${f.path == null ? '本機' : '資料夾'} • ${f.count} 首', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              onTap: () => onPush(CollectionPage.folder(f.path, f.name)),
+            ),
           ListTile(
             leading: ArtImage(null, size: 44, icon: Icons.podcasts),
             title: const Text('Podcast'),

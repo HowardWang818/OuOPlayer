@@ -46,6 +46,8 @@ class AppSettings {
   final String downloadDir;
   final bool btAutoPlay;
   final String ytFormat;
+  final bool normalizeVolume;
+  final bool autoScanNewFolders;
 
   const AppSettings({
     required this.themeMode,
@@ -53,15 +55,27 @@ class AppSettings {
     required this.downloadDir,
     required this.btAutoPlay,
     required this.ytFormat,
+    required this.normalizeVolume,
+    required this.autoScanNewFolders,
   });
 
-  AppSettings copyWith({ThemeMode? themeMode, List<String>? musicDirs, String? downloadDir, bool? btAutoPlay, String? ytFormat}) =>
+  AppSettings copyWith({
+    ThemeMode? themeMode,
+    List<String>? musicDirs,
+    String? downloadDir,
+    bool? btAutoPlay,
+    String? ytFormat,
+    bool? normalizeVolume,
+    bool? autoScanNewFolders,
+  }) =>
       AppSettings(
         themeMode: themeMode ?? this.themeMode,
         musicDirs: musicDirs ?? this.musicDirs,
         downloadDir: downloadDir ?? this.downloadDir,
         btAutoPlay: btAutoPlay ?? this.btAutoPlay,
         ytFormat: ytFormat ?? this.ytFormat,
+        normalizeVolume: normalizeVolume ?? this.normalizeVolume,
+        autoScanNewFolders: autoScanNewFolders ?? this.autoScanNewFolders,
       );
 
   static Future<AppSettings> load(AppDatabase db) async {
@@ -73,6 +87,8 @@ class AppSettings {
       downloadDir: m['download_dir'] ?? defaults.download,
       btAutoPlay: m['bt_autoplay'] != 'false',
       ytFormat: m['yt_format'] ?? 'mp3',
+      normalizeVolume: m['normalize_volume'] != 'false',
+      autoScanNewFolders: m['auto_scan_new_folders'] != 'false',
     );
   }
 
@@ -130,6 +146,16 @@ class SettingsNotifier extends Notifier<AppSettings> {
     state = state.copyWith(ytFormat: f);
     _db.setSetting('yt_format', f);
   }
+
+  void setNormalizeVolume(bool v) {
+    state = state.copyWith(normalizeVolume: v);
+    _db.setSetting('normalize_volume', '$v');
+  }
+
+  void setAutoScanNewFolders(bool v) {
+    state = state.copyWith(autoScanNewFolders: v);
+    _db.setSetting('auto_scan_new_folders', '$v');
+  }
 }
 
 final settingsProvider = NotifierProvider<SettingsNotifier, AppSettings>(SettingsNotifier.new);
@@ -138,6 +164,24 @@ final settingsProvider = NotifierProvider<SettingsNotifier, AppSettings>(Setting
 final tracksProvider = FutureProvider<List<Track>>((ref) {
   ref.watch(dbRevisionProvider);
   return ref.watch(dbProvider).tracks();
+});
+/// Library entries for music folders: one per folder on Windows (named after
+/// the folder), a single 「本地音樂」 on Android.
+final libraryFoldersProvider = FutureProvider<List<LibraryFolder>>((ref) async {
+  ref.watch(dbRevisionProvider);
+  final db = ref.watch(dbProvider);
+  if (Platform.isAndroid) {
+    return [LibraryFolder(null, '本地音樂', (await db.tracks()).length)];
+  }
+  final dirs = ref.watch(settingsProvider.select((s) => s.musicDirs));
+  return [
+    for (final d in dirs) LibraryFolder(d, p.basename(d).isEmpty ? d : p.basename(d), await db.folderTrackCount(d)),
+  ];
+});
+final folderTracksProvider = FutureProvider.family<List<Track>, String?>((ref, folder) {
+  ref.watch(dbRevisionProvider);
+  final db = ref.watch(dbProvider);
+  return folder == null ? db.tracks() : db.folderTracks(folder);
 });
 final albumsProvider = FutureProvider<List<Album>>((ref) {
   ref.watch(dbRevisionProvider);

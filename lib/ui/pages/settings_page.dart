@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../providers/providers.dart';
@@ -76,14 +77,34 @@ class SettingsPage extends ConsumerWidget {
           onTap: () async {
             await ensureStoragePermission();
             final dir = await FilePicker.getDirectoryPath(dialogTitle: '選擇音樂資料夾');
-            if (dir != null && !s.musicDirs.contains(dir)) n.setMusicDirs([...s.musicDirs, dir]);
+            if (dir == null || s.musicDirs.contains(dir)) return;
+            n.setMusicDirs([...s.musicDirs, dir]);
+            if (ref.read(settingsProvider).autoScanNewFolders) {
+              final added = await ref.read(scannerProvider).scan([dir], removeMissing: false);
+              if (context.mounted) toast(context, '「${p.basename(dir)}」掃描完成，新增 $added 首歌曲');
+            }
           },
+        ),
+        SwitchListTile(
+          secondary: const Icon(Icons.manage_search),
+          title: const Text('新增資料夾時自動掃描'),
+          subtitle: const Text('並在音樂庫顯示該資料夾'),
+          value: s.autoScanNewFolders,
+          onChanged: n.setAutoScanNewFolders,
         ),
         ListTile(
           leading: const Icon(Icons.refresh),
           title: const Text('重新掃描音樂庫'),
           subtitle: scan != null && scan.running ? Text(scan.total == 0 ? '搜尋中…' : '${scan.done}/${scan.total}') : null,
           onTap: scan?.running == true ? null : () => rescanLibrary(context, ref),
+        ),
+        header('播放'),
+        SwitchListTile(
+          secondary: const Icon(Icons.equalizer),
+          title: const Text('音量標準化'),
+          subtitle: const Text('讓每首歌聽起來一樣大聲'),
+          value: s.normalizeVolume,
+          onChanged: n.setNormalizeVolume,
         ),
         header('下載'),
         ListTile(
@@ -112,7 +133,7 @@ class SettingsPage extends ConsumerWidget {
           ),
         ],
         header('關於'),
-        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.0.2')),
+        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.1.0')),
       ]),
     );
   }

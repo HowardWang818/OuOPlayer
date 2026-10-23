@@ -120,6 +120,29 @@ class AppDatabase {
     return rows.map((r) => Artist(r['artist'] as String? ?? '未知演出者', r['art'] as String?, r['c'] as int)).toList();
   }
 
+  /// Tracks stored under [folder] (path prefix match; avoids LIKE wildcards in paths).
+  Future<List<Track>> folderTracks(String folder) async {
+    final prefix = _folderPrefix(folder);
+    final rows = await db.query('tracks',
+        where: "source != 'url' AND source != 'podcast' AND substr(uri, 1, ?) = ?",
+        whereArgs: [prefix.length, prefix],
+        orderBy: 'title COLLATE NOCASE');
+    return rows.map(Track.fromMap).toList();
+  }
+
+  Future<int> folderTrackCount(String folder) async {
+    final prefix = _folderPrefix(folder);
+    final r = await db.rawQuery(
+        "SELECT COUNT(*) AS c FROM tracks WHERE source != 'url' AND source != 'podcast' AND substr(uri, 1, ?) = ?",
+        [prefix.length, prefix]);
+    return r.first['c'] as int;
+  }
+
+  static String _folderPrefix(String folder) {
+    final sep = Platform.isWindows ? r'\' : '/';
+    return folder.endsWith(sep) ? folder : '$folder$sep';
+  }
+
   Future<List<Track>> albumTracks(String album) async {
     final rows = await db.query('tracks', where: 'album = ?', whereArgs: [album], orderBy: 'track_no, title COLLATE NOCASE');
     return rows.map(Track.fromMap).toList();

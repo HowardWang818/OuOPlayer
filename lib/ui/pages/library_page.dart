@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/art_image.dart';
@@ -49,6 +50,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
       case _Filter.playlists:
         final lists = ref.watch(playlistsProvider).value ?? const [];
         final favCount = ref.watch(favoriteIdsProvider).value?.length ?? 0;
+        final folders = ref.watch(libraryFoldersProvider).value ?? const [];
         body = ListView(children: [
           ListTile(
             leading: Container(
@@ -64,6 +66,13 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
             subtitle: Text('播放清單 • $favCount 首歌曲', style: TextStyle(color: muted)),
             onTap: () => _push(CollectionPage.favorites()),
           ),
+          for (final f in folders)
+            ListTile(
+              leading: folderIcon(context, f, 56),
+              title: Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text('${f.path == null ? '本機' : '資料夾'} • ${f.count} 首歌曲', style: TextStyle(color: muted)),
+              onTap: () => _push(CollectionPage.folder(f.path, f.name)),
+            ),
           ListTile(
             leading: Container(
               width: 56,
@@ -152,3 +161,11 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     );
   }
 }
+
+/// Square folder / phone icon used for music-folder entries in the library.
+Widget folderIcon(BuildContext context, LibraryFolder f, double size) => Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(4), color: AppColors.accent.withValues(alpha: 0.18)),
+      child: Icon(f.path == null ? Icons.phone_android : Icons.folder, color: AppColors.accent, size: size * 0.45),
+    );
