@@ -6,7 +6,9 @@ import '../../providers/providers.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/art_image.dart';
 import '../widgets/dialogs.dart';
+import '../widgets/track_selection.dart';
 import '../widgets/track_tile.dart';
+import 'folder_page.dart';
 
 enum CollectionKind { album, artist, playlist, favorites, allSongs, folder }
 
@@ -39,7 +41,9 @@ class CollectionPage extends ConsumerWidget {
       CollectionKind.folder => ref.watch(folderTracksProvider(folder)),
     };
     final tracks = tracksAsync.value ?? const <Track>[];
-    final art = tracks.where((t) => t.art != null).firstOrNull?.art;
+    final info = playlistId == null ? null : ref.watch(playlistInfoProvider(playlistId!)).value;
+    // A custom playlist cover wins over the first song's cover.
+    final art = info?.cover ?? tracks.where((t) => t.art != null).firstOrNull?.art;
     final color = ref.watch(artColorProvider(art)).value ?? AppColors.accent.withValues(alpha: 0.5);
     final theme = Theme.of(context);
     final handler = ref.read(audioHandlerProvider);
@@ -59,8 +63,21 @@ class CollectionPage extends ConsumerWidget {
       if (totalMs > 0) '約 ${(totalMs / 60000).round()} 分鐘',
     ].join(' • ');
 
+    Future<void> Function(List<int>)? removeMany = switch (kind) {
+      CollectionKind.playlist => (idx) => db.removeFromPlaylistAt(playlistId!, idx),
+      CollectionKind.favorites => (idx) async {
+          for (final i in idx) {
+            await db.setFavorite(tracks[i], false);
+          }
+        },
+      _ => null,
+    };
     return Scaffold(
-      body: CustomScrollView(slivers: [
+      body: TrackSelectionScope(
+        tracks: tracks,
+        onRemove: removeMany,
+        removeLabel: kind == CollectionKind.favorites ? '從已按讚的歌曲移除' : '從此播放清單移除',
+        child: CustomScrollView(slivers: [
         SliverAppBar(
           pinned: true,
           expandedHeight: 300,
@@ -73,13 +90,28 @@ class CollectionPage extends ConsumerWidget {
                     final n = await promptText(context, title: '重新命名', initial: name);
                     if (n != null && n.isNotEmpty) await db.renamePlaylist(playlistId!, n);
                   } else if (v == 'delete') {
+                    final title = info?.name ?? name;
+                    if (!await confirmDelete(context,
+                        title: '刪除播放清單「$title」？', message: '歌曲本身不會被刪除，只會刪除這個播放清單。', action: '刪除')) {
+                      return;
+                    }
                     await db.deletePlaylist(playlistId!);
                     if (context.mounted) Navigator.pop(context);
+                  } else if (info != null && v == 'cover') {
+                    await pickPlaylistCover(context, ref, info);
+                  } else if (info != null && v == 'resetCover') {
+                    if (!await confirmDelete(context, title: '移除自訂封面？', message: '會改回使用第一首歌的封面。')) return;
+                    await resetPlaylistCover(ref, info);
+                  } else if (info != null && v == 'folder') {
+                    await movePlaylistToFolder(context, ref, info);
                   }
                 },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'rename', child: Text('重新命名')),
-                  PopupMenuItem(value: 'delete', child: Text('刪除播放清單')),
+                itemBuilder: (_) => [
+                  const PopupMenuItem(value: 'rename', child: Text('重新命名')),
+                  const PopupMenuItem(value: 'cover', child: Text('更換封面')),
+                  if (info?.cover != null) const PopupMenuItem(value: 'resetCover', child: Text('移除自訂封面')),
+                  const PopupMenuItem(value: 'folder', child: Text('移到資料夾')),
+                  const PopupMenuItem(value: 'delete', child: Text('刪除播放清單')),
                 ],
               ),
           ],
@@ -109,7 +141,7 @@ class CollectionPage extends ConsumerWidget {
                 Expanded(
                   child: Column(mainAxisAlignment: MainAxisAlignment.end, crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(label, style: theme.textTheme.labelMedium),
-                    Text(name, maxLines: 2, overflow: TextOverflow.ellipsis,
+                    Text(info?.name ?? name, maxLines: 2, overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
                     const SizedBox(height: 8),
                     Text(subtitle, style: theme.textTheme.bodySmall),
@@ -159,6 +191,7 @@ class CollectionPage extends ConsumerWidget {
             itemBuilder: (context, i) => TrackTile(
               track: tracks[i],
               index: i,
+              selectIndex: i,
               showArt: kind != CollectionKind.album,
               onTap: () => handler.playTracks(tracks, index: i),
               onRemove: kind == CollectionKind.playlist
@@ -170,7 +203,8 @@ class CollectionPage extends ConsumerWidget {
             ),
           ),
         const SliverToBoxAdapter(child: SizedBox(height: 24)),
-      ]),
+        ]),
+      ),
     );
   }
 }

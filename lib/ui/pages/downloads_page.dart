@@ -97,7 +97,15 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('下載'), actions: [
-        if (tasks.any((t) => !t.active)) TextButton(onPressed: svc.clearFinished, child: const Text('清除已完成')),
+        if (tasks.any((t) => !t.active)) TextButton(
+            onPressed: () async {
+              if (await confirmDelete(context,
+                  title: '清除已完成的下載紀錄？', message: '只會清除清單上的紀錄，已下載的檔案不會被刪除。', action: '清除')) {
+                svc.clearFinished();
+              }
+            },
+            child: const Text('清除已完成'),
+          ),
       ]),
       body: ListView(padding: const EdgeInsets.only(bottom: 24), children: [
         Padding(

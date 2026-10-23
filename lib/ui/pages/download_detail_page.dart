@@ -76,9 +76,13 @@ class DownloadDetailPage extends ConsumerWidget {
               FilledButton.icon(onPressed: () => svc.retry(task), icon: const Icon(Icons.refresh), label: const Text('重試')),
             if (!task.active)
               OutlinedButton.icon(
-                onPressed: () {
+                onPressed: () async {
+                  if (!await confirmDelete(context,
+                      title: '從下載清單移除？', message: '只會移除這筆紀錄，已下載的檔案不會被刪除。')) {
+                    return;
+                  }
                   svc.remove(task);
-                  Navigator.pop(context);
+                  if (context.mounted) Navigator.pop(context);
                 },
                 icon: const Icon(Icons.delete_outline),
                 label: const Text('從清單移除'),

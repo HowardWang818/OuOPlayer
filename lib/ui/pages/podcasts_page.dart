@@ -74,6 +74,7 @@ class PodcastEpisodesPage extends ConsumerWidget {
         PopupMenuButton<String>(
           onSelected: (v) async {
             if (v == 'unsub') {
+              if (!await confirmDelete(context, title: '取消訂閱「${podcast.title}」？', action: '取消訂閱')) return;
               await ref.read(dbProvider).deletePodcast(podcast.feedUrl);
               if (context.mounted) Navigator.pop(context);
             } else {

@@ -1,18 +1,20 @@
 <#
 .SYNOPSIS
-  Builds OuOPlayer for Windows and Android and copies the results into
-  release\windows\v<version>\ and release\android\v<version>\.
+  Builds OuOPlayer and copies the results into release\android\v<version>\
+  (and release\windows\v<version>\ with -Windows).
 
 .DESCRIPTION
+  Development currently focuses on Android, so only the APKs are built by
+  default. Pass -Windows (only when asked for) to also build the Windows app.
   The version comes from pubspec.yaml ("version: 1.0.0+1" -> v1.0.0).
   Bump it there before releasing; an existing version folder is never
   overwritten unless -Force is given.
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\release.ps1
-  powershell -ExecutionPolicy Bypass -File scripts\release.ps1 -Force
+  powershell -ExecutionPolicy Bypass -File scripts\release.ps1 -Windows
 #>
-param([switch]$Force)
+param([switch]$Windows, [switch]$Force)
 
 $ErrorActionPreference = 'Stop'
 $project = Split-Path -Parent $PSScriptRoot
@@ -27,31 +29,28 @@ $full = $line.Matches[0].Groups[1].Value
 $version = ($full -split '\+')[0]
 $tag = "v$version"
 
-$winDir = Join-Path $project "release\windows\$tag"
 $apkDir = Join-Path $project "release\android\$tag"
-foreach ($d in $winDir, $apkDir) {
+$winDir = Join-Path $project "release\windows\$tag"
+$targets = @($apkDir)
+if ($Windows) { $targets += $winDir }
+foreach ($d in $targets) {
     if ((Test-Path $d) -and -not $Force) {
         throw "$d already exists. Bump the version in pubspec.yaml or pass -Force."
     }
 }
 
-Write-Host "== Building OuOPlayer $full" -ForegroundColor Cyan
+Write-Host "== Building OuOPlayer $full ($(if ($Windows) { 'Android + Windows' } else { 'Android' }))" -ForegroundColor Cyan
 Push-Location $buildRoot
 try {
-    flutter build windows --release
-    if ($LASTEXITCODE -ne 0) { throw 'Windows build failed' }
     flutter build apk --release --split-per-abi
     if ($LASTEXITCODE -ne 0) { throw 'Android build failed' }
+    if ($Windows) {
+        flutter build windows --release
+        if ($LASTEXITCODE -ne 0) { throw 'Windows build failed' }
+    }
 } finally {
     Pop-Location
 }
-
-Write-Host "== Copying Windows build to $winDir" -ForegroundColor Cyan
-if (Test-Path $winDir) { Remove-Item -Recurse -Force $winDir }
-New-Item -ItemType Directory -Force $winDir | Out-Null
-$winApp = Join-Path $winDir 'OuOPlayer'
-Copy-Item -Recurse (Join-Path $buildRoot 'build\windows\x64\runner\Release') $winApp
-Compress-Archive -Path "$winApp\*" -DestinationPath (Join-Path $winDir "OuOPlayer-$version-windows-x64.zip")
 
 Write-Host "== Copying Android APKs to $apkDir" -ForegroundColor Cyan
 if (Test-Path $apkDir) { Remove-Item -Recurse -Force $apkDir }
@@ -61,5 +60,14 @@ foreach ($abi in 'arm64-v8a', 'armeabi-v7a', 'x86_64') {
         (Join-Path $apkDir "OuOPlayer-$version-$abi.apk")
 }
 
+if ($Windows) {
+    Write-Host "== Copying Windows build to $winDir" -ForegroundColor Cyan
+    if (Test-Path $winDir) { Remove-Item -Recurse -Force $winDir }
+    New-Item -ItemType Directory -Force $winDir | Out-Null
+    $winApp = Join-Path $winDir 'OuOPlayer'
+    Copy-Item -Recurse (Join-Path $buildRoot 'build\windows\x64\runner\Release') $winApp
+    Compress-Archive -Path "$winApp\*" -DestinationPath (Join-Path $winDir "OuOPlayer-$version-windows-x64.zip")
+}
+
 Write-Host "== Done: OuOPlayer $tag" -ForegroundColor Green
-Get-ChildItem $winDir, $apkDir | Select-Object FullName, @{n = 'MB'; e = { [math]::Round($_.Length / 1MB, 1) } }
+Get-ChildItem $targets | Select-Object FullName, @{n = 'MB'; e = { [math]::Round($_.Length / 1MB, 1) } }

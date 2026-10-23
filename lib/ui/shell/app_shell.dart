@@ -5,6 +5,7 @@ import '../../providers/providers.dart';
 import '../../theme/app_theme.dart';
 import '../pages/collection_page.dart';
 import '../pages/downloads_page.dart';
+import '../pages/folder_page.dart';
 import '../pages/home_page.dart';
 import '../pages/library_page.dart';
 import '../pages/podcasts_page.dart';
@@ -130,7 +131,8 @@ class _Sidebar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
-    final playlists = ref.watch(playlistsProvider).value ?? const [];
+    final playlists = ref.watch(topLevelPlaylistsProvider).value ?? const [];
+    final playlistFolders = ref.watch(playlistFoldersProvider).value ?? const [];
     final folders = ref.watch(libraryFoldersProvider).value ?? const [];
     final isDark = Theme.of(context).brightness == Brightness.dark;
     Widget panel(Widget child) => Container(
@@ -198,6 +200,13 @@ class _Sidebar extends ConsumerWidget {
             title: const Text('Podcast'),
             onTap: () => onPush(const PodcastsPage()),
           ),
+          for (final f in playlistFolders)
+            ListTile(
+              leading: PlaylistFolderArt(folder: f, size: 44),
+              title: Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text('資料夾 • ${f.count} 個', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              onTap: () => onPush(FolderPage(folderId: f.id, name: f.name)),
+            ),
           for (final pl in playlists)
             ListTile(
               leading: ArtImage(pl.art, size: 44, icon: Icons.queue_music),

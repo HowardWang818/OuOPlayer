@@ -5,6 +5,7 @@ import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/art_image.dart';
+import '../widgets/dialogs.dart';
 
 class QueuePage extends ConsumerWidget {
   const QueuePage({super.key});
@@ -29,6 +30,7 @@ class QueuePage extends ConsumerWidget {
                   key: ValueKey('${queue[i].id}#$i'),
                   direction: current ? DismissDirection.none : DismissDirection.endToStart,
                   background: Container(color: Colors.red.shade700, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete)),
+                  confirmDismiss: (_) => confirmDelete(context, title: '從佇列移除「${t.title}」？'),
                   onDismissed: (_) => handler.removeAt(i),
                   child: ListTile(
                     leading: ArtImage(t.art, size: 44),
