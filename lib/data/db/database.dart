@@ -315,6 +315,20 @@ class AppDatabase {
     await _rewritePlaylist(id, tracks);
   }
 
+  /// Position after the last song of a playlist.
+  Future<int> nextPlaylistPosition(int id) async {
+    final r = await db.rawQuery('SELECT COALESCE(MAX(position), -1) AS m FROM playlist_tracks WHERE playlist_id = ?', [id]);
+    return (r.first['m'] as int) + 1;
+  }
+
+  /// Puts a song at a given position (gaps are fine: the list is ordered by
+  /// position), so songs downloaded in parallel keep the source order.
+  Future<void> addToPlaylistAt(int id, Track track, int position) async {
+    await db.insert('tracks', track.toMap(), conflictAlgorithm: ConflictAlgorithm.ignore);
+    await db.insert('playlist_tracks', {'playlist_id': id, 'track_id': track.id, 'position': position});
+    _notify();
+  }
+
   /// Removes several rows (by position) from a playlist at once.
   Future<void> removeFromPlaylistAt(int id, List<int> indexes) async {
     final tracks = await playlistTracks(id);

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ouoplayer/data/db/database.dart';
 import 'package:ouoplayer/services/audio_handler.dart';
 import 'package:ouoplayer/services/download_service.dart';
+import 'package:ouoplayer/services/ytdlp/ytdlp_downloader.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
@@ -40,6 +41,31 @@ void main() {
     expect(playlistProgress(0, 1, 10), 0.0);
     expect(playlistProgress(50, 3, 10), closeTo(0.25, 1e-9));
     expect(playlistProgress(100, 10, 10), 1.0);
+  });
+
+  group('v0.5.2 playlist downloads', () {
+    test('progress lines carry song number and total', () {
+      final e = YtDlpLineParser().parse('OUOPROG  50.0%|00:10|3|10') as YtDlpProgress;
+      expect((e.item, e.itemCount), (3, 10));
+      expect(playlistProgress(e.percent, e.item, e.itemCount), closeTo(0.25, 1e-9));
+      final single = YtDlpLineParser().parse('OUOPROG  50.0%|00:10|NA|NA') as YtDlpProgress;
+      expect(single.itemCount, isNull);
+    });
+
+    test('parses listing entries (titles may contain |)', () {
+      final e = PlaylistEntry.parse('OUOENTRY 03|https://www.youtube.com/watch?v=abc|A | B')!;
+      expect((e.index, e.url, e.title), (3, 'https://www.youtube.com/watch?v=abc', 'A | B'));
+      expect(PlaylistEntry.parse('[youtube] something'), isNull);
+    });
+
+    test('only splits lists of distinct web pages', () {
+      PlaylistEntry e(int i, String u) => PlaylistEntry(i, u, 't$i');
+      expect(canSplitPlaylist([e(1, 'https://www.youtube.com/watch?v=a'), e(2, 'https://www.youtube.com/watch?v=b')]), isTrue);
+      expect(canSplitPlaylist([e(1, 'https://www.youtube.com/watch?v=a')]), isFalse);
+      expect(canSplitPlaylist([e(1, 'https://x/v'), e(2, 'https://x/v')]), isFalse);
+      expect(canSplitPlaylist([e(1, 'https://archive.org/download/x/1.flac'), e(2, 'https://archive.org/download/x/2.flac')]), isFalse);
+      expect(canSplitPlaylist([e(1, 'NA'), e(2, 'NA')]), isFalse);
+    });
   });
 
   test('database upgrade to v2 keeps playlists and adds covers and folders', () async {

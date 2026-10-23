@@ -57,7 +57,12 @@ class YtDlpOptions {
         '--no-mtime',
         '--no-simulate',
         '--progress',
-        '--progress-template', 'download:OUOPROG %(progress._percent_str)s|%(progress._eta_str)s',
+        // Song number / total ride along with the progress: with --print yt-dlp
+        // is quiet and never prints its own "Downloading item N of M" line.
+        '--progress-template',
+        'download:OUOPROG %(progress._percent_str)s|%(progress._eta_str)s|%(info.playlist_autonumber)s|%(info.n_entries)s',
+        // Fetch several pieces of a song at once (DASH/HLS sources).
+        '--concurrent-fragments', '4',
         // Printed in this order after each file, so the title arrives first.
         '--print', 'after_move:OUOPLAYLIST %(playlist_title)s',
         '--print', 'after_move:OUOFILE %(filepath)s',
@@ -81,7 +86,10 @@ class YtDlpLineParser {
     if (line.startsWith('OUOPROG ')) {
       final parts = line.substring(8).split('|');
       final pct = double.tryParse(parts[0].replaceAll('%', '').trim()) ?? 0;
-      return YtDlpProgress(pct, parts.length > 1 ? parts[1].trim() : null, item: _item, itemCount: _count);
+      // "NA" for single videos; keep the "Downloading item" fallback then.
+      final item = parts.length > 2 ? int.tryParse(parts[2].trim()) : null;
+      final count = parts.length > 3 ? int.tryParse(parts[3].trim()) : null;
+      return YtDlpProgress(pct, parts.length > 1 ? parts[1].trim() : null, item: item ?? _item, itemCount: count ?? _count);
     }
     if (line.startsWith('OUOFILE ')) return YtDlpFileDone(line.substring(8).trim());
     if (line.startsWith('OUOPLAYLIST')) {
@@ -111,7 +119,10 @@ abstract class YtDlpBackend {
   /// Update yt-dlp to the newest release. Returns a status message.
   Future<String> update();
 
-  Stream<YtDlpEvent> download(String jobId, YtDlpOptions options);
+  Stream<YtDlpEvent> download(String jobId, YtDlpOptions options) => run(jobId, options.url, options.args);
+
+  /// Runs yt-dlp with arbitrary [args] (e.g. listing a playlist without downloading).
+  Stream<YtDlpEvent> run(String jobId, String url, List<String> args);
 
   Future<void> cancel(String jobId);
 }

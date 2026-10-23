@@ -30,7 +30,10 @@ class YtDlpAndroid implements YtDlpBackend {
   Future<String> update() async => (await _method.invokeMethod<String>('update')) ?? '已更新';
 
   @override
-  Stream<YtDlpEvent> download(String jobId, YtDlpOptions options) {
+  Stream<YtDlpEvent> download(String jobId, YtDlpOptions options) => run(jobId, options.url, options.args);
+
+  @override
+  Stream<YtDlpEvent> run(String jobId, String url, List<String> args) {
     final controller = StreamController<YtDlpEvent>();
     final parser = YtDlpLineParser();
     late StreamSubscription sub;
@@ -43,14 +46,16 @@ class YtDlpAndroid implements YtDlpBackend {
           // Lines the callback missed (e.g. --print output) are in the final stdout.
           for (final l in (e['out'] as String? ?? '').split('\n')) {
             final ev = parser.parse(l);
-            if (ev is YtDlpFileDone || ev is YtDlpPlaylistTitle) controller.add(ev!);
+            if (ev is YtDlpFileDone || ev is YtDlpPlaylistTitle || (ev is YtDlpLog && ev.line.startsWith('OUOENTRY '))) {
+              controller.add(ev!);
+            }
           }
           controller.add(YtDlpFinished(e['success'] == true, e['error'] as String?));
           sub.cancel();
           controller.close();
       }
     });
-    _method.invokeMethod('download', {'id': jobId, 'url': options.url, 'args': options.args}).catchError((Object err) {
+    _method.invokeMethod('download', {'id': jobId, 'url': url, 'args': args}).catchError((Object err) {
       controller.add(YtDlpFinished(false, err.toString()));
       sub.cancel();
       controller.close();

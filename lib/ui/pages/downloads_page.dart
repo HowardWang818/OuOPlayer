@@ -129,11 +129,12 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
                 value: settings.ytFormat,
                 underline: const SizedBox(),
                 items: const [
-                  DropdownMenuItem(value: 'mp3', child: Text('MP3')),
-                  DropdownMenuItem(value: 'm4a', child: Text('M4A (AAC)')),
-                  DropdownMenuItem(value: 'opus', child: Text('Opus')),
-                  DropdownMenuItem(value: 'flac', child: Text('FLAC')),
-                  DropdownMenuItem(value: 'best', child: Text('原始最佳音質')),
+                  // 較慢 = re-encoded on the phone; 較快 = usually just repackaged.
+                  DropdownMenuItem(value: 'mp3', child: Text('MP3（較慢）')),
+                  DropdownMenuItem(value: 'm4a', child: Text('M4A（較快）')),
+                  DropdownMenuItem(value: 'opus', child: Text('Opus（較快）')),
+                  DropdownMenuItem(value: 'flac', child: Text('FLAC（較慢）')),
+                  DropdownMenuItem(value: 'best', child: Text('原始最佳音質（較快）')),
                 ],
                 onChanged: (v) => ref.read(settingsProvider.notifier).setYtFormat(v!),
               ),
