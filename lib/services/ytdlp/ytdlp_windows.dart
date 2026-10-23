@@ -95,7 +95,9 @@ class YtDlpWindows implements YtDlpBackend {
           environment: {'PYTHONIOENCODING': 'utf-8', 'PYTHONUTF8': '1'},
         );
         _procs[jobId] = proc;
+        final output = StringBuffer();
         final outDone = proc.stdout.transform(utf8.decoder).transform(const LineSplitter()).forEach((l) {
+          output.writeln(l);
           final e = parser.parse(l);
           if (e != null) controller.add(e);
         });
@@ -107,7 +109,7 @@ class YtDlpWindows implements YtDlpBackend {
         final code = await proc.exitCode;
         await Future.wait([outDone, errDone]);
         final cancelled = !_procs.containsKey(jobId);
-        controller.add(YtDlpFinished(code == 0, cancelled ? '已取消' : (errors.isEmpty ? null : errors.last)));
+        controller.add(YtDlpFinished(code == 0, cancelled ? '已取消' : (errors.isEmpty ? null : errors.last), output.toString()));
       } catch (e) {
         controller.add(YtDlpFinished(false, e.toString()));
       } finally {

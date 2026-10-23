@@ -6,9 +6,11 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'providers/providers.dart';
+import 'services/download_notifier.dart';
 import 'services/volume_normalizer.dart';
 import 'theme/app_theme.dart';
 import 'ui/shell/app_shell.dart';
+import 'ui/widgets/dialogs.dart';
 
 class OuoApp extends ConsumerWidget {
   const OuoApp({super.key});
@@ -20,7 +22,9 @@ class OuoApp extends ConsumerWidget {
     ref.watch(shareIntentProvider);
     ref.watch(volumeNormalizationProvider);
     ref.watch(playbackSettingsProvider);
+    ref.watch(downloadNotificationProvider);
     return MaterialApp(
+      navigatorKey: rootNavigatorKey,
       title: 'OuOPlayer',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
@@ -30,6 +34,38 @@ class OuoApp extends ConsumerWidget {
     );
   }
 }
+
+/// Root navigator, for dialogs started from outside the widget tree
+/// (e.g. the download notification's "全部取消").
+final rootNavigatorKey = GlobalKey<NavigatorState>();
+
+/// Android download notification: progress out, taps in.
+final downloadNotificationProvider = Provider<void>((ref) {
+  if (!Platform.isAndroid) return;
+  final svc = ref.read(downloadServiceProvider);
+  final notifier = DownloadNotifier(svc);
+  ref.onDispose(notifier.dispose);
+  const channel = MethodChannel('ouo/downloads');
+
+  Future<void> handle(String? action) async {
+    if (action == null) return;
+    ref.read(tabProvider.notifier).set(3);
+    if (action != 'cancel_downloads') return;
+    final context = rootNavigatorKey.currentContext;
+    final active = svc.tasks.where((t) => t.active).toList();
+    if (context == null || active.isEmpty) return;
+    if (await confirmDelete(context, title: '取消全部下載？', message: '進行中的 ${active.length} 個下載會停止，已下載完成的歌曲會保留。', action: '全部取消')) {
+      for (final t in active) {
+        await svc.cancel(t);
+      }
+    }
+  }
+
+  channel.setMethodCallHandler((call) async {
+    if (call.method == 'action') await handle(call.arguments as String?);
+  });
+  channel.invokeMethod<String>('initialAction').then(handle).catchError((_) {});
+});
 
 /// Pushes the 播放 settings (podcast speed, skip silence, queue end, seek step) into the player.
 final playbackSettingsProvider = Provider<void>((ref) {

@@ -80,7 +80,6 @@ class YtDlpPlugin(private val context: Context, messenger: BinaryMessenger) :
                 val id = call.argument<String>("id")!!
                 active.remove(id)
                 YoutubeDL.getInstance().destroyProcessById(id)
-                DownloadForegroundService.update(context, active.size)
                 result.success(true)
             }
             else -> result.notImplemented()
@@ -89,7 +88,6 @@ class YtDlpPlugin(private val context: Context, messenger: BinaryMessenger) :
 
     private fun startDownload(id: String, url: String, args: List<String>) {
         active.add(id)
-        DownloadForegroundService.update(context, active.size)
         executor.execute {
             try {
                 ensureInit()
@@ -116,7 +114,6 @@ class YtDlpPlugin(private val context: Context, messenger: BinaryMessenger) :
                 emit(mapOf("id" to id, "type" to "done", "success" to false, "error" to (e.message ?: e.toString()).lines().lastOrNull { it.isNotBlank() }))
             } finally {
                 active.remove(id)
-                DownloadForegroundService.update(context, active.size)
             }
         }
     }

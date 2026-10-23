@@ -207,7 +207,7 @@ class SettingsPage extends ConsumerWidget {
           ),
         ],
         header('關於'),
-        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.5.2')),
+        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.6.3')),
       ]),
     );
   }

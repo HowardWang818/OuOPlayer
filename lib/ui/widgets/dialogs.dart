@@ -45,7 +45,7 @@ Future<void> showAddToPlaylist(BuildContext context, WidgetRef ref, List<Track> 
             if (name == null) return;
             final id = await db.createPlaylist(name.isEmpty ? '我的播放清單 #${lists.length + 1}' : name);
             await db.addToPlaylist(id, tracks);
-            if (context.mounted) _toast(context, '已加入「$name」');
+            if (context.mounted) _toast(context, '已加入「${name.isEmpty ? '我的播放清單 #${lists.length + 1}' : name}」');
           },
         ),
         for (final pl in lists)
@@ -55,8 +55,16 @@ Future<void> showAddToPlaylist(BuildContext context, WidgetRef ref, List<Track> 
             subtitle: Text('${pl.count} 首歌曲'),
             onTap: () async {
               Navigator.pop(ctx);
-              await db.addToPlaylist(pl.id, tracks);
-              if (context.mounted) _toast(context, '已加入「${pl.name}」');
+              final added = await db.addToPlaylist(pl.id, tracks);
+              if (!context.mounted) return;
+              final already = tracks.length - added;
+              _toast(
+                  context,
+                  added == 0
+                      ? (tracks.length == 1 ? '已在「${pl.name}」中' : '這些歌曲都已在「${pl.name}」中')
+                      : already > 0
+                          ? '已加入 $added 首到「${pl.name}」，$already 首已在清單中'
+                          : '已加入「${pl.name}」');
             },
           ),
       ]),

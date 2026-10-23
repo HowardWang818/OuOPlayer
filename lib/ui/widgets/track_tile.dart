@@ -60,21 +60,23 @@ class TrackTile extends ConsumerWidget {
           : onTap,
       onLongPress: selection == null ? null : select,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-      leading: selecting
-          ? SizedBox(
-              width: showArt ? 48 : 32,
-              child: Icon(selected ? Icons.check_circle : Icons.radio_button_unchecked,
-                  color: selected ? AppColors.accent : cs.onSurfaceVariant),
-            )
-          : showArt
-          ? ArtImage(track.art, size: 48)
-          : SizedBox(
-              width: 32,
-              child: Center(
-                child: Text('${index != null ? index! + 1 : ''}',
-                    style: TextStyle(color: playing ? AppColors.accent : cs.onSurfaceVariant)),
+      // Selected rows keep their cover (or track number) with a solid check on top.
+      leading: Stack(alignment: Alignment.center, children: [
+        showArt
+            ? ArtImage(track.art, size: 48)
+            : SizedBox(
+                width: 32,
+                child: Center(
+                  child: Text('${index != null ? index! + 1 : ''}',
+                      style: TextStyle(color: playing ? AppColors.accent : cs.onSurfaceVariant)),
+                ),
               ),
-            ),
+        if (selected)
+          Container(
+            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+            child: const Icon(Icons.check_circle, color: AppColors.accent, size: 28),
+          ),
+      ]),
       title: Text(track.title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,

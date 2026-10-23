@@ -12,6 +12,9 @@ import '../models/track.dart';
 class AppDatabase {
   AppDatabase._(this.db);
 
+  /// Wraps an already open database (tests).
+  AppDatabase.wrap(this.db);
+
   final Database db;
   final _changes = StreamController<void>.broadcast();
   Stream<void> get changes => _changes.stream;
@@ -24,7 +27,7 @@ class AppDatabase {
     }
     final dir = await getApplicationSupportDirectory();
     final path = p.join(dir.path, 'ouoplayer.db');
-    final db = await openDatabase(path, version: 2, onUpgrade: migrate, onCreate: (db, _) async {
+    final db = await openDatabase(path, version: 3, onUpgrade: migrate, onCreate: (db, _) async {
       await db.execute('''CREATE TABLE tracks(
         id TEXT PRIMARY KEY, uri TEXT NOT NULL, title TEXT NOT NULL, artist TEXT, album TEXT,
         duration_ms INTEGER, art TEXT, source TEXT, track_no INTEGER, added_at INTEGER)''');
@@ -36,7 +39,7 @@ class AppDatabase {
       await db.execute('CREATE TABLE history(track_id TEXT, played_at INTEGER)');
       await db.execute('CREATE TABLE podcasts(feed_url TEXT PRIMARY KEY, title TEXT, author TEXT, image TEXT, added_at INTEGER)');
       await db.execute('CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT)');
-      await migrate(db, 1, 2);
+      await migrate(db, 1, 3);
     });
     // Previews from v0.3.0 were recorded as history; they don't belong there.
     await db.execute("DELETE FROM history WHERE track_id LIKE 'https://audio-ssl.itunes.apple.com/%'");
@@ -52,6 +55,11 @@ class AppDatabase {
       await db.execute('ALTER TABLE playlists ADD COLUMN cover TEXT');
       await db.execute('ALTER TABLE playlists ADD COLUMN folder_id INTEGER');
       await db.execute('CREATE TABLE playlist_folders(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at INTEGER)');
+    }
+    if (from < 3) {
+      // v0.6.0: which source (e.g. a YouTube video) became which file, so
+      // playlist downloads can skip songs that are already there.
+      await db.execute('CREATE TABLE download_history(source TEXT PRIMARY KEY, path TEXT NOT NULL, created_at INTEGER)');
     }
   }
 
@@ -240,6 +248,17 @@ class AppDatabase {
     _notify();
   }
 
+  // ---------- download history ----------
+  Future<void> recordDownload(String source, String path) async {
+    await db.insert('download_history', {'source': source, 'path': path, 'created_at': DateTime.now().millisecondsSinceEpoch},
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<String?> downloadedPath(String source) async {
+    final rows = await db.query('download_history', where: 'source = ?', whereArgs: [source], limit: 1);
+    return rows.isEmpty ? null : rows.first['path'] as String;
+  }
+
   // ---------- playlist folders ----------
   Future<List<PlaylistFolder>> folders() async {
     final rows = await db.query('playlist_folders', orderBy: 'created_at DESC');
@@ -296,16 +315,38 @@ class AppDatabase {
     return rows.map(Track.fromMap).toList();
   }
 
-  Future<void> addToPlaylist(int id, List<Track> tracks) async {
+  /// Appends songs that aren't in the playlist yet (each song appears once).
+  /// Returns how many were added.
+  Future<int> addToPlaylist(int id, List<Track> tracks) async {
     final r = await db.rawQuery('SELECT COALESCE(MAX(position), -1) AS m FROM playlist_tracks WHERE playlist_id = ?', [id]);
     var pos = (r.first['m'] as int) + 1;
+    final have = await _playlistTrackIds(id);
     final batch = db.batch();
+    var added = 0;
     for (final t in tracks) {
+      if (!have.add(t.id)) continue;
       batch.insert('tracks', t.toMap(), conflictAlgorithm: ConflictAlgorithm.ignore);
       batch.insert('playlist_tracks', {'playlist_id': id, 'track_id': t.id, 'position': pos++});
+      added++;
     }
     await batch.commit(noResult: true);
     _notify();
+    return added;
+  }
+
+  Future<Set<String>> _playlistTrackIds(int id) async {
+    final rows = await db.query('playlist_tracks', columns: ['track_id'], where: 'playlist_id = ?', whereArgs: [id]);
+    return {for (final r in rows) r['track_id'] as String};
+  }
+
+  /// Removes repeated songs from a playlist, keeping each song's first
+  /// occurrence and the order. Returns how many rows were removed.
+  Future<int> removePlaylistDuplicates(int id) async {
+    final tracks = await playlistTracks(id);
+    final unique = withoutDuplicates(tracks);
+    final removed = tracks.length - unique.length;
+    if (removed > 0) await _rewritePlaylist(id, unique);
+    return removed;
   }
 
   Future<void> removeFromPlaylist(int id, int index) async {
@@ -323,10 +364,16 @@ class AppDatabase {
 
   /// Puts a song at a given position (gaps are fine: the list is ordered by
   /// position), so songs downloaded in parallel keep the source order.
-  Future<void> addToPlaylistAt(int id, Track track, int position) async {
+  /// Does nothing if the song is already in the playlist; returns whether it
+  /// was added.
+  Future<bool> addToPlaylistAt(int id, Track track, int position) async {
+    final have = await db.query('playlist_tracks',
+        columns: ['track_id'], where: 'playlist_id = ? AND track_id = ?', whereArgs: [id, track.id], limit: 1);
+    if (have.isNotEmpty) return false;
     await db.insert('tracks', track.toMap(), conflictAlgorithm: ConflictAlgorithm.ignore);
     await db.insert('playlist_tracks', {'playlist_id': id, 'track_id': track.id, 'position': position});
     _notify();
+    return true;
   }
 
   /// Removes several rows (by position) from a playlist at once.
@@ -373,4 +420,10 @@ class AppDatabase {
     await db.delete('podcasts', where: 'feed_url = ?', whereArgs: [feedUrl]);
     _notify();
   }
+}
+
+/// [tracks] with each song kept only the first time it appears.
+List<Track> withoutDuplicates(List<Track> tracks) {
+  final seen = <String>{};
+  return [for (final t in tracks) if (seen.add(t.id)) t];
 }
