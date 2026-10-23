@@ -65,6 +65,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
         final lists = ref.watch(topLevelPlaylistsProvider).value ?? const [];
         final playlistFolders = ref.watch(playlistFoldersProvider).value ?? const [];
         final favCount = ref.watch(favoriteIdsProvider).value?.length ?? 0;
+        final hiddenSmart = ref.watch(settingsProvider.select((s) => s.hiddenSmartLists));
         final folders = ref.watch(libraryFoldersProvider).value ?? const [];
         body = ListView(children: [
           ListTile(
@@ -88,8 +89,25 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
               subtitle: Text('${f.path == null ? '本機' : '資料夾'} • ${f.count} 首歌曲', style: TextStyle(color: muted)),
               onTap: () => _push(CollectionPage.folder(f.path, f.name)),
             ),
-          for (final s in SmartList.values)
+          for (final s in SmartList.values.where((s) => !hiddenSmart.contains(s.name)))
             ListTile(
+              onLongPress: () => showModalBottomSheet(
+                context: context,
+                useRootNavigator: true,
+                showDragHandle: true,
+                builder: (ctx) => SafeArea(
+                  child: ListTile(
+                    leading: const Icon(Icons.visibility_off_outlined),
+                    title: Text('隱藏「${s.label}」'),
+                    subtitle: const Text('可以在 設定 → 播放清單 重新顯示'),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      ref.read(settingsProvider.notifier).setSmartListShown(s.name, false);
+                      toast(context, '已隱藏「${s.label}」，可以在設定裡重新顯示');
+                    },
+                  ),
+                ),
+              ),
               leading: Container(
                 width: 56,
                 height: 56,

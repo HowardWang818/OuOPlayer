@@ -50,14 +50,28 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   Timer? _podcastTimer;
   Track? _podcastTrack;
 
+  /// The episode's own position and length, kept while it is the current
+  /// track. When the next track starts the player already reports that
+  /// track's position (0), so saving must not read the player then.
+  Duration _podcastPos = Duration.zero;
+  Duration? _podcastDur;
+
+  /// Follows the player only while [_podcastTrack] is really playing.
+  void _trackPodcastPosition(Duration pos) {
+    final t = _podcastTrack;
+    if (t == null || !identical(currentTrack, t) || _loadingQueue) return;
+    _podcastPos = pos;
+    _podcastDur = player.duration ?? _podcastDur;
+  }
+
   /// Within this much of the end an episode counts as finished.
   static const podcastFinishedMargin = Duration(seconds: 30);
 
   Future<void> _savePodcast({bool? finished, bool notify = true}) async {
     final t = _podcastTrack;
     if (t == null) return;
-    final pos = player.position;
-    final dur = player.duration ?? t.duration;
+    final pos = _podcastPos;
+    final dur = _podcastDur ?? t.duration;
     final done = finished ?? (dur != null && dur > Duration.zero && pos >= dur - podcastFinishedMargin);
     await _db.savePodcastProgress(t.uri, done ? Duration.zero : pos, dur, finished: done, notify: notify);
   }
@@ -69,8 +83,12 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     _podcastTrack = null;
     if (t.source != TrackSource.podcast) return;
     _podcastTrack = t;
+    _podcastPos = Duration.zero;
+    _podcastDur = t.duration;
     final saved = (await _db.podcastProgress())[t.uri];
     if (saved != null && !saved.finished && saved.position > const Duration(seconds: 10) && player.currentIndex == index) {
+      _podcastPos = saved.position;
+      _podcastDur = saved.duration ?? _podcastDur;
       await player.seek(saved.position, index: index);
     }
     _podcastTimer = Timer.periodic(const Duration(seconds: 10), (_) {
@@ -120,6 +138,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     player.playingStream.listen((playing) {
       if (!playing && _podcastTrack != null) _savePodcast();
     });
+    player.positionStream.listen(_trackPodcastPosition);
   }
 
   /// Called when the current index may have changed; acts only on a real track change.

@@ -13,6 +13,7 @@ import '../../services/track_sort.dart';
 import '../widgets/track_selection.dart';
 import '../widgets/track_tile.dart';
 import 'folder_page.dart';
+import 'pick_songs_page.dart';
 
 enum CollectionKind { album, artist, playlist, favorites, allSongs, folder, smart }
 
@@ -204,6 +205,13 @@ class CollectionPage extends ConsumerWidget {
                 icon: const Icon(Icons.playlist_add),
                 onPressed: tracks.isEmpty ? null : () => showAddToPlaylist(context, ref, tracks),
               ),
+              if (kind == CollectionKind.playlist)
+                IconButton(
+                  tooltip: '從本地音樂加入',
+                  icon: const Icon(Icons.library_add_outlined),
+                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => PickSongsPage(playlistId: playlistId!, playlistName: info?.name ?? name))),
+                ),
               if (kind == CollectionKind.playlist)
                 IconButton(
                   tooltip: '下載到這個播放清單',
