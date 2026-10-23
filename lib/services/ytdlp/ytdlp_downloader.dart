@@ -20,6 +20,12 @@ class YtDlpFileDone extends YtDlpEvent {
   YtDlpFileDone(this.path);
 }
 
+/// Title of the playlist being downloaded (emitted before each file).
+class YtDlpPlaylistTitle extends YtDlpEvent {
+  final String title;
+  YtDlpPlaylistTitle(this.title);
+}
+
 class YtDlpLog extends YtDlpEvent {
   final String line;
   YtDlpLog(this.line);
@@ -52,6 +58,8 @@ class YtDlpOptions {
         '--no-simulate',
         '--progress',
         '--progress-template', 'download:OUOPROG %(progress._percent_str)s|%(progress._eta_str)s',
+        // Printed in this order after each file, so the title arrives first.
+        '--print', 'after_move:OUOPLAYLIST %(playlist_title)s',
         '--print', 'after_move:OUOFILE %(filepath)s',
         '-o', '$outDir${Platform.pathSeparator}%(title).150B.%(ext)s',
       ];
@@ -76,6 +84,11 @@ class YtDlpLineParser {
       return YtDlpProgress(pct, parts.length > 1 ? parts[1].trim() : null, item: _item, itemCount: _count);
     }
     if (line.startsWith('OUOFILE ')) return YtDlpFileDone(line.substring(8).trim());
+    if (line.startsWith('OUOPLAYLIST')) {
+      final title = line.substring(11).trim();
+      // "NA" when the URL is a single video rather than a playlist.
+      return title.isEmpty || title == 'NA' ? null : YtDlpPlaylistTitle(title);
+    }
     return YtDlpLog(line);
   }
 }

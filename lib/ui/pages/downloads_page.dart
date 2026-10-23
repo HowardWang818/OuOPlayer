@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +7,8 @@ import '../../providers/providers.dart';
 import '../../services/download_service.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/dialogs.dart';
+import '../widgets/links.dart';
+import 'download_detail_page.dart';
 
 /// youtube-dl-gui style downloader: paste URL → pick format → queue with progress.
 class DownloadsPage extends ConsumerStatefulWidget {
@@ -165,6 +168,20 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
           child: Text('請只下載你有權利保存的內容，並遵守來源網站的服務條款與著作權法。',
               style: TextStyle(fontSize: 12, color: muted)),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: Text.rich(
+            TextSpan(style: TextStyle(fontSize: 12, color: muted), children: [
+              const TextSpan(text: '如果平台不支援，可以使用 '),
+              TextSpan(
+                text: 'Soundiiz',
+                style: const TextStyle(color: AppColors.accent, decoration: TextDecoration.underline),
+                recognizer: TapGestureRecognizer()..onTap = () => openExternal(context, 'https://soundiiz.com'),
+              ),
+              const TextSpan(text: ' 轉換歌單。'),
+            ]),
+          ),
+        ),
         const SizedBox(height: 8),
         if (tasks.isEmpty)
           Padding(
@@ -185,25 +202,19 @@ class _TaskTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final svc = ref.read(downloadServiceProvider);
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
-    final (icon, color) = switch (task.status) {
-      DownloadStatus.queued => (Icons.schedule, muted),
-      DownloadStatus.running => (Icons.downloading, AppColors.accent),
-      DownloadStatus.done => (Icons.check_circle, AppColors.accent),
-      DownloadStatus.failed => (Icons.error_outline, Colors.redAccent),
-      DownloadStatus.cancelled => (Icons.cancel_outlined, muted),
-    };
-    final statusText = switch (task.status) {
-      DownloadStatus.queued => '等待中',
-      DownloadStatus.running => task.detail ?? '準備中…',
-      DownloadStatus.done => '完成${task.detail != null ? ' · ${task.detail}' : ''}',
-      DownloadStatus.failed => task.error ?? '失敗',
-      DownloadStatus.cancelled => '已取消',
-    };
+    final (icon, color) = downloadStatusIcon(task.status, muted);
+    final failed = task.status == DownloadStatus.failed;
+    // Errors can be long; the list only hints, the detail page shows everything.
+    final statusText = failed ? '失敗，點擊查看原因' : downloadStatusText(task);
     return ListTile(
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DownloadDetailPage(taskId: task.id))),
       leading: Icon(icon, color: color),
       title: Text(task.title, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(statusText, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: muted)),
+        Text(statusText,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12, color: failed ? Colors.redAccent : muted)),
         if (task.status == DownloadStatus.running)
           Padding(
             padding: const EdgeInsets.only(top: 4),
@@ -213,11 +224,9 @@ class _TaskTile extends ConsumerWidget {
       trailing: switch (task.status) {
         DownloadStatus.queued || DownloadStatus.running =>
           IconButton(icon: const Icon(Icons.close), tooltip: '取消', onPressed: () => svc.cancel(task)),
-        DownloadStatus.failed || DownloadStatus.cancelled => Row(mainAxisSize: MainAxisSize.min, children: [
-            IconButton(icon: const Icon(Icons.refresh), tooltip: '重試', onPressed: () => svc.retry(task)),
-            IconButton(icon: const Icon(Icons.delete_outline), tooltip: '移除', onPressed: () => svc.remove(task)),
-          ]),
-        DownloadStatus.done => IconButton(icon: const Icon(Icons.delete_outline), tooltip: '從清單移除', onPressed: () => svc.remove(task)),
+        DownloadStatus.failed || DownloadStatus.cancelled =>
+          IconButton(icon: const Icon(Icons.refresh), tooltip: '重試', onPressed: () => svc.retry(task)),
+        DownloadStatus.done => const Icon(Icons.chevron_right),
       },
     );
   }

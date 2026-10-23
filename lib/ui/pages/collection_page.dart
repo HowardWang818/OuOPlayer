@@ -133,6 +133,12 @@ class CollectionPage extends ConsumerWidget {
                 icon: const Icon(Icons.playlist_add),
                 onPressed: tracks.isEmpty ? null : () => showAddToPlaylist(context, ref, tracks),
               ),
+              if (kind == CollectionKind.playlist)
+                IconButton(
+                  tooltip: '下載到這個播放清單',
+                  icon: const Icon(Icons.download_for_offline_outlined),
+                  onPressed: () => _downloadToPlaylist(context, ref),
+                ),
               const Spacer(),
               IconButton.filled(
                 iconSize: 32,
@@ -168,3 +174,51 @@ class CollectionPage extends ConsumerWidget {
     );
   }
 }
+
+extension on CollectionPage {
+  /// Paste a song or playlist URL; finished songs go straight into this playlist.
+  Future<void> _downloadToPlaylist(BuildContext context, WidgetRef ref) async {
+    final ctrl = TextEditingController();
+    var wholePlaylist = true;
+    final url = await showDialog<String>(
+      context: context,
+      useRootNavigator: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: Text('下載到「$name」'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              decoration: const InputDecoration(hintText: '貼上歌曲或播放清單網址'),
+            ),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: wholePlaylist,
+              onChanged: (v) => setState(() => wholePlaylist = v ?? true),
+              title: const Text('網址是播放清單時，下載全部'),
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('下載')),
+          ],
+        ),
+      ),
+    );
+    if (url == null || url.isEmpty) return;
+    if (!url.startsWith('http')) {
+      if (context.mounted) toast(context, '請輸入有效的網址');
+      return;
+    }
+    ref.read(downloadServiceProvider).add(
+          url,
+          format: ref.read(settingsProvider).ytFormat,
+          playlist: wholePlaylist,
+          playlistId: playlistId,
+          playlistName: name,
+        );
+    if (context.mounted) toast(context, '已加入下載佇列，完成後會加進「$name」');
+  }
+}
+

@@ -36,7 +36,7 @@ final onlineSearchProvider = FutureProvider.family<List<ITunesSong>, String>(
 );
 final bluetoothProvider = Provider<BluetoothService>((ref) => BluetoothService());
 final downloadServiceProvider = Provider<DownloadService>((ref) {
-  final svc = DownloadService(ref.watch(scannerProvider));
+  final svc = DownloadService(ref.watch(scannerProvider), ref.watch(dbProvider));
   svc.outDir = ref.read(settingsProvider).downloadDir;
   ref.listen(settingsProvider.select((s) => s.downloadDir), (_, dir) => svc.outDir = dir);
   return svc;

@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../data/db/database.dart';
 import '../data/models/track.dart';
 import 'library_scanner.dart';
 import 'ytdlp/ytdlp_downloader.dart';
@@ -27,23 +28,43 @@ class DownloadTask {
   final List<String> files = [];
   CancelToken? cancelToken;
 
+  /// Library playlist the finished songs go into: chosen by the user
+  /// ("下載到這個播放清單") or created from the source playlist's title.
+  int? playlistId;
+  String? playlistName;
+
+  /// Files that already existed and were kept instead of the new copy.
+  int duplicates = 0;
+
+  /// yt-dlp output (last [maxLog] lines), shown on the detail page.
+  final List<String> log = [];
+  static const maxLog = 300;
+
   DownloadTask({
     required this.id,
     required this.url,
     required this.kind,
     this.format = 'mp3',
     this.playlist = false,
+    this.playlistId,
+    this.playlistName,
     String? title,
   }) : title = title ?? url;
 
   bool get active => status == DownloadStatus.queued || status == DownloadStatus.running;
+
+  void addLog(String line) {
+    log.add(line);
+    if (log.length > maxLog) log.removeRange(0, log.length - maxLog);
+  }
 }
 
 /// Download queue for direct files, podcast episodes and yt-dlp jobs.
 class DownloadService {
-  DownloadService(this._scanner) : ytdlp = YtDlpBackend.create();
+  DownloadService(this._scanner, this._db) : ytdlp = YtDlpBackend.create();
 
   final LibraryScanner _scanner;
+  final AppDatabase _db;
   final YtDlpBackend? ytdlp;
   final _dio = Dio();
   final List<DownloadTask> tasks = [];
@@ -56,7 +77,15 @@ class DownloadService {
 
   void _emit() => _changes.add(List.unmodifiable(tasks));
 
-  DownloadTask add(String url, {DownloadKind? kind, String format = 'mp3', bool playlist = false, String? title}) {
+  DownloadTask add(
+    String url, {
+    DownloadKind? kind,
+    String format = 'mp3',
+    bool playlist = false,
+    String? title,
+    int? playlistId,
+    String? playlistName,
+  }) {
     final k = kind ?? (_looksLikeAudioFile(url) || ytdlp == null ? DownloadKind.direct : DownloadKind.ytdlp);
     final task = DownloadTask(
       id: '${DateTime.now().millisecondsSinceEpoch}_${_seq++}',
@@ -65,6 +94,8 @@ class DownloadService {
       format: format,
       playlist: playlist,
       title: title,
+      playlistId: playlistId,
+      playlistName: playlistName,
     );
     tasks.insert(0, task);
     _emit();
@@ -78,6 +109,7 @@ class DownloadService {
       ..progress = 0
       ..error = null
       ..detail = null;
+    t.addLog('— 重試 —');
     _emit();
     _pump();
   }
@@ -140,7 +172,8 @@ class DownloadService {
     } catch (e) {
       if (t.status != DownloadStatus.cancelled) {
         t.status = DownloadStatus.failed;
-        t.error = e is DioException ? (e.message ?? e.type.name) : e.toString();
+        t.error = e is DioException ? _dioError(e) : e.toString();
+        t.addLog('錯誤：${t.error}');
       }
     } finally {
       try {
@@ -149,22 +182,58 @@ class DownloadService {
     }
   }
 
-  /// Moves a finished file into [outDir], adds it to the library and returns its new path.
+  static String _dioError(DioException e) {
+    final code = e.response?.statusCode;
+    return [if (code != null) 'HTTP $code', e.message ?? e.type.name].join(' · ');
+  }
+
+  /// Moves a finished file into [outDir] (or keeps the existing copy if one
+  /// with the same name is already there), adds it to the library and the
+  /// task's playlist, and returns the library path.
   Future<String> _finish(DownloadTask t, String path) async {
-    var target = p.join(outDir, p.basename(path));
-    for (var i = 1; File(target).existsSync(); i++) {
-      target = p.join(outDir, '${p.basenameWithoutExtension(path)} ($i)${p.extension(path)}');
-    }
-    try {
-      await File(path).rename(target);
-    } on FileSystemException {
-      // Different filesystem (app cache → shared storage): copy instead.
-      await File(path).copy(target);
+    final target = p.join(outDir, p.basename(path));
+    Track? track;
+    if (File(target).existsSync()) {
+      // Same file name = same song downloaded again: drop the new copy.
       await File(path).delete();
+      t.duplicates++;
+      t.addLog('已存在，刪除重複檔：${p.basename(path)}');
+      track = await _db.track(target);
+    } else {
+      try {
+        await File(path).rename(target);
+      } on FileSystemException {
+        // Different filesystem (app cache → shared storage): copy instead.
+        await File(path).copy(target);
+        await File(path).delete();
+      }
     }
+    track ??= await _scanner.importFile(target, source: TrackSource.download);
     t.files.add(target);
-    await _scanner.importFile(target, source: TrackSource.download);
+    if (track != null) await _addToPlaylist(t, [track]);
     return target;
+  }
+
+  /// Adds tracks to the task's playlist, creating it from the source
+  /// playlist's title the first time when downloading a whole playlist.
+  Future<void> _addToPlaylist(DownloadTask t, List<Track> tracks) async {
+    if (t.playlistId == null) {
+      final name = t.playlistName;
+      if (!t.playlist || name == null) return;
+      t.playlistId = await _db.createPlaylist(name);
+      t.addLog('已建立播放清單「$name」');
+    }
+    await _db.addToPlaylist(t.playlistId!, tracks);
+  }
+
+  /// The source playlist's title arrived. If files finished before it (the
+  /// Android backend can report it late), put those into the new playlist too.
+  Future<void> _onPlaylistTitle(DownloadTask t, String title) async {
+    if (t.playlistName != null) return;
+    t.playlistName = title;
+    if (t.playlistId != null || !t.playlist || t.files.isEmpty) return;
+    final done = await _db.tracksByIds(t.files);
+    await _addToPlaylist(t, done);
   }
 
   Future<void> _runDirect(DownloadTask t, String workDir) async {
@@ -178,6 +247,7 @@ class DownloadService {
     }
     final part = p.join(workDir, name);
     t.cancelToken = CancelToken();
+    t.addLog('直接下載：${t.url}');
     final res = await _dio.download(t.url, part, cancelToken: t.cancelToken, onReceiveProgress: (r, total) {
       if (total > 0) {
         t.progress = r / total;
@@ -194,14 +264,22 @@ class DownloadService {
         ..title = t.url // let yt-dlp's file name become the title
         ..progress = 0
         ..detail = '改用 yt-dlp…';
+      t.addLog('網址是網頁（$type），改用 yt-dlp');
       _emit();
       return _runYtDlp(t, workDir);
     }
     await _finish(t, part);
     t
       ..status = DownloadStatus.done
-      ..progress = 1;
+      ..progress = 1
+      ..detail = _doneDetail(t);
   }
+
+  static String _doneDetail(DownloadTask t) => [
+        '${t.files.length} 個檔案',
+        if (t.duplicates > 0) '${t.duplicates} 個已存在',
+        if (t.playlistName != null && t.playlistId != null) '已加入「${t.playlistName}」',
+      ].join(' · ');
 
   Future<void> _runYtDlp(DownloadTask t, String workDir) async {
     final backend = ytdlp;
@@ -209,6 +287,7 @@ class DownloadService {
     if (!await backend.isReady()) {
       await backend.prepare((s) {
         t.detail = s;
+        t.addLog(s);
         _emit();
       });
     }
@@ -224,14 +303,17 @@ class DownloadService {
             if (e.eta != null && e.eta != 'NA' && e.eta != 'Unknown') '剩餘 ${e.eta}',
           ].join('  ·  ');
           _emit();
+        case YtDlpPlaylistTitle():
+          await _onPlaylistTitle(t, e.title);
         case YtDlpFileDone():
           if (File(e.path).existsSync()) {
-            if (t.title == t.url) t.title = p.basenameWithoutExtension(e.path);
+            if (t.title == t.url) t.title = t.playlist && t.playlistName != null ? t.playlistName! : p.basenameWithoutExtension(e.path);
             await _finish(t, e.path);
             _emit();
           }
         case YtDlpLog():
           lastLog = e.line;
+          t.addLog(e.line);
           if (e.line.startsWith('[ExtractAudio]') || e.line.startsWith('[EmbedThumbnail]')) {
             t.detail = '轉檔中…';
             _emit();
@@ -242,11 +324,12 @@ class DownloadService {
             t
               ..status = DownloadStatus.done
               ..progress = 1
-              ..detail = '${t.files.length} 個檔案';
+              ..detail = _doneDetail(t);
           } else {
             t
               ..status = DownloadStatus.failed
               ..error = e.error ?? lastLog ?? '下載失敗';
+            if (e.error != null) t.addLog('錯誤：${e.error}');
           }
       }
     }

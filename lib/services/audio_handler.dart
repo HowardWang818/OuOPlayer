@@ -226,6 +226,23 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     _scheduleSave();
   }
 
+  /// Drops every queue entry for [trackId] (e.g. its file was deleted),
+  /// moving on to the next song first if it is the one playing.
+  Future<void> removeTrack(String trackId) async {
+    if (currentTrack?.id == trackId) {
+      final others = _tracks.any((t) => t.id != trackId);
+      if (others && player.hasNext) {
+        await player.seekToNext();
+      } else {
+        await player.stop();
+      }
+    }
+    for (var i = _tracks.length - 1; i >= 0; i--) {
+      if (_tracks[i].id == trackId) await removeAt(i);
+    }
+    if (_tracks.isEmpty) mediaItem.add(null);
+  }
+
   Future<void> moveQueueItem(int from, int to) async {
     final t = _tracks.removeAt(from);
     _tracks.insert(to, t);
