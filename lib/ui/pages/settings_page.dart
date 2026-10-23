@@ -71,7 +71,12 @@ class SettingsPage extends ConsumerWidget {
             title: Text(d, maxLines: 2, overflow: TextOverflow.ellipsis),
             trailing: IconButton(
               icon: const Icon(Icons.close),
-              onPressed: () => n.setMusicDirs([...s.musicDirs]..remove(d)),
+              onPressed: () async {
+                if (await confirmDelete(context,
+                    title: '移除音樂資料夾？', message: '$d\n\n資料夾和裡面的檔案不會被刪除，只是 OuOPlayer 不再掃描它。')) {
+                  n.setMusicDirs([...s.musicDirs]..remove(d));
+                }
+              },
             ),
           ),
         ListTile(
@@ -202,7 +207,7 @@ class SettingsPage extends ConsumerWidget {
           ),
         ],
         header('關於'),
-        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.4.0')),
+        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.5.1')),
       ]),
     );
   }

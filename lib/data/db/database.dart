@@ -24,7 +24,7 @@ class AppDatabase {
     }
     final dir = await getApplicationSupportDirectory();
     final path = p.join(dir.path, 'ouoplayer.db');
-    final db = await openDatabase(path, version: 1, onCreate: (db, _) async {
+    final db = await openDatabase(path, version: 2, onUpgrade: migrate, onCreate: (db, _) async {
       await db.execute('''CREATE TABLE tracks(
         id TEXT PRIMARY KEY, uri TEXT NOT NULL, title TEXT NOT NULL, artist TEXT, album TEXT,
         duration_ms INTEGER, art TEXT, source TEXT, track_no INTEGER, added_at INTEGER)''');
@@ -36,12 +36,23 @@ class AppDatabase {
       await db.execute('CREATE TABLE history(track_id TEXT, played_at INTEGER)');
       await db.execute('CREATE TABLE podcasts(feed_url TEXT PRIMARY KEY, title TEXT, author TEXT, image TEXT, added_at INTEGER)');
       await db.execute('CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT)');
+      await migrate(db, 1, 2);
     });
     // Previews from v0.3.0 were recorded as history; they don't belong there.
     await db.execute("DELETE FROM history WHERE track_id LIKE 'https://audio-ssl.itunes.apple.com/%'");
     // Keep play history bounded (v0.2.0 pre-release builds could flood it).
     await db.execute('DELETE FROM history WHERE rowid NOT IN (SELECT rowid FROM history ORDER BY played_at DESC LIMIT 1000)');
     return AppDatabase._(db);
+  }
+
+  /// Schema changes since version 1; existing data is kept.
+  static Future<void> migrate(Database db, int from, int to) async {
+    if (from < 2) {
+      // v0.5.0: custom playlist covers and playlist folders.
+      await db.execute('ALTER TABLE playlists ADD COLUMN cover TEXT');
+      await db.execute('ALTER TABLE playlists ADD COLUMN folder_id INTEGER');
+      await db.execute('CREATE TABLE playlist_folders(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at INTEGER)');
+    }
   }
 
   // ---------- settings ----------
@@ -200,11 +211,65 @@ class AppDatabase {
   }
 
   // ---------- playlists ----------
-  Future<List<Playlist>> playlists() async {
-    final rows = await db.rawQuery('''SELECT p.id, p.name, COUNT(pt.track_id) AS c,
+  /// All playlists, or only those in [folder] / outside any folder ([topLevel]).
+  Future<List<Playlist>> playlists({int? folder, bool topLevel = false}) async {
+    final where = folder != null ? 'WHERE p.folder_id = ?' : (topLevel ? 'WHERE p.folder_id IS NULL' : '');
+    final rows = await db.rawQuery('''SELECT p.id, p.name, p.cover, p.folder_id, COUNT(pt.track_id) AS c,
       (SELECT t.art FROM playlist_tracks x JOIN tracks t ON t.id = x.track_id WHERE x.playlist_id = p.id AND t.art IS NOT NULL ORDER BY x.position LIMIT 1) AS art
-      FROM playlists p LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id GROUP BY p.id ORDER BY p.created_at DESC''');
-    return rows.map((r) => Playlist(r['id'] as int, r['name'] as String, r['c'] as int, r['art'] as String?)).toList();
+      FROM playlists p LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id $where GROUP BY p.id ORDER BY p.created_at DESC''',
+        [if (folder != null) folder]);
+    return rows
+        .map((r) => Playlist(
+              r['id'] as int,
+              r['name'] as String,
+              r['c'] as int,
+              (r['cover'] as String?) ?? r['art'] as String?,
+              cover: r['cover'] as String?,
+              folderId: r['folder_id'] as int?,
+            ))
+        .toList();
+  }
+
+  Future<void> setPlaylistCover(int id, String? cover) async {
+    await db.update('playlists', {'cover': cover}, where: 'id = ?', whereArgs: [id]);
+    _notify();
+  }
+
+  Future<void> setPlaylistFolder(int id, int? folderId) async {
+    await db.update('playlists', {'folder_id': folderId}, where: 'id = ?', whereArgs: [id]);
+    _notify();
+  }
+
+  // ---------- playlist folders ----------
+  Future<List<PlaylistFolder>> folders() async {
+    final rows = await db.query('playlist_folders', orderBy: 'created_at DESC');
+    final all = await playlists();
+    return [
+      for (final r in rows)
+        () {
+          final inside = all.where((p) => p.folderId == r['id']).toList();
+          return PlaylistFolder(r['id'] as int, r['name'] as String, inside.length,
+              [for (final p in inside) if (p.art != null) p.art!].take(4).toList());
+        }(),
+    ];
+  }
+
+  Future<int> createFolder(String name) async {
+    final id = await db.insert('playlist_folders', {'name': name, 'created_at': DateTime.now().millisecondsSinceEpoch});
+    _notify();
+    return id;
+  }
+
+  Future<void> renameFolder(int id, String name) async {
+    await db.update('playlist_folders', {'name': name}, where: 'id = ?', whereArgs: [id]);
+    _notify();
+  }
+
+  /// Deletes the folder only; its playlists move back to the top level.
+  Future<void> deleteFolder(int id) async {
+    await db.update('playlists', {'folder_id': null}, where: 'folder_id = ?', whereArgs: [id]);
+    await db.delete('playlist_folders', where: 'id = ?', whereArgs: [id]);
+    _notify();
   }
 
   Future<int> createPlaylist(String name) async {
@@ -248,6 +313,13 @@ class AppDatabase {
     if (index < 0 || index >= tracks.length) return;
     tracks.removeAt(index);
     await _rewritePlaylist(id, tracks);
+  }
+
+  /// Removes several rows (by position) from a playlist at once.
+  Future<void> removeFromPlaylistAt(int id, List<int> indexes) async {
+    final tracks = await playlistTracks(id);
+    final drop = indexes.toSet();
+    await _rewritePlaylist(id, [for (var i = 0; i < tracks.length; i++) if (!drop.contains(i)) tracks[i]]);
   }
 
   Future<void> reorderPlaylist(int id, int oldIndex, int newIndex) async {

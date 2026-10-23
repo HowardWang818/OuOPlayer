@@ -64,6 +64,27 @@ Future<void> showAddToPlaylist(BuildContext context, WidgetRef ref, List<Track> 
   );
 }
 
+/// Every delete/remove asks first. Returns true only if the user confirmed.
+Future<bool> confirmDelete(BuildContext context, {required String title, String? message, String action = '移除'}) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    useRootNavigator: true,
+    builder: (ctx) => AlertDialog(
+      title: Text(title),
+      content: message == null ? null : Text(message),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+          onPressed: () => Navigator.pop(ctx, true),
+          child: Text(action),
+        ),
+      ],
+    ),
+  );
+  return ok == true;
+}
+
 /// Marks the part of the UI that has the player bar (mini player / desktop
 /// bar) at the bottom, so toasts there can avoid covering it.
 class PlayerBarScope extends InheritedWidget {

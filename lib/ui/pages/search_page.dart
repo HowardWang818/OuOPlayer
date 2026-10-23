@@ -9,6 +9,7 @@ import '../../services/online/itunes.dart';
 import '../widgets/art_image.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/links.dart';
+import '../widgets/track_selection.dart';
 import '../widgets/track_tile.dart';
 import 'youtube_key_guide_page.dart';
 
@@ -112,9 +113,12 @@ class _LibraryResults extends ConsumerWidget {
     final results = ref.watch(searchProvider(query)).value ?? const <Track>[];
     final handler = ref.read(audioHandlerProvider);
     if (results.isEmpty) return const Center(child: Text('找不到結果'));
-    return ListView.builder(
-      itemCount: results.length,
-      itemBuilder: (_, i) => TrackTile(track: results[i], onTap: () => handler.playTracks(results, index: i)),
+    return TrackSelectionScope(
+      tracks: results,
+      child: ListView.builder(
+        itemCount: results.length,
+        itemBuilder: (_, i) => TrackTile(track: results[i], selectIndex: i, onTap: () => handler.playTracks(results, index: i)),
+      ),
     );
   }
 }

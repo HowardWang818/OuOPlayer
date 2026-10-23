@@ -129,7 +129,20 @@ class Playlist {
   final String name;
   final int count;
   final String? art;
-  const Playlist(this.id, this.name, this.count, this.art);
+
+  /// Image the user picked; when null, [art] is the first song's cover.
+  final String? cover;
+  final int? folderId;
+  const Playlist(this.id, this.name, this.count, this.art, {this.cover, this.folderId});
+}
+
+/// A folder of playlists in the library (one level, no nesting).
+class PlaylistFolder {
+  final int id;
+  final String name;
+  final int count;
+  final List<String> arts;
+  const PlaylistFolder(this.id, this.name, this.count, this.arts);
 }
 
 /// A library entry for a music folder (Windows), or all local music when

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
@@ -22,6 +23,20 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   Timer? _saveTimer;
   Track? _currentListenedTrack;
   bool _loadingQueue = false;
+
+  // Shuffle reorders the real queue (current song first, the rest random),
+  // so the queue page, next and previous all follow what is actually played.
+  // [_unshuffled] keeps the original order to restore when shuffle is turned off.
+  bool _shuffled = false;
+  List<Track> _unshuffled = [];
+  final _shuffleChanges = StreamController<bool>.broadcast();
+  final _random = Random();
+
+  bool get shuffled => _shuffled;
+  Stream<bool> get shuffleStream async* {
+    yield _shuffled;
+    yield* _shuffleChanges.stream;
+  }
 
   // Playback settings, kept in sync by playbackSettingsProvider.
   double podcastSpeed = 1.0;
@@ -46,7 +61,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
     player.playbackEventStream.listen(_broadcastState, onError: (Object e, StackTrace st) {});
     player.playingStream.listen((_) => _broadcastState(player.playbackEvent));
-    player.shuffleModeEnabledStream.listen((_) => _broadcastState(player.playbackEvent));
+    _shuffleChanges.stream.listen((_) => _broadcastState(player.playbackEvent));
     player.loopModeStream.listen((_) => _broadcastState(player.playbackEvent));
     // currentIndexStream re-emits on every playback event, not only when the
     // track changes; reacting to each one (setSpeed emits another event) looped.
@@ -164,7 +179,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       bufferedPosition: player.bufferedPosition,
       speed: player.speed,
       queueIndex: event.currentIndex,
-      shuffleMode: player.shuffleModeEnabled ? AudioServiceShuffleMode.all : AudioServiceShuffleMode.none,
+      shuffleMode: _shuffled ? AudioServiceShuffleMode.all : AudioServiceShuffleMode.none,
       repeatMode: const {
         LoopMode.off: AudioServiceRepeatMode.none,
         LoopMode.one: AudioServiceRepeatMode.one,
@@ -178,23 +193,27 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     return AudioSource.uri(uri, tag: t.toMediaItem());
   }
 
-  /// Replace the queue and start playing at [index].
+  /// Replace the queue and start playing at [index]. [shuffle] turns shuffle
+  /// on and starts from a random song; if shuffle is already on, the chosen
+  /// song plays first and the rest are shuffled (like Spotify).
   Future<void> playTracks(List<Track> list, {int index = 0, bool shuffle = false}) async {
     final playable = list.where((t) => t.fileExists).toList();
     if (playable.isEmpty) return;
     final start = list[index.clamp(0, list.length - 1)];
     var startIndex = playable.indexOf(start);
     if (startIndex < 0) startIndex = 0;
+    if (shuffle) startIndex = _random.nextInt(playable.length);
+    final shuffleOn = shuffle || _shuffled;
+    final order = shuffleOn ? shuffledQueue(playable, startIndex, _random) : playable;
     await _loadQueue(() async {
-      _tracks = playable;
+      _tracks = order;
+      _unshuffled = shuffleOn ? playable : [];
+      _setShuffled(shuffleOn);
       queue.add(_tracks.map((t) => t.toMediaItem()).toList());
-      await player.setShuffleModeEnabled(shuffle);
       try {
-        await player.setAudioSources(_tracks.map(_source).toList(), initialIndex: startIndex, initialPosition: Duration.zero);
-        if (shuffle) await player.shuffle();
-        if (shuffle && player.effectiveIndices.isNotEmpty) {
-          await player.seek(Duration.zero, index: player.effectiveIndices.first);
-        }
+        await player.setShuffleModeEnabled(false);
+        await player.setAudioSources(_tracks.map(_source).toList(),
+            initialIndex: shuffleOn ? 0 : startIndex, initialPosition: Duration.zero);
       } catch (_) {}
     });
     player.play();
@@ -204,6 +223,11 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   Future<void> playNext(Track t) async {
     if (_tracks.isEmpty) return playTracks([t]);
     final at = (player.currentIndex ?? -1) + 1;
+    if (_shuffled) {
+      final cur = currentTrack;
+      final i = cur == null ? -1 : _unshuffled.indexWhere((x) => identical(x, cur));
+      _unshuffled.insert(i + 1, t);
+    }
     _tracks.insert(at, t);
     await player.insertAudioSource(at, _source(t));
     queue.add(_tracks.map((t) => t.toMediaItem()).toList());
@@ -213,6 +237,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   Future<void> enqueue(List<Track> list) async {
     if (_tracks.isEmpty) return playTracks(list);
     _tracks.addAll(list);
+    if (_shuffled) _unshuffled.addAll(list);
     await player.addAudioSources(list.map(_source).toList());
     queue.add(_tracks.map((t) => t.toMediaItem()).toList());
     _scheduleSave();
@@ -220,7 +245,8 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   Future<void> removeAt(int index) async {
     if (index < 0 || index >= _tracks.length) return;
-    _tracks.removeAt(index);
+    final removed = _tracks.removeAt(index);
+    _unshuffled.removeWhere((x) => identical(x, removed));
     await player.removeAudioSourceAt(index);
     queue.add(_tracks.map((t) => t.toMediaItem()).toList());
     _scheduleSave();
@@ -264,6 +290,8 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       'tracks': _tracks.map((t) => t.toMap()).toList(),
       'index': player.currentIndex ?? 0,
       'position': player.position.inMilliseconds,
+      // Pre-shuffle order, as indexes into the saved queue.
+      if (_shuffled) 'original': _unshuffled.map((t) => _tracks.indexWhere((x) => identical(x, t))).toList(),
     };
     await _db.setSetting('last_session', jsonEncode(data));
   }
@@ -281,6 +309,11 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       await _loadQueue(record: false, () async {
         _tracks = list;
         queue.add(_tracks.map((t) => t.toMediaItem()).toList());
+        final original = (data['original'] as List?)?.cast<int>();
+        final valid = original != null && original.length == list.length && original.every((i) => i >= 0 && i < list.length);
+        _unshuffled = valid ? [for (final i in original) list[i]] : [];
+        _setShuffled(valid);
+        await player.setShuffleModeEnabled(false);
         await player.setAudioSources(list.map(_source).toList(),
             initialIndex: index, initialPosition: Duration(milliseconds: data['position'] as int? ?? 0));
       });
@@ -327,7 +360,9 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   @override
   Future<void> skipToPrevious() async {
-    if (player.position > const Duration(seconds: 3)) {
+    // Past 3 seconds, restart the song (like Spotify); otherwise go back one
+    // song in the queue, or restart if this is the first one.
+    if (player.position > const Duration(seconds: 3) || !player.hasPrevious) {
       await player.seek(Duration.zero);
     } else {
       await player.seekToPrevious();
@@ -344,8 +379,46 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   @override
   Future<void> setShuffleMode(AudioServiceShuffleMode shuffleMode) async {
     final on = shuffleMode != AudioServiceShuffleMode.none;
-    if (on) await player.shuffle();
-    await player.setShuffleModeEnabled(on);
+    if (on == _shuffled) return;
+    final cur = player.currentIndex;
+    if (_tracks.isEmpty || cur == null || cur >= _tracks.length) {
+      _setShuffled(on);
+      return;
+    }
+    if (on) {
+      _unshuffled = List.of(_tracks);
+      await _rearrange(shuffledQueue(_tracks, cur, _random));
+    } else {
+      await _rearrange(unshuffledQueue(_unshuffled, _tracks));
+      _unshuffled = [];
+    }
+    _setShuffled(on);
+  }
+
+  void _setShuffled(bool on) {
+    if (_shuffled == on) return;
+    _shuffled = on;
+    _shuffleChanges.add(on);
+  }
+
+  /// Puts the queue into [order] without interrupting the song that is
+  /// playing: everything around it is removed and re-inserted.
+  Future<void> _rearrange(List<Track> order) async {
+    final cur = player.currentIndex!;
+    final current = _tracks[cur];
+    final at = order.indexWhere((t) => identical(t, current));
+    _loadingQueue = true;
+    try {
+      if (cur + 1 < _tracks.length) await player.removeAudioSourceRange(cur + 1, _tracks.length);
+      if (cur > 0) await player.removeAudioSourceRange(0, cur);
+      if (at > 0) await player.insertAudioSources(0, order.sublist(0, at).map(_source).toList());
+      if (at + 1 < order.length) await player.addAudioSources(order.sublist(at + 1).map(_source).toList());
+      _tracks = order;
+    } finally {
+      _loadingQueue = false;
+    }
+    queue.add(_tracks.map((t) => t.toMediaItem()).toList());
+    _scheduleSave();
   }
 
   @override
@@ -356,8 +429,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         AudioServiceRepeatMode.group: LoopMode.all,
       }[repeatMode]!);
 
-  Future<void> toggleShuffle() =>
-      setShuffleMode(player.shuffleModeEnabled ? AudioServiceShuffleMode.none : AudioServiceShuffleMode.all);
+  Future<void> toggleShuffle() => setShuffleMode(_shuffled ? AudioServiceShuffleMode.none : AudioServiceShuffleMode.all);
 
   Future<void> cycleRepeat() => player.setLoopMode(const {
         LoopMode.off: LoopMode.all,
@@ -367,4 +439,18 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   @override
   Future<void> onTaskRemoved() => stop();
+}
+
+/// Shuffled copy of [list] with the item at [current] moved to the front.
+List<T> shuffledQueue<T>(List<T> list, int current, Random random) {
+  final rest = [for (var i = 0; i < list.length; i++) if (i != current) list[i]]..shuffle(random);
+  return [list[current], ...rest];
+}
+
+/// The pre-shuffle order for what is in [queue] now: items still queued keep
+/// their [original] order; items added while shuffled go at the end.
+List<T> unshuffledQueue<T>(List<T> original, List<T> queue) {
+  final kept = [for (final t in original) if (queue.any((q) => identical(q, t))) t];
+  final added = [for (final q in queue) if (!kept.any((t) => identical(t, q))) q];
+  return [...kept, ...added];
 }

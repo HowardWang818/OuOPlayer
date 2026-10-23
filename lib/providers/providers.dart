@@ -285,6 +285,24 @@ final playlistsProvider = FutureProvider<List<Playlist>>((ref) {
   ref.watch(dbRevisionProvider);
   return ref.watch(dbProvider).playlists();
 });
+
+/// Playlists not inside any folder (library list and desktop sidebar).
+final topLevelPlaylistsProvider = FutureProvider<List<Playlist>>((ref) {
+  ref.watch(dbRevisionProvider);
+  return ref.watch(dbProvider).playlists(topLevel: true);
+});
+final folderPlaylistsProvider = FutureProvider.family<List<Playlist>, int>((ref, folder) {
+  ref.watch(dbRevisionProvider);
+  return ref.watch(dbProvider).playlists(folder: folder);
+});
+final playlistFoldersProvider = FutureProvider<List<PlaylistFolder>>((ref) {
+  ref.watch(dbRevisionProvider);
+  return ref.watch(dbProvider).folders();
+});
+final playlistInfoProvider = FutureProvider.family<Playlist?, int>((ref, id) async {
+  final all = await ref.watch(playlistsProvider.future);
+  return all.where((p) => p.id == id).firstOrNull;
+});
 final favoritesProvider = FutureProvider<List<Track>>((ref) {
   ref.watch(dbRevisionProvider);
   return ref.watch(dbProvider).favorites();
@@ -330,7 +348,7 @@ final positionProvider = StreamProvider<Duration>((ref) => ref.watch(audioHandle
 final durationProvider = StreamProvider<Duration?>((ref) => ref.watch(audioHandlerProvider).player.durationStream);
 final volumeProvider = StreamProvider<double>((ref) => ref.watch(audioHandlerProvider).player.volumeStream);
 final loopModeProvider = StreamProvider<LoopMode>((ref) => ref.watch(audioHandlerProvider).player.loopModeStream);
-final shuffleProvider = StreamProvider<bool>((ref) => ref.watch(audioHandlerProvider).player.shuffleModeEnabledStream);
+final shuffleProvider = StreamProvider<bool>((ref) => ref.watch(audioHandlerProvider).shuffleStream);
 
 final currentTrackProvider = Provider<Track?>((ref) {
   final item = ref.watch(mediaItemProvider).value;

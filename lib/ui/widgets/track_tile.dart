@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,6 +10,7 @@ import '../../theme/app_theme.dart';
 import '../pages/collection_page.dart';
 import 'art_image.dart';
 import 'dialogs.dart';
+import 'track_selection.dart';
 
 class TrackTile extends ConsumerWidget {
   const TrackTile({
@@ -20,6 +22,7 @@ class TrackTile extends ConsumerWidget {
     this.onRemove,
     this.removeLabel = '從此播放清單移除',
     this.trailing,
+    this.selectIndex,
   });
 
   final Track track;
@@ -30,15 +33,40 @@ class TrackTile extends ConsumerWidget {
   final String removeLabel;
   final Widget? trailing;
 
+  /// Row index inside an enclosing [TrackSelectionScope]; enables long-press
+  /// (or right-click) selection.
+  final int? selectIndex;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final current = ref.watch(currentTrackProvider);
     final playing = current?.uri == track.uri;
     final cs = Theme.of(context).colorScheme;
-    return ListTile(
-      onTap: onTap,
+    final selection = selectIndex == null ? null : TrackSelection.maybeOf(context);
+    final selecting = selection?.active ?? false;
+    final selected = selecting && selection!.selected.contains(selectIndex);
+    void select() {
+      final keys = HardwareKeyboard.instance;
+      selection!.toggle(selectIndex!, range: keys.isShiftPressed);
+    }
+
+    final tile = ListTile(
+      selected: selected,
+      selectedTileColor: AppColors.accent.withValues(alpha: 0.15),
+      // While selecting, a tap (or Ctrl/Shift+click on desktop) toggles the row.
+      onTap: selection != null &&
+              (selecting || HardwareKeyboard.instance.isControlPressed || HardwareKeyboard.instance.isShiftPressed)
+          ? select
+          : onTap,
+      onLongPress: selection == null ? null : select,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-      leading: showArt
+      leading: selecting
+          ? SizedBox(
+              width: showArt ? 48 : 32,
+              child: Icon(selected ? Icons.check_circle : Icons.radio_button_unchecked,
+                  color: selected ? AppColors.accent : cs.onSurfaceVariant),
+            )
+          : showArt
           ? ArtImage(track.art, size: 48)
           : SizedBox(
               width: 32,
@@ -65,12 +93,15 @@ class TrackTile extends ConsumerWidget {
         if (trailing != null) trailing!,
         if (track.duration != null && MediaQuery.sizeOf(context).width > 720)
           Text(formatDuration(track.duration), style: TextStyle(color: cs.onSurfaceVariant)),
-        IconButton(
-          icon: const Icon(Icons.more_vert),
-          onPressed: () => showTrackMenu(context, ref, track, onRemove: onRemove, removeLabel: removeLabel),
-        ),
+        if (!selecting)
+          IconButton(
+            icon: const Icon(Icons.more_vert),
+            onPressed: () => showTrackMenu(context, ref, track, onRemove: onRemove, removeLabel: removeLabel),
+          ),
       ]),
     );
+    // Right-click starts selecting on desktop.
+    return selection == null ? tile : GestureDetector(onSecondaryTap: select, child: tile);
   }
 }
 
@@ -146,9 +177,9 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
             ListTile(
               leading: const Icon(Icons.remove_circle_outline),
               title: Text(removeLabel),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(ctx);
-                onRemove();
+                if (await confirmDelete(context, title: '$removeLabel？', message: track.title)) onRemove();
               },
             ),
           if (track.source == TrackSource.local || track.source == TrackSource.download)
@@ -156,9 +187,14 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
               leading: const Icon(Icons.hide_source),
               title: const Text('從音樂庫隱藏'),
               subtitle: const Text('不會刪除檔案；重新掃描後會再出現'),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(ctx);
-                db.deleteTracks([track.id]);
+                if (await confirmDelete(context,
+                    title: '從音樂庫隱藏「${track.title}」？',
+                    message: '檔案不會被刪除，但會從播放清單和已按讚的歌曲中移除；重新掃描後會再出現在音樂庫。',
+                    action: '隱藏')) {
+                  await db.deleteTracks([track.id]);
+                }
               },
             ),
           if (track.source == TrackSource.local || track.source == TrackSource.download)
@@ -168,7 +204,7 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
               subtitle: Text('移到$trashName，可以還原'),
               onTap: () {
                 Navigator.pop(ctx);
-                _deleteFile(context, ref, track);
+                deleteTrackFiles(context, ref, [track]);
               },
             ),
         ]),
@@ -177,16 +213,19 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
   );
 }
 
-/// Asks first, moves the file to the trash, then removes the song from the
-/// library, playlists, likes and the play queue.
-Future<void> _deleteFile(BuildContext context, WidgetRef ref, Track track) async {
+/// Asks first, moves the files to the trash (one system prompt on Android),
+/// then removes the songs from the library, playlists, likes and the queue.
+/// Returns true if they were deleted.
+Future<bool> deleteTrackFiles(BuildContext context, WidgetRef ref, List<Track> tracks) async {
+  if (tracks.isEmpty) return false;
   final ok = await showDialog<bool>(
     context: context,
     useRootNavigator: true,
     builder: (ctx) => AlertDialog(
-      title: const Text('刪除檔案？'),
+      title: Text(tracks.length == 1 ? '刪除檔案？' : '刪除 ${tracks.length} 個檔案？'),
       content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(p.basename(track.uri), style: const TextStyle(fontWeight: FontWeight.bold)),
+        for (final t in tracks.take(5)) Text(p.basename(t.uri), style: const TextStyle(fontWeight: FontWeight.bold)),
+        if (tracks.length > 5) Text('…以及其他 ${tracks.length - 5} 個'),
         const SizedBox(height: 8),
         Text('檔案會移到$trashName，並從音樂庫、播放清單和已按讚的歌曲中移除。'),
       ]),
@@ -200,16 +239,21 @@ Future<void> _deleteFile(BuildContext context, WidgetRef ref, Track track) async
       ],
     ),
   );
-  if (ok != true) return;
+  if (ok != true) return false;
   try {
-    if (!await moveToTrash(track.uri)) {
+    if (!await moveToTrash(tracks.map((t) => t.uri).toList())) {
       if (context.mounted) toast(context, '已取消刪除');
-      return;
+      return false;
     }
-    await ref.read(audioHandlerProvider).removeTrack(track.id);
-    await ref.read(dbProvider).deleteTracks([track.id]);
+    final handler = ref.read(audioHandlerProvider);
+    for (final t in tracks) {
+      await handler.removeTrack(t.id);
+    }
+    await ref.read(dbProvider).deleteTracks(tracks.map((t) => t.id));
     if (context.mounted) toast(context, '已移到$trashName');
+    return true;
   } catch (e) {
     if (context.mounted) toast(context, '刪除失敗：$e');
+    return false;
   }
 }

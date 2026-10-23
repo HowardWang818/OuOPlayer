@@ -3,7 +3,6 @@ package com.ouo.ouoplayer
 import android.app.Activity
 import android.content.ContentValues
 import android.content.Context
-import android.content.Intent
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
@@ -16,9 +15,9 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
 /**
- * Moves a music file to the system trash (Android 11+), so a deletion can be
+ * Moves music files to the system trash (Android 11+), so a deletion can be
  * undone from the Files app for about 30 days. Files OuOPlayer created are
- * trashed directly; for others Android shows its own confirmation dialog.
+ * trashed directly; for the others Android shows one confirmation dialog.
  */
 class TrashPlugin(private val context: Context, messenger: BinaryMessenger) : MethodChannel.MethodCallHandler {
     companion object {
@@ -36,29 +35,39 @@ class TrashPlugin(private val context: Context, messenger: BinaryMessenger) : Me
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         if (call.method != "trash") return result.notImplemented()
-        val path = call.argument<String>("path") ?: return result.error("args", "path missing", null)
+        val paths = call.argument<List<String>>("paths") ?: return result.error("args", "paths missing", null)
+        if (paths.isEmpty()) return result.success(true)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             // No system trash before Android 11.
-            return result.success(File(path).delete())
+            return result.success(paths.all { File(it).delete() })
         }
-        // The scanner returns the file's MediaStore URI, indexing it first if needed.
-        MediaScannerConnection.scanFile(context, arrayOf(path), null) { _, uri ->
-            main.post { trash(uri, path, result) }
+        // The scanner returns each file's MediaStore URI, indexing it first if needed.
+        val uris = mutableListOf<Uri?>()
+        MediaScannerConnection.scanFile(context, paths.toTypedArray(), null) { _, uri ->
+            val done = synchronized(uris) {
+                uris.add(uri)
+                uris.size == paths.size
+            }
+            if (done) main.post { trash(uris.filterNotNull(), result) }
         }
     }
 
-    private fun trash(uri: Uri?, path: String, result: MethodChannel.Result) {
-        if (uri == null) return result.error("notFound", "系統找不到這個檔案", null)
-        try {
-            // Allowed without asking for files this app created (e.g. downloads).
-            val values = ContentValues().apply { put(MediaStore.MediaColumns.IS_TRASHED, 1) }
-            if (context.contentResolver.update(uri, values, null, null) > 0) return result.success(true)
-        } catch (_: SecurityException) {
-            // Not our file: fall through to the system confirmation dialog.
+    private fun trash(uris: List<Uri>, result: MethodChannel.Result) {
+        if (uris.isEmpty()) return result.error("notFound", "系統找不到這些檔案", null)
+        val needConfirm = mutableListOf<Uri>()
+        val values = ContentValues().apply { put(MediaStore.MediaColumns.IS_TRASHED, 1) }
+        for (uri in uris) {
+            try {
+                // Allowed without asking for files this app created (e.g. downloads).
+                if (context.contentResolver.update(uri, values, null, null) == 0) needConfirm.add(uri)
+            } catch (_: SecurityException) {
+                needConfirm.add(uri)
+            }
         }
+        if (needConfirm.isEmpty()) return result.success(true)
         val act = activity ?: return result.error("noActivity", "無法顯示確認視窗", null)
         try {
-            val request = MediaStore.createTrashRequest(context.contentResolver, listOf(uri), true)
+            val request = MediaStore.createTrashRequest(context.contentResolver, needConfirm, true)
             pending?.success(false)
             pending = result
             act.startIntentSenderForResult(request.intentSender, REQUEST_CODE, null, 0, 0, 0)

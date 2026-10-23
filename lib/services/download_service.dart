@@ -296,10 +296,11 @@ class DownloadService {
     await for (final e in backend.download(t.id, opts)) {
       switch (e) {
         case YtDlpProgress():
-          t.progress = e.percent / 100;
+          // For playlists, progress covers the whole list, not just this song.
+          t.progress = playlistProgress(e.percent, e.item, e.itemCount);
           t.detail = [
             if (e.itemCount != null) '第 ${e.item}/${e.itemCount} 首',
-            '${e.percent.toStringAsFixed(1)}%',
+            '${(t.progress * 100).toStringAsFixed(1)}%',
             if (e.eta != null && e.eta != 'NA' && e.eta != 'Unknown') '剩餘 ${e.eta}',
           ].join('  ·  ');
           _emit();
@@ -334,4 +335,11 @@ class DownloadService {
       }
     }
   }
+}
+
+/// Overall progress (0..1) when song [item] of [count] is at [percent]%.
+double playlistProgress(double percent, int? item, int? count) {
+  final p = (percent / 100).clamp(0.0, 1.0);
+  if (item == null || count == null || count <= 1) return p;
+  return (((item - 1).clamp(0, count) + p) / count).clamp(0.0, 1.0);
 }

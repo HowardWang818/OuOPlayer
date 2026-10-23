@@ -6,8 +6,10 @@ import '../../providers/providers.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/art_image.dart';
 import '../widgets/dialogs.dart';
+import '../widgets/track_selection.dart';
 import '../widgets/track_tile.dart';
 import 'collection_page.dart';
+import 'folder_page.dart';
 import 'podcasts_page.dart';
 
 enum _Filter { playlists, albums, artists, songs, podcasts }
@@ -48,7 +50,8 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     Widget body;
     switch (_filter) {
       case _Filter.playlists:
-        final lists = ref.watch(playlistsProvider).value ?? const [];
+        final lists = ref.watch(topLevelPlaylistsProvider).value ?? const [];
+        final playlistFolders = ref.watch(playlistFoldersProvider).value ?? const [];
         final favCount = ref.watch(favoriteIdsProvider).value?.length ?? 0;
         final folders = ref.watch(libraryFoldersProvider).value ?? const [];
         body = ListView(children: [
@@ -83,6 +86,23 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
             title: const Text('建立播放清單'),
             onTap: _newPlaylist,
           ),
+          ListTile(
+            leading: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(4), color: Theme.of(context).colorScheme.surfaceContainerHigh),
+              child: const Icon(Icons.create_new_folder_outlined),
+            ),
+            title: const Text('建立資料夾'),
+            onTap: () => createPlaylistFolder(context, ref),
+          ),
+          for (final f in playlistFolders)
+            ListTile(
+              leading: PlaylistFolderArt(folder: f, size: 56),
+              title: Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text('資料夾 • ${f.count} 個播放清單', style: TextStyle(color: muted)),
+              onTap: () => _push(FolderPage(folderId: f.id, name: f.name)),
+            ),
           for (final pl in lists)
             ListTile(
               leading: ArtImage(pl.art, size: 56, icon: Icons.queue_music),
@@ -116,7 +136,9 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
       case _Filter.songs:
         final tracks = ref.watch(tracksProvider).value ?? const [];
         final handler = ref.read(audioHandlerProvider);
-        body = ListView.builder(
+        body = TrackSelectionScope(
+          tracks: tracks,
+          child: ListView.builder(
           itemCount: tracks.length + 1,
           itemBuilder: (_, i) => i == 0
               ? ListTile(
@@ -124,7 +146,8 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                   title: Text('隨機播放全部（${tracks.length} 首）'),
                   onTap: tracks.isEmpty ? null : () => handler.playTracks(tracks, shuffle: true),
                 )
-              : TrackTile(track: tracks[i - 1], onTap: () => handler.playTracks(tracks, index: i - 1)),
+              : TrackTile(track: tracks[i - 1], selectIndex: i - 1, onTap: () => handler.playTracks(tracks, index: i - 1)),
+          ),
         );
       case _Filter.podcasts:
         body = const PodcastList();
