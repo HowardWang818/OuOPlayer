@@ -50,7 +50,7 @@ class YtDlpAndroid implements YtDlpBackend {
               controller.add(ev!);
             }
           }
-          controller.add(YtDlpFinished(e['success'] == true, e['error'] as String?));
+          controller.add(YtDlpFinished(e['success'] == true, e['error'] as String?, e['out'] as String?));
           sub.cancel();
           controller.close();
       }

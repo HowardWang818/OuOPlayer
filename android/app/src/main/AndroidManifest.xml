@@ -71,6 +71,7 @@
         <service
             android:name=".DownloadForegroundService"
             android:foregroundServiceType="dataSync"
+            android:stopWithTask="false"
             android:exported="false" />
 
         <meta-data

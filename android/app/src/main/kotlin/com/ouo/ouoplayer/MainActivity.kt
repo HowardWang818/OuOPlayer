@@ -10,6 +10,7 @@ class MainActivity : AudioServiceActivity() {
     private var bluetooth: BluetoothPlugin? = null
     private var normalizer: NormalizerPlugin? = null
     private var trash: TrashPlugin? = null
+    private var downloads: DownloadNotifierPlugin? = null
     private var share: MethodChannel? = null
     private var pendingShare: String? = null
 
@@ -20,6 +21,10 @@ class MainActivity : AudioServiceActivity() {
         bluetooth = BluetoothPlugin(applicationContext, messenger)
         normalizer = NormalizerPlugin(messenger)
         trash = TrashPlugin(applicationContext, messenger).also { it.activity = this }
+        // Download notification: progress from Dart; taps open the downloads page.
+        downloads = DownloadNotifierPlugin(applicationContext, messenger).also {
+            it.pendingAction = intent?.getStringExtra(DownloadForegroundService.EXTRA_OPEN)
+        }
         // Links shared from other apps (YouTube, browser…) go to the downloader.
         pendingShare = sharedText(intent)
         share = MethodChannel(messenger, "ouo/share").apply {
@@ -37,6 +42,7 @@ class MainActivity : AudioServiceActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         sharedText(intent)?.let { share?.invokeMethod("shared", it) }
+        intent.getStringExtra(DownloadForegroundService.EXTRA_OPEN)?.let { downloads?.deliver(it) }
     }
 
     @Deprecated("Needed for the system delete confirmation (MediaStore trash request)")

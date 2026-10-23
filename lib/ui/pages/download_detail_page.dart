@@ -75,6 +75,13 @@ class DownloadDetailPage extends ConsumerWidget {
               OutlinedButton.icon(onPressed: () => svc.cancel(task), icon: const Icon(Icons.close), label: const Text('取消')),
             if (!task.active && task.status != DownloadStatus.done)
               FilledButton.icon(onPressed: () => svc.retry(task), icon: const Icon(Icons.refresh), label: const Text('重試')),
+            // Listing the playlist failed: allow the old one-run download.
+            if (!task.active && task.listFailed)
+              OutlinedButton.icon(
+                onPressed: () => svc.downloadWhole(task),
+                icon: const Icon(Icons.playlist_play),
+                label: const Text('整份下載（不比對）'),
+              ),
             if (!task.active && task.parent == null)
               OutlinedButton.icon(
                 onPressed: () async {

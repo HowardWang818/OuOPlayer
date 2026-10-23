@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -7,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../data/db/database.dart';
 import '../data/models/track.dart';
+import 'download_match.dart';
 import 'library_scanner.dart';
 import 'ytdlp/ytdlp_downloader.dart';
 
@@ -35,6 +37,16 @@ class DownloadTask {
 
   /// Files that already existed and were kept instead of the new copy.
   int duplicates = 0;
+
+  /// A playlist song that was already downloaded, so it was skipped.
+  bool skipped = false;
+
+  /// Listing the playlist failed; the user may choose [wholeRun] instead.
+  bool listFailed = false;
+
+  /// Download the playlist in one yt-dlp run, without checking for songs
+  /// that are already there.
+  bool wholeRun = false;
 
   /// yt-dlp output (last [maxLog] lines), shown on the detail page.
   final List<String> log = [];
@@ -146,7 +158,10 @@ class DownloadService {
       url: url,
       kind: k,
       format: format,
-      playlist: playlist,
+      // A playlist page is always downloaded as a playlist (listed, checked
+      // for songs already there, then split); the 「下載整個播放清單」 choice
+      // only matters for a video link that also carries a list.
+      playlist: k == DownloadKind.ytdlp && (playlist || isPlaylistUrl(url)),
       title: title,
       playlistId: playlistId,
       playlistName: playlistName,
@@ -172,6 +187,15 @@ class DownloadService {
     t.addLog('— 重試 —');
     _emit();
     _pump();
+  }
+
+  /// After listing failed: download the playlist in one run, no checking.
+  void downloadWhole(DownloadTask t) {
+    t
+      ..wholeRun = true
+      ..listFailed = false;
+    t.addLog('— 整份下載（不比對）—');
+    retry(t);
   }
 
   Future<void> cancel(DownloadTask t) async {
@@ -237,7 +261,7 @@ class DownloadService {
       await work.create(recursive: true);
       if (t.kind == DownloadKind.direct) {
         await _runDirect(t, work.path);
-      } else if (t.playlist && t.parent == null && !t.isGroup) {
+      } else if (t.playlist && t.parent == null && !t.isGroup && !t.wholeRun) {
         await _runPlaylist(t, work.path);
       } else {
         await _runYtDlp(t, work.path);
@@ -283,6 +307,8 @@ class DownloadService {
     }
     track ??= await _scanner.importFile(target, source: TrackSource.download);
     t.files.add(target);
+    // One source → one file; whole-playlist runs can't tell which is which.
+    if (t.kind == DownloadKind.ytdlp && !t.playlist) await _db.recordDownload(sourceKey(t.url), target);
     final group = t.parent;
     if (track != null && group != null) {
       if (group.playlistId != null) await _db.addToPlaylistAt(group.playlistId!, track, group.playlistBase + t.index);
@@ -315,8 +341,9 @@ class DownloadService {
   }
 
   /// Lists the playlist (no download) and queues one child task per song.
-  /// Falls back to one yt-dlp run for the whole list if the entries can't be
-  /// downloaded on their own (e.g. no distinct per-song URLs).
+  /// Lists whose songs are direct file links get one yt-dlp run instead. If
+  /// listing fails, the task fails with the reason (no silent full download);
+  /// [downloadWhole] then lets the user download it in one run anyway.
   Future<void> _runPlaylist(DownloadTask t, String workDir) async {
     final backend = ytdlp;
     if (backend == null) throw '此平台不支援 yt-dlp';
@@ -329,32 +356,43 @@ class DownloadService {
     t.detail = '讀取播放清單…';
     t.addLog('讀取播放清單：${t.url}');
     _emit();
-    final entries = <int, PlaylistEntry>{};
-    String? title;
+    // One JSON document for the whole list: no reliance on line-by-line
+    // callbacks or several --print options reaching us intact.
+    final lines = <String>[];
+    String? output;
     String? error;
     await for (final e in backend.run('${t.id}_list', t.url, playlistListArgs)) {
       switch (e) {
-        case YtDlpPlaylistTitle():
-          title ??= e.title;
         case YtDlpLog():
-          final entry = PlaylistEntry.parse(e.line);
-          if (entry != null) {
-            entries[entry.index] = entry;
-          } else {
-            t.addLog(e.line);
-          }
+          lines.add(e.line);
+          if (!e.line.startsWith('{')) t.addLog(e.line);
         case YtDlpFinished():
+          output = e.output;
           if (!e.success) error = e.error;
         default:
       }
     }
     if (t.status == DownloadStatus.cancelled) return;
-    final list = entries.values.toList()..sort((a, b) => a.index.compareTo(b.index));
-    if (!canSplitPlaylist(list)) {
-      t.addLog(list.isEmpty && error != null ? '讀取清單失敗：$error，改用整份下載' : '無法逐首下載，改用整份下載');
+    final listing = PlaylistListing.parse(output != null && output.trim().isNotEmpty ? output : lines.join('\n'));
+    if (listing == null) {
+      final raw = (output ?? lines.join('\n')).trim();
+      t.addLog('讀取清單失敗：收到 ${lines.length} 行輸出、${raw.length} 個字元，無法解析成清單');
+      for (final l in raw.split('\n').take(5)) {
+        t.addLog('  > ${l.length > 200 ? '${l.substring(0, 200)}…' : l}');
+      }
+      t.listFailed = true;
+      throw '讀取播放清單失敗${error != null ? '：$error' : ''}。可以按「重試」，或「整份下載（不比對）」。';
+    }
+    final title = listing.title;
+    t.addLog('讀取到 ${listing.entries.length} 首');
+    if (!canSplitPlaylist(listing.entries)) {
+      t.addLog('這個清單的歌曲是直接的檔案連結，改用整份下載');
       return _runYtDlp(t, workDir);
     }
-    title ??= t.playlistName;
+    final list = uniqueEntries(listing.entries);
+    if (list.length < listing.entries.length) {
+      t.addLog('清單裡有 ${listing.entries.length - list.length} 首重複出現，只下載一次');
+    }
     t.playlistName ??= title;
     if (t.title == t.url && title != null) t.title = title;
     // Library playlist: the one the user picked, or a new one named after the source.
@@ -364,9 +402,10 @@ class DownloadService {
       t.playlistId = await _db.createPlaylist(t.playlistName!);
       t.addLog('已建立播放清單「${t.playlistName}」');
     }
-    t.addLog('共 ${list.length} 首，同時下載 $maxParallel 首');
+    final existing = await ExistingFiles.scan(outDir);
+    var skipped = 0;
     for (final entry in list) {
-      t.children.add(DownloadTask(
+      final child = DownloadTask(
         id: '${t.id}_${entry.index}',
         url: entry.url,
         kind: DownloadKind.ytdlp,
@@ -374,8 +413,33 @@ class DownloadService {
         title: entry.title,
       )
         ..parent = t
-        ..index = entry.index);
+        ..index = entry.index;
+      final have = await _alreadyDownloaded(entry, existing);
+      if (have != null) {
+        // Already there: no download, just put it in the playlist in order.
+        child
+          ..status = DownloadStatus.done
+          ..progress = 1
+          ..skipped = true
+          ..detail = '已存在，略過';
+        child.files.add(have);
+        child.addLog('已存在，略過：${p.basename(have)}');
+        final track = await _db.track(have) ?? await _scanner.importFile(have, source: TrackSource.download);
+        if (track != null && t.playlistId != null) await _db.addToPlaylistAt(t.playlistId!, track, t.playlistBase + entry.index);
+        skipped++;
+      }
+      t.children.add(child);
     }
+    t.addLog('共 ${list.length} 首：已存在 $skipped 首，下載 ${list.length - skipped} 首（同時 $maxParallel 首）');
+  }
+
+  /// A file for this song that is already in the download folder: from the
+  /// download history (same source URL) or, for songs downloaded before that
+  /// existed, a file named after the song's title.
+  Future<String?> _alreadyDownloaded(PlaylistEntry entry, ExistingFiles existing) async {
+    final known = await _db.downloadedPath(sourceKey(entry.url));
+    if (known != null && File(known).existsSync()) return known;
+    return existing.match(entry.title);
   }
 
   Future<void> _runDirect(DownloadTask t, String workDir) async {
@@ -417,15 +481,36 @@ class DownloadService {
       ..detail = _doneDetail(t);
   }
 
-  static String _doneDetail(DownloadTask t) => [
-        '${t.files.length} 個檔案',
+  static String _doneDetail(DownloadTask t) {
+    final skipped = t.children.where((c) => c.skipped).length;
+    return [
+        if (t.isGroup) '下載 ${t.files.length - skipped} 首' else '${t.files.length} 個檔案',
+        if (skipped > 0) '略過 $skipped 首（已存在）',
         if (t.duplicates > 0) '${t.duplicates} 個已存在',
         if (t.playlistName != null && t.playlistId != null) '已加入「${t.playlistName}」',
       ].join(' · ');
+  }
 
   Future<void> _runYtDlp(DownloadTask t, String workDir) async {
     final backend = ytdlp;
     if (backend == null) throw '此平台不支援 yt-dlp';
+    // A single song downloaded before: skip it (playlist songs were checked when listed).
+    if (!t.playlist && t.parent == null) {
+      final known = await _db.downloadedPath(sourceKey(t.url));
+      if (known != null && File(known).existsSync()) {
+        final track = await _db.track(known) ?? await _scanner.importFile(known, source: TrackSource.download);
+        t.files.add(known);
+        if (t.title == t.url) t.title = p.basenameWithoutExtension(known);
+        if (track != null) await _addToPlaylist(t, [track]);
+        t
+          ..status = DownloadStatus.done
+          ..progress = 1
+          ..skipped = true
+          ..detail = '已存在，略過';
+        t.addLog('已下載過，略過：${p.basename(known)}');
+        return;
+      }
+    }
     if (!await backend.isReady()) {
       await backend.prepare((s) {
         t.detail = s;
@@ -486,13 +571,48 @@ double playlistProgress(double percent, int? item, int? count) {
   return (((item - 1).clamp(0, count) + p) / count).clamp(0.0, 1.0);
 }
 
-/// yt-dlp arguments that only list a playlist's songs (nothing is downloaded).
-const playlistListArgs = [
-  '--flat-playlist',
-  '--yes-playlist',
-  '--print', 'OUOPLAYLIST %(playlist_title)s',
-  '--print', 'OUOENTRY %(playlist_autonumber)s|%(url)s|%(title)s',
-];
+/// yt-dlp arguments that only list a playlist's songs (nothing is
+/// downloaded), as one JSON document.
+const playlistListArgs = ['--flat-playlist', '--yes-playlist', '--dump-single-json'];
+
+/// A playlist read from yt-dlp's `--dump-single-json --flat-playlist` output.
+class PlaylistListing {
+  final String? title;
+  final List<PlaylistEntry> entries;
+  const PlaylistListing(this.title, this.entries);
+
+  /// Finds the JSON object in [output] (warnings may surround it).
+  static PlaylistListing? parse(String output) {
+    final start = output.indexOf('{');
+    final end = output.lastIndexOf('}');
+    if (start < 0 || end <= start) return null;
+    final Object? json;
+    try {
+      json = jsonDecode(output.substring(start, end + 1));
+    } catch (_) {
+      return null;
+    }
+    if (json is! Map) return null;
+    final raw = json['entries'];
+    // A single video instead of a playlist.
+    if (raw is! List) {
+      final url = (json['webpage_url'] ?? json['original_url'] ?? json['url']) as String?;
+      return url == null ? null : PlaylistListing(null, [PlaylistEntry(1, url, (json['title'] as String?) ?? url)]);
+    }
+    final entries = <PlaylistEntry>[];
+    for (final e in raw) {
+      if (e is! Map) continue;
+      final id = e['id'] as String?;
+      var url = (e['url'] ?? e['webpage_url']) as String?;
+      if ((url == null || !url.startsWith('http')) && id != null && (e['ie_key'] == 'Youtube' || json['extractor_key'] == 'YoutubeTab')) {
+        url = 'https://www.youtube.com/watch?v=$id';
+      }
+      if (url == null) continue;
+      entries.add(PlaylistEntry(entries.length + 1, url, (e['title'] as String?) ?? url));
+    }
+    return PlaylistListing(json['title'] as String?, entries);
+  }
+}
 
 /// One song from a playlist listing.
 class PlaylistEntry {
@@ -500,29 +620,23 @@ class PlaylistEntry {
   final String url;
   final String title;
   const PlaylistEntry(this.index, this.url, this.title);
-
-  /// Parses `OUOENTRY 3|https://…|Title` (the title may contain '|').
-  static PlaylistEntry? parse(String line) {
-    if (!line.startsWith('OUOENTRY ')) return null;
-    final parts = line.substring(9).split('|');
-    if (parts.length < 3) return null;
-    final index = int.tryParse(parts[0].trim());
-    final url = parts[1].trim();
-    if (index == null) return null;
-    return PlaylistEntry(index, url, parts.sublist(2).join('|').trim());
-  }
 }
 
-/// Songs can be downloaded one by one only if each has its own web page
-/// URL. Direct file links (e.g. Internet Archive) are left to one run over
-/// the whole list, which keeps the site's proper song titles.
+/// Songs can be downloaded one by one only if they are web pages (not
+/// direct file links, e.g. Internet Archive, which keep proper titles only
+/// in one run over the whole list). A song listed twice is fine: see
+/// [uniqueEntries].
 bool canSplitPlaylist(List<PlaylistEntry> entries) {
-  if (entries.length < 2) return false;
-  final urls = entries.map((e) => e.url).toSet();
   bool isFile(String u) {
     final path = Uri.tryParse(u)?.path.toLowerCase() ?? '';
     return audioExtensions.any(path.endsWith) || path.endsWith('.webm');
   }
 
-  return urls.length == entries.length && urls.every((u) => u.startsWith('http') && !isFile(u));
+  return entries.every((e) => e.url.startsWith('http') && !isFile(e.url)) && entries.map((e) => e.url).toSet().length >= 2;
+}
+
+/// The list without repeats of the same song (first occurrence kept).
+List<PlaylistEntry> uniqueEntries(List<PlaylistEntry> entries) {
+  final seen = <String>{};
+  return [for (final e in entries) if (seen.add(sourceKey(e.url))) e];
 }

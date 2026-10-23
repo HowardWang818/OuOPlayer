@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/db/database.dart';
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../theme/app_theme.dart';
@@ -104,6 +105,19 @@ class CollectionPage extends ConsumerWidget {
                     await resetPlaylistCover(ref, info);
                   } else if (info != null && v == 'folder') {
                     await movePlaylistToFolder(context, ref, info);
+                  } else if (v == 'dedupe') {
+                    final extra = tracks.length - withoutDuplicates(tracks).length;
+                    if (extra == 0) {
+                      toast(context, '沒有重複的歌曲');
+                      return;
+                    }
+                    if (!await confirmDelete(context,
+                        title: '移除 $extra 首重複的歌曲？',
+                        message: '每首歌只保留第一次出現的位置，順序不變。檔案不會被刪除。')) {
+                      return;
+                    }
+                    final n = await db.removePlaylistDuplicates(playlistId!);
+                    if (context.mounted) toast(context, '已移除 $n 首重複的歌曲');
                   }
                 },
                 itemBuilder: (_) => [
@@ -111,6 +125,7 @@ class CollectionPage extends ConsumerWidget {
                   const PopupMenuItem(value: 'cover', child: Text('更換封面')),
                   if (info?.cover != null) const PopupMenuItem(value: 'resetCover', child: Text('移除自訂封面')),
                   const PopupMenuItem(value: 'folder', child: Text('移到資料夾')),
+                  const PopupMenuItem(value: 'dedupe', child: Text('移除重複的歌曲')),
                   const PopupMenuItem(value: 'delete', child: Text('刪除播放清單')),
                 ],
               ),

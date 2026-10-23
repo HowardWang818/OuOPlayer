@@ -52,20 +52,36 @@ void main() {
       expect(single.itemCount, isNull);
     });
 
-    test('parses listing entries (titles may contain |)', () {
-      final e = PlaylistEntry.parse('OUOENTRY 03|https://www.youtube.com/watch?v=abc|A | B')!;
-      expect((e.index, e.url, e.title), (3, 'https://www.youtube.com/watch?v=abc', 'A | B'));
-      expect(PlaylistEntry.parse('[youtube] something'), isNull);
+    test('reads a playlist from yt-dlp JSON (warnings around it are ignored)', () {
+      const out = 'WARNING: [youtube:tab] YouTube Music is not directly supported.\n'
+          '{"title": "Liked", "extractor_key": "YoutubeTab", "entries": ['
+          '{"id": "aNyz66cQbYY", "url": "https://music.youtube.com/watch?v=aNyz66cQbYY", "title": "Gajumaru", "ie_key": "Youtube"},'
+          '{"id": "iAOTwdlEdVg", "url": null, "title": "群青", "ie_key": "Youtube"}]}\n';
+      final l = PlaylistListing.parse(out)!;
+      expect(l.title, 'Liked');
+      expect(l.entries.map((e) => (e.index, e.title)), [(1, 'Gajumaru'), (2, '群青')]);
+      expect(l.entries[1].url, 'https://www.youtube.com/watch?v=iAOTwdlEdVg');
+      expect(PlaylistListing.parse('ERROR: private playlist'), isNull);
     });
 
-    test('only splits lists of distinct web pages', () {
+    test('a song listed twice no longer blocks song-by-song download', () {
+      PlaylistEntry e(int i, String u) => PlaylistEntry(i, u, 't$i');
+      final list = [
+        e(1, 'https://music.youtube.com/watch?v=a'),
+        e(2, 'https://www.youtube.com/watch?v=b'),
+        e(3, 'https://www.youtube.com/watch?v=a'),
+      ];
+      expect(canSplitPlaylist(list), isTrue);
+      expect(uniqueEntries(list).map((x) => x.index), [1, 2]);
+    });
+
+    test('only splits lists of web pages', () {
       PlaylistEntry e(int i, String u) => PlaylistEntry(i, u, 't$i');
       expect(canSplitPlaylist([e(1, 'https://www.youtube.com/watch?v=a'), e(2, 'https://www.youtube.com/watch?v=b')]), isTrue);
       expect(canSplitPlaylist([e(1, 'https://www.youtube.com/watch?v=a')]), isFalse);
-      expect(canSplitPlaylist([e(1, 'https://x/v'), e(2, 'https://x/v')]), isFalse);
       expect(canSplitPlaylist([e(1, 'https://archive.org/download/x/1.flac'), e(2, 'https://archive.org/download/x/2.flac')]), isFalse);
       expect(canSplitPlaylist([e(1, 'NA'), e(2, 'NA')]), isFalse);
-    });
+  });
   });
 
   test('database upgrade to v2 keeps playlists and adds covers and folders', () async {

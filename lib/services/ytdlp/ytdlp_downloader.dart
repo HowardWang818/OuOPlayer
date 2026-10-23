@@ -34,7 +34,10 @@ class YtDlpLog extends YtDlpEvent {
 class YtDlpFinished extends YtDlpEvent {
   final bool success;
   final String? error;
-  YtDlpFinished(this.success, [this.error]);
+
+  /// Everything yt-dlp wrote to stdout (e.g. a playlist's JSON).
+  final String? output;
+  YtDlpFinished(this.success, [this.error, this.output]);
 }
 
 class YtDlpOptions {
