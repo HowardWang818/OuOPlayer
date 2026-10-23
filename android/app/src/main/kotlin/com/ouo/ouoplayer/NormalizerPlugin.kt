@@ -14,6 +14,7 @@ class NormalizerPlugin(messenger: BinaryMessenger) : MethodChannel.MethodCallHan
     private val method = MethodChannel(messenger, "ouo/normalize")
     private var effect: DynamicsProcessing? = null
     private var sessionId = 0
+    private var level = ""
 
     init {
         method.setMethodCallHandler(this)
@@ -24,19 +25,21 @@ class NormalizerPlugin(messenger: BinaryMessenger) : MethodChannel.MethodCallHan
             "set" -> {
                 val session = call.argument<Int>("sessionId") ?: 0
                 val enabled = call.argument<Boolean>("enabled") ?: false
-                result.success(apply(session, enabled))
+                val lvl = call.argument<String>("level") ?: "normal"
+                result.success(apply(session, enabled, lvl))
             }
             else -> result.notImplemented()
         }
     }
 
-    private fun apply(session: Int, enabled: Boolean): Boolean {
+    private fun apply(session: Int, enabled: Boolean, lvl: String): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || session == 0) return false
         try {
-            if (session != sessionId) {
+            if (session != sessionId || lvl != level) {
                 release()
-                effect = create(session)
+                effect = create(session, lvl)
                 sessionId = session
+                level = lvl
             }
             effect?.enabled = enabled
             return effect != null
@@ -46,7 +49,15 @@ class NormalizerPlugin(messenger: BinaryMessenger) : MethodChannel.MethodCallHan
         }
     }
 
-    private fun create(session: Int): DynamicsProcessing {
+    /** Compressor settings per strength: threshold (dB), ratio, make-up gain (dB). */
+    private fun params(lvl: String): Triple<Float, Float, Float> = when (lvl) {
+        "quiet" -> Triple(-24f, 2.5f, 3f)
+        "loud" -> Triple(-30f, 4f, 12f)
+        else -> Triple(-26f, 3f, 8f)
+    }
+
+    private fun create(session: Int, lvl: String): DynamicsProcessing {
+        val (threshold, ratio, makeUp) = params(lvl)
         val config = DynamicsProcessing.Config.Builder(
             DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
             2, // channels
@@ -61,9 +72,9 @@ class NormalizerPlugin(messenger: BinaryMessenger) : MethodChannel.MethodCallHan
             DynamicsProcessing.MbcBand(
                 true, 20000f, // enabled, cutoff (Hz)
                 30f, 400f, // attack, release (ms)
-                3f, -26f, 8f, // ratio, threshold (dB), knee (dB)
+                ratio, threshold, 8f, // ratio, threshold (dB), knee (dB)
                 -90f, 1f, // noise gate threshold, expander ratio
-                0f, 8f, // pre-gain, make-up gain (dB)
+                0f, makeUp, // pre-gain, make-up gain (dB)
             ),
         )
         fx.setLimiterAllChannelsTo(
@@ -76,5 +87,6 @@ class NormalizerPlugin(messenger: BinaryMessenger) : MethodChannel.MethodCallHan
         effect?.release()
         effect = null
         sessionId = 0
+        level = ""
     }
 }

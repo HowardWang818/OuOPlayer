@@ -19,6 +19,7 @@ class OuoApp extends ConsumerWidget {
     ref.watch(bluetoothAutomationProvider);
     ref.watch(shareIntentProvider);
     ref.watch(volumeNormalizationProvider);
+    ref.watch(playbackSettingsProvider);
     return MaterialApp(
       title: 'OuOPlayer',
       debugShowCheckedModeBanner: false,
@@ -29,6 +30,17 @@ class OuoApp extends ConsumerWidget {
     );
   }
 }
+
+/// Pushes the 播放 settings (podcast speed, skip silence, queue end, seek step) into the player.
+final playbackSettingsProvider = Provider<void>((ref) {
+  final s = ref.watch(settingsProvider);
+  ref.read(audioHandlerProvider).updatePlaybackSettings(
+        podcastSpeed: s.podcastSpeed,
+        podcastSkipSilence: s.podcastSkipSilence,
+        continueAfterQueue: s.continueAfterQueue,
+        seekSeconds: s.seekSeconds,
+      );
+});
 
 /// Android "share to OuOPlayer": queue the first URL in the shared text.
 final shareIntentProvider = Provider<void>((ref) {

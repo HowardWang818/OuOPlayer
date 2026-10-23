@@ -40,6 +40,19 @@ final dbRevisionProvider = StreamProvider<int>((ref) async* {
 });
 
 // ---------- settings ----------
+/// Volume-normalization strength (like Spotify's 安靜 / 一般 / 大聲).
+enum NormalizeLevel {
+  quiet('安靜'),
+  normal('一般'),
+  loud('大聲');
+
+  const NormalizeLevel(this.label);
+  final String label;
+}
+
+const podcastSpeeds = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+const seekSecondOptions = [10, 15, 30];
+
 class AppSettings {
   final ThemeMode themeMode;
   final List<String> musicDirs;
@@ -47,7 +60,12 @@ class AppSettings {
   final bool btAutoPlay;
   final String ytFormat;
   final bool normalizeVolume;
+  final NormalizeLevel normalizeLevel;
   final bool autoScanNewFolders;
+  final double podcastSpeed;
+  final bool podcastSkipSilence;
+  final bool continueAfterQueue;
+  final int seekSeconds;
 
   const AppSettings({
     required this.themeMode,
@@ -56,7 +74,12 @@ class AppSettings {
     required this.btAutoPlay,
     required this.ytFormat,
     required this.normalizeVolume,
+    required this.normalizeLevel,
     required this.autoScanNewFolders,
+    required this.podcastSpeed,
+    required this.podcastSkipSilence,
+    required this.continueAfterQueue,
+    required this.seekSeconds,
   });
 
   AppSettings copyWith({
@@ -66,7 +89,12 @@ class AppSettings {
     bool? btAutoPlay,
     String? ytFormat,
     bool? normalizeVolume,
+    NormalizeLevel? normalizeLevel,
     bool? autoScanNewFolders,
+    double? podcastSpeed,
+    bool? podcastSkipSilence,
+    bool? continueAfterQueue,
+    int? seekSeconds,
   }) =>
       AppSettings(
         themeMode: themeMode ?? this.themeMode,
@@ -75,7 +103,12 @@ class AppSettings {
         btAutoPlay: btAutoPlay ?? this.btAutoPlay,
         ytFormat: ytFormat ?? this.ytFormat,
         normalizeVolume: normalizeVolume ?? this.normalizeVolume,
+        normalizeLevel: normalizeLevel ?? this.normalizeLevel,
         autoScanNewFolders: autoScanNewFolders ?? this.autoScanNewFolders,
+        podcastSpeed: podcastSpeed ?? this.podcastSpeed,
+        podcastSkipSilence: podcastSkipSilence ?? this.podcastSkipSilence,
+        continueAfterQueue: continueAfterQueue ?? this.continueAfterQueue,
+        seekSeconds: seekSeconds ?? this.seekSeconds,
       );
 
   static Future<AppSettings> load(AppDatabase db) async {
@@ -88,7 +121,12 @@ class AppSettings {
       btAutoPlay: m['bt_autoplay'] != 'false',
       ytFormat: m['yt_format'] ?? 'mp3',
       normalizeVolume: m['normalize_volume'] != 'false',
+      normalizeLevel: NormalizeLevel.values.firstWhere((l) => l.name == m['normalize_level'], orElse: () => NormalizeLevel.normal),
       autoScanNewFolders: m['auto_scan_new_folders'] != 'false',
+      podcastSpeed: double.tryParse(m['podcast_speed'] ?? '') ?? 1.0,
+      podcastSkipSilence: m['podcast_skip_silence'] == 'true',
+      continueAfterQueue: m['continue_after_queue'] != 'false',
+      seekSeconds: int.tryParse(m['seek_seconds'] ?? '') ?? 15,
     );
   }
 
@@ -155,6 +193,31 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void setAutoScanNewFolders(bool v) {
     state = state.copyWith(autoScanNewFolders: v);
     _db.setSetting('auto_scan_new_folders', '$v');
+  }
+
+  void setNormalizeLevel(NormalizeLevel v) {
+    state = state.copyWith(normalizeLevel: v);
+    _db.setSetting('normalize_level', v.name);
+  }
+
+  void setPodcastSpeed(double v) {
+    state = state.copyWith(podcastSpeed: v);
+    _db.setSetting('podcast_speed', '$v');
+  }
+
+  void setPodcastSkipSilence(bool v) {
+    state = state.copyWith(podcastSkipSilence: v);
+    _db.setSetting('podcast_skip_silence', '$v');
+  }
+
+  void setContinueAfterQueue(bool v) {
+    state = state.copyWith(continueAfterQueue: v);
+    _db.setSetting('continue_after_queue', '$v');
+  }
+
+  void setSeekSeconds(int v) {
+    state = state.copyWith(seekSeconds: v);
+    _db.setSetting('seek_seconds', '$v');
   }
 }
 
