@@ -135,7 +135,8 @@ class AppSettings {
       musicDirs: m['music_dirs'] != null ? (jsonDecode(m['music_dirs']!) as List).cast<String>() : defaults.music,
       downloadDir: m['download_dir'] ?? defaults.download,
       btAutoPlay: m['bt_autoplay'] != 'false',
-      ytFormat: m['yt_format'] ?? 'mp3',
+      // M4A by default: usually no re-encoding, so much faster than MP3.
+      ytFormat: m['yt_format'] ?? 'm4a',
       normalizeVolume: m['normalize_volume'] != 'false',
       normalizeLevel: NormalizeLevel.values.firstWhere((l) => l.name == m['normalize_level'], orElse: () => NormalizeLevel.normal),
       autoScanNewFolders: m['auto_scan_new_folders'] != 'false',

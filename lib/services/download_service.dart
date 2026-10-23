@@ -40,6 +40,20 @@ class DownloadTask {
   final List<String> log = [];
   static const maxLog = 300;
 
+  /// A playlist download is split into one child task per song so several
+  /// songs download at once; the parent's status and progress come from them.
+  final List<DownloadTask> children = [];
+  DownloadTask? parent;
+
+  /// For a child: its 1-based position in the source playlist.
+  int index = 0;
+
+  /// For a group: library playlist position of song #1, so parallel
+  /// downloads still land in the source order.
+  int playlistBase = 0;
+
+  bool get isGroup => children.isNotEmpty;
+
   DownloadTask({
     required this.id,
     required this.url,
@@ -72,10 +86,50 @@ class DownloadService {
   Stream<List<DownloadTask>> get changes => _changes.stream;
 
   String outDir = '';
-  int maxParallel = 2;
+  int maxParallel = 3;
   int _seq = 0;
 
-  void _emit() => _changes.add(List.unmodifiable(tasks));
+  void _emit() {
+    for (final t in tasks) {
+      if (t.isGroup) _refreshGroup(t);
+    }
+    _changes.add(List.unmodifiable(tasks));
+  }
+
+  /// Every task, including the songs inside split playlists (for lookups).
+  Iterable<DownloadTask> get allTasks sync* {
+    for (final t in tasks) {
+      yield t;
+      yield* t.children;
+    }
+  }
+
+  /// Status, progress and summary of a split playlist, from its songs.
+  void _refreshGroup(DownloadTask g) {
+    final kids = g.children;
+    final done = kids.where((c) => c.status == DownloadStatus.done).length;
+    final failed = kids.where((c) => c.status == DownloadStatus.failed).length;
+    final cancelled = kids.where((c) => c.status == DownloadStatus.cancelled).length;
+    final finished = done + failed + cancelled;
+    g.progress = kids.fold<double>(0, (sum, c) => sum + (c.active ? c.progress : 1)) / kids.length;
+    g.files
+      ..clear()
+      ..addAll([for (final c in [...kids]..sort((a, b) => a.index.compareTo(b.index))) ...c.files]);
+    g.duplicates = kids.fold(0, (sum, c) => sum + c.duplicates);
+    if (finished < kids.length) {
+      g.status = DownloadStatus.running;
+      g.error = null;
+      g.detail = '已完成 $done/${kids.length} 首  ·  ${(g.progress * 100).toStringAsFixed(1)}%';
+      return;
+    }
+    g.status = done > 0 ? DownloadStatus.done : (failed > 0 ? DownloadStatus.failed : DownloadStatus.cancelled);
+    g.error = failed > 0 ? '$failed 首下載失敗，點進去查看每首的原因' : null;
+    g.detail = [
+      _doneDetail(g),
+      if (failed > 0) '$failed 首失敗',
+      if (cancelled > 0) '$cancelled 首已取消',
+    ].join(' · ');
+  }
 
   DownloadTask add(
     String url, {
@@ -104,6 +158,12 @@ class DownloadService {
   }
 
   void retry(DownloadTask t) {
+    if (t.isGroup) {
+      for (final c in t.children) {
+        if (c.status == DownloadStatus.failed || c.status == DownloadStatus.cancelled) retry(c);
+      }
+      return;
+    }
     t
       ..status = DownloadStatus.queued
       ..progress = 0
@@ -116,6 +176,12 @@ class DownloadService {
 
   Future<void> cancel(DownloadTask t) async {
     if (!t.active) return;
+    if (t.isGroup) {
+      for (final c in t.children) {
+        await cancel(c);
+      }
+      return;
+    }
     if (t.status == DownloadStatus.queued) {
       t.status = DownloadStatus.cancelled;
       _emit();
@@ -123,7 +189,10 @@ class DownloadService {
     }
     t.status = DownloadStatus.cancelled;
     t.cancelToken?.cancel();
-    if (t.kind == DownloadKind.ytdlp) await ytdlp?.cancel(t.id);
+    if (t.kind == DownloadKind.ytdlp) {
+      await ytdlp?.cancel(t.id);
+      await ytdlp?.cancel('${t.id}_list'); // still listing a playlist
+    }
     _emit();
   }
 
@@ -144,9 +213,11 @@ class DownloadService {
   }
 
   void _pump() {
-    final running = tasks.where((t) => t.status == DownloadStatus.running).length;
+    // Oldest first; a split playlist contributes its songs in order.
+    final work = [for (final t in tasks.reversed) ...(t.isGroup ? t.children : [t])];
+    final running = work.where((t) => t.status == DownloadStatus.running).length;
     if (running >= maxParallel) return;
-    final next = tasks.reversed.where((t) => t.status == DownloadStatus.queued).firstOrNull;
+    final next = work.where((t) => t.status == DownloadStatus.queued).firstOrNull;
     if (next == null) return;
     next.status = DownloadStatus.running;
     _emit();
@@ -166,6 +237,8 @@ class DownloadService {
       await work.create(recursive: true);
       if (t.kind == DownloadKind.direct) {
         await _runDirect(t, work.path);
+      } else if (t.playlist && t.parent == null && !t.isGroup) {
+        await _runPlaylist(t, work.path);
       } else {
         await _runYtDlp(t, work.path);
       }
@@ -210,7 +283,12 @@ class DownloadService {
     }
     track ??= await _scanner.importFile(target, source: TrackSource.download);
     t.files.add(target);
-    if (track != null) await _addToPlaylist(t, [track]);
+    final group = t.parent;
+    if (track != null && group != null) {
+      if (group.playlistId != null) await _db.addToPlaylistAt(group.playlistId!, track, group.playlistBase + t.index);
+    } else if (track != null) {
+      await _addToPlaylist(t, [track]);
+    }
     return target;
   }
 
@@ -234,6 +312,70 @@ class DownloadService {
     if (t.playlistId != null || !t.playlist || t.files.isEmpty) return;
     final done = await _db.tracksByIds(t.files);
     await _addToPlaylist(t, done);
+  }
+
+  /// Lists the playlist (no download) and queues one child task per song.
+  /// Falls back to one yt-dlp run for the whole list if the entries can't be
+  /// downloaded on their own (e.g. no distinct per-song URLs).
+  Future<void> _runPlaylist(DownloadTask t, String workDir) async {
+    final backend = ytdlp;
+    if (backend == null) throw '此平台不支援 yt-dlp';
+    if (!await backend.isReady()) {
+      await backend.prepare((s) {
+        t.detail = s;
+        _emit();
+      });
+    }
+    t.detail = '讀取播放清單…';
+    t.addLog('讀取播放清單：${t.url}');
+    _emit();
+    final entries = <int, PlaylistEntry>{};
+    String? title;
+    String? error;
+    await for (final e in backend.run('${t.id}_list', t.url, playlistListArgs)) {
+      switch (e) {
+        case YtDlpPlaylistTitle():
+          title ??= e.title;
+        case YtDlpLog():
+          final entry = PlaylistEntry.parse(e.line);
+          if (entry != null) {
+            entries[entry.index] = entry;
+          } else {
+            t.addLog(e.line);
+          }
+        case YtDlpFinished():
+          if (!e.success) error = e.error;
+        default:
+      }
+    }
+    if (t.status == DownloadStatus.cancelled) return;
+    final list = entries.values.toList()..sort((a, b) => a.index.compareTo(b.index));
+    if (!canSplitPlaylist(list)) {
+      t.addLog(list.isEmpty && error != null ? '讀取清單失敗：$error，改用整份下載' : '無法逐首下載，改用整份下載');
+      return _runYtDlp(t, workDir);
+    }
+    title ??= t.playlistName;
+    t.playlistName ??= title;
+    if (t.title == t.url && title != null) t.title = title;
+    // Library playlist: the one the user picked, or a new one named after the source.
+    if (t.playlistId != null) {
+      t.playlistBase = await _db.nextPlaylistPosition(t.playlistId!);
+    } else if (t.playlistName != null) {
+      t.playlistId = await _db.createPlaylist(t.playlistName!);
+      t.addLog('已建立播放清單「${t.playlistName}」');
+    }
+    t.addLog('共 ${list.length} 首，同時下載 $maxParallel 首');
+    for (final entry in list) {
+      t.children.add(DownloadTask(
+        id: '${t.id}_${entry.index}',
+        url: entry.url,
+        kind: DownloadKind.ytdlp,
+        format: t.format,
+        title: entry.title,
+      )
+        ..parent = t
+        ..index = entry.index);
+    }
   }
 
   Future<void> _runDirect(DownloadTask t, String workDir) async {
@@ -342,4 +484,45 @@ double playlistProgress(double percent, int? item, int? count) {
   final p = (percent / 100).clamp(0.0, 1.0);
   if (item == null || count == null || count <= 1) return p;
   return (((item - 1).clamp(0, count) + p) / count).clamp(0.0, 1.0);
+}
+
+/// yt-dlp arguments that only list a playlist's songs (nothing is downloaded).
+const playlistListArgs = [
+  '--flat-playlist',
+  '--yes-playlist',
+  '--print', 'OUOPLAYLIST %(playlist_title)s',
+  '--print', 'OUOENTRY %(playlist_autonumber)s|%(url)s|%(title)s',
+];
+
+/// One song from a playlist listing.
+class PlaylistEntry {
+  final int index;
+  final String url;
+  final String title;
+  const PlaylistEntry(this.index, this.url, this.title);
+
+  /// Parses `OUOENTRY 3|https://…|Title` (the title may contain '|').
+  static PlaylistEntry? parse(String line) {
+    if (!line.startsWith('OUOENTRY ')) return null;
+    final parts = line.substring(9).split('|');
+    if (parts.length < 3) return null;
+    final index = int.tryParse(parts[0].trim());
+    final url = parts[1].trim();
+    if (index == null) return null;
+    return PlaylistEntry(index, url, parts.sublist(2).join('|').trim());
+  }
+}
+
+/// Songs can be downloaded one by one only if each has its own web page
+/// URL. Direct file links (e.g. Internet Archive) are left to one run over
+/// the whole list, which keeps the site's proper song titles.
+bool canSplitPlaylist(List<PlaylistEntry> entries) {
+  if (entries.length < 2) return false;
+  final urls = entries.map((e) => e.url).toSet();
+  bool isFile(String u) {
+    final path = Uri.tryParse(u)?.path.toLowerCase() ?? '';
+    return audioExtensions.any(path.endsWith) || path.endsWith('.webm');
+  }
+
+  return urls.length == entries.length && urls.every((u) => u.startsWith('http') && !isFile(u));
 }

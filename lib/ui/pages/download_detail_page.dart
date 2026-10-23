@@ -31,9 +31,10 @@ class DownloadDetailPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tasks = ref.watch(downloadsProvider).value ?? const <DownloadTask>[];
-    final task = tasks.where((t) => t.id == taskId).firstOrNull;
+    ref.watch(downloadsProvider);
     final svc = ref.read(downloadServiceProvider);
+    // Songs of a split playlist live inside their parent task.
+    final task = svc.allTasks.where((t) => t.id == taskId).firstOrNull;
     final theme = Theme.of(context);
     final muted = theme.colorScheme.onSurfaceVariant;
     if (task == null) {
@@ -74,7 +75,7 @@ class DownloadDetailPage extends ConsumerWidget {
               OutlinedButton.icon(onPressed: () => svc.cancel(task), icon: const Icon(Icons.close), label: const Text('取消')),
             if (!task.active && task.status != DownloadStatus.done)
               FilledButton.icon(onPressed: () => svc.retry(task), icon: const Icon(Icons.refresh), label: const Text('重試')),
-            if (!task.active)
+            if (!task.active && task.parent == null)
               OutlinedButton.icon(
                 onPressed: () async {
                   if (!await confirmDelete(context,
@@ -101,6 +102,24 @@ class DownloadDetailPage extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: SelectableText(task.url, style: TextStyle(color: muted)),
         ),
+        if (task.isGroup) ...[
+          section('歌曲（${task.children.length}）'),
+          for (final c in task.children)
+            Builder(builder: (context) {
+              final (cIcon, cColor) = downloadStatusIcon(c.status, muted);
+              return ListTile(
+                dense: true,
+                leading: Icon(cIcon, color: cColor),
+                title: Text('${c.index}. ${c.title}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text(c.status == DownloadStatus.failed ? (c.error ?? '失敗') : downloadStatusText(c),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: c.status == DownloadStatus.failed ? Colors.redAccent : muted)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DownloadDetailPage(taskId: c.id))),
+              );
+            }),
+        ],
         if (task.playlistName != null && task.playlistId != null) ...[
           section('播放清單'),
           ListTile(leading: const Icon(Icons.queue_music), title: Text(task.playlistName!)),

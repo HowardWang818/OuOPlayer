@@ -80,7 +80,10 @@ class YtDlpWindows implements YtDlpBackend {
   }
 
   @override
-  Stream<YtDlpEvent> download(String jobId, YtDlpOptions options) {
+  Stream<YtDlpEvent> download(String jobId, YtDlpOptions options) => run(jobId, options.url, options.args);
+
+  @override
+  Stream<YtDlpEvent> run(String jobId, String url, List<String> args) {
     final controller = StreamController<YtDlpEvent>();
     () async {
       final parser = YtDlpLineParser();
@@ -88,7 +91,7 @@ class YtDlpWindows implements YtDlpBackend {
       try {
         final proc = await Process.start(
           await _ytdlp(),
-          [...options.args, '--ffmpeg-location', await _binDir(), '--encoding', 'utf-8', options.url],
+          [...args, '--ffmpeg-location', await _binDir(), '--encoding', 'utf-8', url],
           environment: {'PYTHONIOENCODING': 'utf-8', 'PYTHONUTF8': '1'},
         );
         _procs[jobId] = proc;
