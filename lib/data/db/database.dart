@@ -315,16 +315,16 @@ class AppDatabase {
     return rows.map(Track.fromMap).toList();
   }
 
-  /// Appends songs that aren't in the playlist yet (each song appears once).
-  /// Returns how many were added.
-  Future<int> addToPlaylist(int id, List<Track> tracks) async {
+  /// Appends songs that aren't in the playlist yet (each song appears once),
+  /// or all of them with [allowDuplicates]. Returns how many were added.
+  Future<int> addToPlaylist(int id, List<Track> tracks, {bool allowDuplicates = false}) async {
     final r = await db.rawQuery('SELECT COALESCE(MAX(position), -1) AS m FROM playlist_tracks WHERE playlist_id = ?', [id]);
     var pos = (r.first['m'] as int) + 1;
     final have = await _playlistTrackIds(id);
     final batch = db.batch();
     var added = 0;
     for (final t in tracks) {
-      if (!have.add(t.id)) continue;
+      if (!have.add(t.id) && !allowDuplicates) continue;
       batch.insert('tracks', t.toMap(), conflictAlgorithm: ConflictAlgorithm.ignore);
       batch.insert('playlist_tracks', {'playlist_id': id, 'track_id': t.id, 'position': pos++});
       added++;

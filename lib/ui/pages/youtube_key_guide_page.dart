@@ -107,7 +107,7 @@ class _YouTubeKeyGuidePageState extends ConsumerState<YouTubeKeyGuidePage> {
                 '• 需要一個 Google 帳號，約 5 分鐘\n'
                 '• 免費：每天約可搜尋 100 次，超過不會收費，只會暫停到隔天\n'
                 '• 金鑰只存在這台裝置，不會上傳到任何地方\n'
-                '• 用途只有「取得 YouTube 連結」，OuOPlayer 不會播放或下載 YouTube 內容',
+                '• 用途只有「取得 YouTube Music 連結」，OuOPlayer 不會播放或下載 YouTube 內容',
                 style: TextStyle(color: muted, height: 1.6),
               ),
             ]),

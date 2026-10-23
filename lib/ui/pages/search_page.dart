@@ -257,7 +257,7 @@ Future<void> _showMenu(BuildContext context, WidgetRef ref, ITunesSong song) {
             const Divider(),
             ListTile(
               leading: const Icon(Icons.link),
-              title: const Text('取得 YouTube 連結'),
+              title: const Text('取得 YouTube Music 連結'),
               onTap: () => act(() => _getYouTubeLink(context, ref, song)),
             ),
             ListTile(
@@ -301,7 +301,7 @@ Future<void> _showMenu(BuildContext context, WidgetRef ref, ITunesSong song) {
   );
 }
 
-/// Looks up the song's YouTube video and shows + copies the link. Never opens it.
+/// Looks up the song on YouTube Music and shows + copies the link. Never opens it.
 Future<void> _getYouTubeLink(BuildContext context, WidgetRef ref, ITunesSong song) async {
   final key = ref.read(settingsProvider).youtubeApiKey;
   if (key.isEmpty) {
@@ -310,7 +310,7 @@ Future<void> _getYouTubeLink(BuildContext context, WidgetRef ref, ITunesSong son
       useRootNavigator: true,
       builder: (ctx) => AlertDialog(
         title: const Text('需要 YouTube 金鑰'),
-        content: const Text('「取得 YouTube 連結」需要一組免費的 YouTube Data API 金鑰，申請約 5 分鐘。'),
+        content: const Text('「取得 YouTube Music 連結」需要一組免費的 YouTube Data API 金鑰，申請約 5 分鐘。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(
@@ -335,12 +335,14 @@ Future<void> _getYouTubeLink(BuildContext context, WidgetRef ref, ITunesSong son
   String? error;
   String? url;
   String? detail;
+  var official = false;
   try {
     final video = await ref.read(youTubeLinkFinderProvider).find(key, song.query);
     if (video == null) {
       error = '找不到對應的影片';
     } else {
       url = video.url;
+      official = video.isOfficialAudio;
       detail = '${video.title}\n${video.channel}';
       await Clipboard.setData(ClipboardData(text: url));
     }
@@ -353,7 +355,7 @@ Future<void> _getYouTubeLink(BuildContext context, WidgetRef ref, ITunesSong son
     context: context,
     useRootNavigator: true,
     builder: (ctx) => AlertDialog(
-      title: Text(error == null ? '已複製 YouTube 連結' : '無法取得連結'),
+      title: Text(error == null ? '已複製 YouTube Music 連結' : '無法取得連結'),
       content: error != null
           ? Text(error)
           : Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -361,7 +363,7 @@ Future<void> _getYouTubeLink(BuildContext context, WidgetRef ref, ITunesSong son
               const SizedBox(height: 8),
               Text(detail!, style: TextStyle(color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
               const SizedBox(height: 8),
-              Text('自動比對的第一個結果，偶爾會是 MV、現場版或翻唱。', style: TextStyle(fontSize: 12, color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
+              Text(official ? '官方音源（自動比對，偶爾會對到同名的其他歌）。' : '找不到官方音源，這是第一個搜尋結果，可能是 MV、現場版或翻唱。', style: TextStyle(fontSize: 12, color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
             ]),
       actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('好'))],
     ),

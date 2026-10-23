@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../services/file_trash.dart';
 import 'dialogs.dart';
+import 'export_sheet.dart';
 import 'track_tile.dart';
 
 /// Which rows of a track list are selected (by index, since a playlist can
@@ -174,9 +174,9 @@ class _SelectionBar extends ConsumerWidget {
                     if (!await confirmDelete(context, title: '${scope.removeLabel ?? '從此播放清單移除'} ${indexes.length} 首？')) return;
                     await scope.onRemove!(indexes);
                     if (context.mounted) done('已移除 ${indexes.length} 首');
-                  case 'copy':
-                    await Clipboard.setData(ClipboardData(text: picked.map((t) => '${t.title} - ${t.artist}').join('\n')));
-                    if (context.mounted) done('已複製');
+                  case 'export':
+                    await showExportSheet(context, '已選的 ${picked.length} 首', picked);
+                    selection.clear();
                   case 'delete':
                     if (await deleteTrackFiles(context, ref, local)) selection.clear();
                 }
@@ -186,7 +186,7 @@ class _SelectionBar extends ConsumerWidget {
                 const PopupMenuItem(value: 'playlist', child: Text('加入播放清單')),
                 const PopupMenuItem(value: 'like', child: Text('加到已按讚的歌曲')),
                 if (scope.onRemove != null) PopupMenuItem(value: 'remove', child: Text(scope.removeLabel ?? '從此播放清單移除')),
-                const PopupMenuItem(value: 'copy', child: Text('複製「歌名 - 歌手」')),
+                const PopupMenuItem(value: 'export', child: Text('複製／匯出資訊')),
                 if (local.isNotEmpty)
                   PopupMenuItem(
                     value: 'delete',

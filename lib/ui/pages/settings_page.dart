@@ -168,11 +168,19 @@ class SettingsPage extends ConsumerWidget {
             onSelectionChanged: (v) => n.setSeekSeconds(v.first),
           ),
         ),
+        header('播放清單'),
+        SwitchListTile(
+          secondary: const Icon(Icons.copy_all_outlined),
+          title: const Text('允許歌曲重複'),
+          subtitle: const Text('手動加入播放清單時，同一首歌可以加第二次。下載播放清單時不會重複加入。'),
+          value: s.allowPlaylistDuplicates,
+          onChanged: n.setAllowPlaylistDuplicates,
+        ),
         header('線上搜尋'),
         ListTile(
           leading: const Icon(Icons.key_outlined),
           title: const Text('YouTube Data API 金鑰'),
-          subtitle: Text(s.youtubeApiKey.isEmpty ? '未設定（用於「取得 YouTube 連結」）' : '已設定 •••${s.youtubeApiKey.substring(s.youtubeApiKey.length > 4 ? s.youtubeApiKey.length - 4 : 0)}',
+          subtitle: Text(s.youtubeApiKey.isEmpty ? '未設定（用於「取得 YouTube Music 連結」）' : '已設定 •••${s.youtubeApiKey.substring(s.youtubeApiKey.length > 4 ? s.youtubeApiKey.length - 4 : 0)}',
               style: TextStyle(color: muted)),
           trailing: TextButton(
             onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const YouTubeKeyGuidePage())),
@@ -207,7 +215,7 @@ class SettingsPage extends ConsumerWidget {
           ),
         ],
         header('關於'),
-        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.6.3')),
+        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.7.0')),
       ]),
     );
   }

@@ -80,6 +80,9 @@ class AppSettings {
   final int seekSeconds;
   final String youtubeApiKey;
 
+  /// Manual 加入播放清單 may add a song that is already in the playlist.
+  final bool allowPlaylistDuplicates;
+
   const AppSettings({
     required this.themeMode,
     required this.musicDirs,
@@ -94,6 +97,7 @@ class AppSettings {
     required this.continueAfterQueue,
     required this.seekSeconds,
     required this.youtubeApiKey,
+    this.allowPlaylistDuplicates = false,
   });
 
   AppSettings copyWith({
@@ -110,6 +114,7 @@ class AppSettings {
     bool? continueAfterQueue,
     int? seekSeconds,
     String? youtubeApiKey,
+    bool? allowPlaylistDuplicates,
   }) =>
       AppSettings(
         themeMode: themeMode ?? this.themeMode,
@@ -125,6 +130,7 @@ class AppSettings {
         continueAfterQueue: continueAfterQueue ?? this.continueAfterQueue,
         seekSeconds: seekSeconds ?? this.seekSeconds,
         youtubeApiKey: youtubeApiKey ?? this.youtubeApiKey,
+        allowPlaylistDuplicates: allowPlaylistDuplicates ?? this.allowPlaylistDuplicates,
       );
 
   static Future<AppSettings> load(AppDatabase db) async {
@@ -145,6 +151,7 @@ class AppSettings {
       continueAfterQueue: m['continue_after_queue'] != 'false',
       seekSeconds: int.tryParse(m['seek_seconds'] ?? '') ?? 15,
       youtubeApiKey: m['youtube_api_key'] ?? '',
+      allowPlaylistDuplicates: m['allow_playlist_duplicates'] == 'true',
     );
   }
 
@@ -236,6 +243,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void setSeekSeconds(int v) {
     state = state.copyWith(seekSeconds: v);
     _db.setSetting('seek_seconds', '$v');
+  }
+
+  void setAllowPlaylistDuplicates(bool v) {
+    state = state.copyWith(allowPlaylistDuplicates: v);
+    _db.setSetting('allow_playlist_duplicates', '$v');
   }
 
   /// Stored only in the local database, never in source code.
