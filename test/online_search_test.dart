@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ouoplayer/data/models/track.dart';
 import 'package:ouoplayer/services/online/itunes.dart';
 import 'package:ouoplayer/services/online/youtube_link.dart';
 
@@ -35,6 +36,8 @@ void main() {
     final preview = s.previewTrack!;
     expect(preview.uri, 'https://audio-ssl.itunes.apple.com/p.m4a');
     expect(preview.artist, 'YOASOBI');
+    // Previews are tagged so they stay out of history and the library.
+    expect(preview.source, TrackSource.preview);
   });
 
   test('song without preview has no preview track', () {

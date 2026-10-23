@@ -42,7 +42,8 @@ class ITunesSong {
   /// The 30-second preview as a playable track.
   Track? get previewTrack => previewUrl == null
       ? null
-      : Track.fromUrl(previewUrl!, title: '$title（試聽）', artist: artist, album: album, art: artwork, durationMs: 30000);
+      : Track.fromUrl(previewUrl!,
+          title: '$title（試聽）', artist: artist, album: album, art: artwork, durationMs: 30000, source: TrackSource.preview);
 
   String get query => '$title $artist';
 
@@ -71,7 +72,8 @@ class ITunesSearch {
     return (c == null || c.length != 2) ? 'TW' : c;
   }
 
-  Future<List<ITunesSong>> search(String query, {int limit = 25}) async {
+  /// 200 is the API's maximum; its offset parameter is ignored, so this is all we can get.
+  Future<List<ITunesSong>> search(String query, {int limit = 200}) async {
     final res = await _dio.get<String>(
       'https://itunes.apple.com/search',
       queryParameters: {'term': query, 'entity': 'song', 'limit': limit, 'country': country},

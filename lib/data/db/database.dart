@@ -37,6 +37,8 @@ class AppDatabase {
       await db.execute('CREATE TABLE podcasts(feed_url TEXT PRIMARY KEY, title TEXT, author TEXT, image TEXT, added_at INTEGER)');
       await db.execute('CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT)');
     });
+    // Previews from v0.3.0 were recorded as history; they don't belong there.
+    await db.execute("DELETE FROM history WHERE track_id LIKE 'https://audio-ssl.itunes.apple.com/%'");
     // Keep play history bounded (v0.2.0 pre-release builds could flood it).
     await db.execute('DELETE FROM history WHERE rowid NOT IN (SELECT rowid FROM history ORDER BY played_at DESC LIMIT 1000)');
     return AppDatabase._(db);
@@ -68,14 +70,14 @@ class AppDatabase {
   }
 
   Future<List<Track>> tracks({String orderBy = 'title COLLATE NOCASE'}) async {
-    final rows = await db.query('tracks', where: "source != 'url' AND source != 'podcast'", orderBy: orderBy);
+    final rows = await db.query('tracks', where: "source NOT IN ('url', 'podcast', 'preview')", orderBy: orderBy);
     return rows.map(Track.fromMap).toList();
   }
 
   /// Random library songs (not streams/podcasts), skipping [exclude].
   Future<List<Track>> randomTracks(int count, {Set<String> exclude = const {}}) async {
     final rows = await db.query('tracks',
-        where: "source != 'url' AND source != 'podcast'", orderBy: 'RANDOM()', limit: count + exclude.length);
+        where: "source NOT IN ('url', 'podcast', 'preview')", orderBy: 'RANDOM()', limit: count + exclude.length);
     return rows.map(Track.fromMap).where((t) => !exclude.contains(t.id) && t.fileExists).take(count).toList();
   }
 
@@ -104,7 +106,7 @@ class AppDatabase {
   Future<List<Track>> search(String q) async {
     final like = '%$q%';
     final rows = await db.query('tracks',
-        where: "source != 'url' AND source != 'podcast' AND (title LIKE ? OR artist LIKE ? OR album LIKE ?)",
+        where: "source NOT IN ('url', 'podcast', 'preview') AND (title LIKE ? OR artist LIKE ? OR album LIKE ?)",
         whereArgs: [like, like, like],
         orderBy: 'title COLLATE NOCASE',
         limit: 200);
@@ -113,19 +115,19 @@ class AppDatabase {
 
   Future<List<Album>> albums() async {
     final rows = await db.rawQuery('''SELECT album, MAX(artist) AS artist, MAX(art) AS art, COUNT(*) AS c
-      FROM tracks WHERE source != 'url' AND source != 'podcast' GROUP BY album ORDER BY album COLLATE NOCASE''');
+      FROM tracks WHERE source NOT IN ('url', 'podcast', 'preview') GROUP BY album ORDER BY album COLLATE NOCASE''');
     return rows.map((r) => Album(r['album'] as String? ?? '未知專輯', r['artist'] as String? ?? '', r['art'] as String?, r['c'] as int)).toList();
   }
 
   Future<List<Album>> recentAlbums({int limit = 12}) async {
     final rows = await db.rawQuery('''SELECT album, MAX(artist) AS artist, MAX(art) AS art, COUNT(*) AS c, MAX(added_at) AS a
-      FROM tracks WHERE source != 'url' AND source != 'podcast' GROUP BY album ORDER BY a DESC LIMIT ?''', [limit]);
+      FROM tracks WHERE source NOT IN ('url', 'podcast', 'preview') GROUP BY album ORDER BY a DESC LIMIT ?''', [limit]);
     return rows.map((r) => Album(r['album'] as String? ?? '未知專輯', r['artist'] as String? ?? '', r['art'] as String?, r['c'] as int)).toList();
   }
 
   Future<List<Artist>> artists() async {
     final rows = await db.rawQuery('''SELECT artist, MAX(art) AS art, COUNT(*) AS c
-      FROM tracks WHERE source != 'url' AND source != 'podcast' GROUP BY artist ORDER BY artist COLLATE NOCASE''');
+      FROM tracks WHERE source NOT IN ('url', 'podcast', 'preview') GROUP BY artist ORDER BY artist COLLATE NOCASE''');
     return rows.map((r) => Artist(r['artist'] as String? ?? '未知演出者', r['art'] as String?, r['c'] as int)).toList();
   }
 
@@ -133,7 +135,7 @@ class AppDatabase {
   Future<List<Track>> folderTracks(String folder) async {
     final prefix = _folderPrefix(folder);
     final rows = await db.query('tracks',
-        where: "source != 'url' AND source != 'podcast' AND substr(uri, 1, ?) = ?",
+        where: "source NOT IN ('url', 'podcast', 'preview') AND substr(uri, 1, ?) = ?",
         whereArgs: [prefix.length, prefix],
         orderBy: 'title COLLATE NOCASE');
     return rows.map(Track.fromMap).toList();
@@ -142,7 +144,7 @@ class AppDatabase {
   Future<int> folderTrackCount(String folder) async {
     final prefix = _folderPrefix(folder);
     final r = await db.rawQuery(
-        "SELECT COUNT(*) AS c FROM tracks WHERE source != 'url' AND source != 'podcast' AND substr(uri, 1, ?) = ?",
+        "SELECT COUNT(*) AS c FROM tracks WHERE source NOT IN ('url', 'podcast', 'preview') AND substr(uri, 1, ?) = ?",
         [prefix.length, prefix]);
     return r.first['c'] as int;
   }

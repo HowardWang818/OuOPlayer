@@ -190,13 +190,18 @@ class _OnlineResults extends ConsumerWidget {
       data: (songs) => songs.isEmpty
           ? const Center(child: Text('找不到結果'))
           : ListView.builder(
-              itemCount: songs.length + 1,
-              itemBuilder: (_, i) => i == songs.length
+              itemCount: songs.length + 2,
+              itemBuilder: (_, i) => i == 0
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                      child: Text('共 ${songs.length} 首', style: TextStyle(fontSize: 12, color: muted)),
+                    )
+                  : i == songs.length + 1
                   ? Padding(
                       padding: const EdgeInsets.all(16),
                       child: Text('資料來源：iTunes Search API', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: muted)),
                     )
-                  : _OnlineSongTile(song: songs[i]),
+                  : _OnlineSongTile(song: songs[i - 1]),
             ),
     );
   }
