@@ -64,6 +64,110 @@ Future<void> showAddToPlaylist(BuildContext context, WidgetRef ref, List<Track> 
   );
 }
 
-void _toast(BuildContext context, String msg) => ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(msg)));
+/// Marks the part of the UI that has the player bar (mini player / desktop
+/// bar) at the bottom, so toasts there can avoid covering it.
+class PlayerBarScope extends InheritedWidget {
+  const PlayerBarScope({super.key, required super.child});
 
-void toast(BuildContext context, String msg) => _toast(context, msg);
+  static bool contains(BuildContext context) => context.getInheritedWidgetOfExactType<PlayerBarScope>() != null;
+
+  @override
+  bool updateShouldNotify(PlayerBarScope oldWidget) => false;
+}
+
+void _toast(BuildContext context, String msg) => toast(context, msg);
+
+/// Short message. Shown at the top when the player bar is on screen (inside
+/// [PlayerBarScope] with a track loaded), otherwise as a normal bottom snackbar.
+void toast(BuildContext context, String msg) {
+  final playerBarVisible =
+      PlayerBarScope.contains(context) && ProviderScope.containerOf(context, listen: false).read(currentTrackProvider) != null;
+  if (playerBarVisible) {
+    _TopToast.show(context, msg);
+  } else {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(msg)));
+  }
+}
+
+class _TopToast extends StatefulWidget {
+  const _TopToast({required this.message, required this.onDone});
+  final String message;
+  final VoidCallback onDone;
+
+  static OverlayEntry? _current;
+
+  static void show(BuildContext context, String msg) {
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return;
+    _current?.remove();
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (_) => _TopToast(
+        message: msg,
+        onDone: () {
+          if (_current == entry) _current = null;
+          if (entry.mounted) entry.remove();
+        },
+      ),
+    );
+    _current = entry;
+    overlay.insert(entry);
+  }
+
+  @override
+  State<_TopToast> createState() => _TopToastState();
+}
+
+class _TopToastState extends State<_TopToast> with SingleTickerProviderStateMixin {
+  late final _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 250))..forward();
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(seconds: 2), () async {
+      if (!mounted) return;
+      await _anim.reverse();
+      widget.onDone();
+    });
+  }
+
+  @override
+  void dispose() {
+    _anim.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Same look as the default SnackBar, just anchored under the status bar.
+    final theme = Theme.of(context);
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: SafeArea(
+        bottom: false,
+        child: SlideTransition(
+          position: Tween(begin: const Offset(0, -1.5), end: Offset.zero).animate(CurvedAnimation(parent: _anim, curve: Curves.easeOutCubic)),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Material(
+                  elevation: 6,
+                  borderRadius: BorderRadius.circular(8),
+                  color: theme.snackBarTheme.backgroundColor ?? theme.colorScheme.inverseSurface,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    child: Text(widget.message, style: TextStyle(color: theme.colorScheme.onInverseSurface, fontSize: 14)),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
