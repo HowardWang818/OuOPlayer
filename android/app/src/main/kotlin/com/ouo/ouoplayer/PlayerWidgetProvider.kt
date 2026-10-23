@@ -6,7 +6,14 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.BitmapShader
+import android.graphics.Canvas
+import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Shader
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.widget.RemoteViews
@@ -31,12 +38,18 @@ class PlayerWidgetProvider : AppWidgetProvider() {
             if (ids.isNotEmpty()) manager.updateAppWidget(ids, views(context))
         }
 
-        fun save(context: Context, title: String?, artist: String?, art: String?, playing: Boolean) {
+        /** Used until (or unless) the cover gives a colour. */
+        private const val DEFAULT_BG = 0xFF181818.toInt()
+        private const val DEFAULT_FG = 0xFFFFFFFF.toInt()
+
+        fun save(context: Context, title: String?, artist: String?, art: String?, playing: Boolean, bg: Int?, fg: Int?) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString("title", title)
                 .putString("artist", artist)
                 .putString("art", art)
                 .putBoolean("playing", playing)
+                .putInt("bg", bg ?: DEFAULT_BG)
+                .putInt("fg", fg ?: DEFAULT_FG)
                 .apply()
             refresh(context)
         }
@@ -50,8 +63,15 @@ class PlayerWidgetProvider : AppWidgetProvider() {
                 R.id.widget_play,
                 if (prefs.getBoolean("playing", false)) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
             )
+            val bg = prefs.getInt("bg", DEFAULT_BG)
+            val fg = prefs.getInt("fg", DEFAULT_FG)
+            v.setInt(R.id.widget_bg, "setColorFilter", bg)
+            v.setTextColor(R.id.widget_title, fg)
+            v.setTextColor(R.id.widget_artist, (fg and 0x00FFFFFF) or 0xB3000000.toInt())
+            for (id in intArrayOf(R.id.widget_prev, R.id.widget_play, R.id.widget_next)) v.setInt(id, "setColorFilter", fg)
             val art = prefs.getString("art", null)?.let { loadArt(it) }
-            if (art != null) v.setImageViewBitmap(R.id.widget_art, art) else v.setImageViewResource(R.id.widget_art, R.mipmap.ic_launcher)
+                ?: BitmapFactory.decodeResource(context.resources, R.mipmap.ic_launcher)
+            if (art != null) v.setImageViewBitmap(R.id.widget_art, rounded(art))
 
             val open = PendingIntent.getActivity(
                 context, 0, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
@@ -71,6 +91,19 @@ class PlayerWidgetProvider : AppWidgetProvider() {
                 .setClass(context, MediaButtonReceiver::class.java)
                 .putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(now, now, KeyEvent.ACTION_DOWN, code, 0))
             return PendingIntent.getBroadcast(context, code, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        }
+
+        /** Square-cropped with rounded corners (8dp on the 56dp cover). */
+        private fun rounded(src: Bitmap): Bitmap {
+            val size = minOf(src.width, src.height)
+            val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val shader = BitmapShader(src, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
+                setLocalMatrix(Matrix().apply { setTranslate(-(src.width - size) / 2f, -(src.height - size) / 2f) })
+            }
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.shader = shader }
+            val r = size * 8f / 56f
+            Canvas(out).drawRoundRect(RectF(0f, 0f, size.toFloat(), size.toFloat()), r, r, paint)
+            return out
         }
 
         /** Covers are local files (the art cache); scaled down to widget size. */
@@ -104,6 +137,8 @@ class PlayerWidgetPlugin(private val context: Context, messenger: BinaryMessenge
             call.argument<String>("artist"),
             call.argument<String>("art"),
             call.argument<Boolean>("playing") ?: false,
+            call.argument<Number>("bg")?.toInt(),
+            call.argument<Number>("fg")?.toInt(),
         )
         result.success(null)
     }
