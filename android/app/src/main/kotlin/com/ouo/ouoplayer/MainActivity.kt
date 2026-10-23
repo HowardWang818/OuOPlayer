@@ -8,6 +8,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : AudioServiceActivity() {
     private var ytDlp: YtDlpPlugin? = null
     private var bluetooth: BluetoothPlugin? = null
+    private var normalizer: NormalizerPlugin? = null
     private var share: MethodChannel? = null
     private var pendingShare: String? = null
 
@@ -16,6 +17,7 @@ class MainActivity : AudioServiceActivity() {
         val messenger = flutterEngine.dartExecutor.binaryMessenger
         ytDlp = YtDlpPlugin(applicationContext, messenger)
         bluetooth = BluetoothPlugin(applicationContext, messenger)
+        normalizer = NormalizerPlugin(messenger)
         // Links shared from other apps (YouTube, browser…) go to the downloader.
         pendingShare = sharedText(intent)
         share = MethodChannel(messenger, "ouo/share").apply {

@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'providers/providers.dart';
+import 'services/volume_normalizer.dart';
 import 'theme/app_theme.dart';
 import 'ui/shell/app_shell.dart';
 
@@ -17,6 +18,7 @@ class OuoApp extends ConsumerWidget {
     final mode = ref.watch(settingsProvider.select((s) => s.themeMode));
     ref.watch(bluetoothAutomationProvider);
     ref.watch(shareIntentProvider);
+    ref.watch(volumeNormalizationProvider);
     return MaterialApp(
       title: 'OuOPlayer',
       debugShowCheckedModeBanner: false,

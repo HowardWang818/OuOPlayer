@@ -8,11 +8,11 @@ import '../widgets/art_image.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/track_tile.dart';
 
-enum CollectionKind { album, artist, playlist, favorites, allSongs }
+enum CollectionKind { album, artist, playlist, favorites, allSongs, folder }
 
 /// Album / artist / playlist / liked-songs page with a Spotify-like header.
 class CollectionPage extends ConsumerWidget {
-  const CollectionPage._(this.kind, {this.name = '', this.playlistId});
+  const CollectionPage._(this.kind, {this.name = '', this.playlistId, this.folder});
 
   factory CollectionPage.album(String album) => CollectionPage._(CollectionKind.album, name: album);
   factory CollectionPage.artist(String artist) => CollectionPage._(CollectionKind.artist, name: artist);
@@ -20,9 +20,13 @@ class CollectionPage extends ConsumerWidget {
   factory CollectionPage.favorites() => const CollectionPage._(CollectionKind.favorites, name: '已按讚的歌曲');
   factory CollectionPage.allSongs() => const CollectionPage._(CollectionKind.allSongs, name: '所有歌曲');
 
+  /// A music folder; [folder] null means all local music (Android's 「本地音樂」).
+  factory CollectionPage.folder(String? folder, String name) => CollectionPage._(CollectionKind.folder, name: name, folder: folder);
+
   final CollectionKind kind;
   final String name;
   final int? playlistId;
+  final String? folder;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -32,6 +36,7 @@ class CollectionPage extends ConsumerWidget {
       CollectionKind.playlist => ref.watch(playlistTracksProvider(playlistId!)),
       CollectionKind.favorites => ref.watch(favoritesProvider),
       CollectionKind.allSongs => ref.watch(tracksProvider),
+      CollectionKind.folder => ref.watch(folderTracksProvider(folder)),
     };
     final tracks = tracksAsync.value ?? const <Track>[];
     final art = tracks.where((t) => t.art != null).firstOrNull?.art;
@@ -44,6 +49,7 @@ class CollectionPage extends ConsumerWidget {
       CollectionKind.album => '專輯',
       CollectionKind.artist => '演出者',
       CollectionKind.playlist => '播放清單',
+      CollectionKind.folder => folder == null ? '本機' : '資料夾',
       _ => '播放清單',
     };
     final totalMs = tracks.fold<int>(0, (s, t) => s + (t.durationMs ?? 0));
@@ -94,7 +100,11 @@ class CollectionPage extends ConsumerWidget {
                         ),
                         child: const Icon(Icons.favorite, size: 64, color: Colors.white),
                       )
-                    : ArtImage(art, size: 160, circle: kind == CollectionKind.artist, icon: kind == CollectionKind.artist ? Icons.person : Icons.album),
+                    : ArtImage(art, size: 160, circle: kind == CollectionKind.artist, icon: switch (kind) {
+                        CollectionKind.artist => Icons.person,
+                        CollectionKind.folder => Icons.folder,
+                        _ => Icons.album,
+                      }),
                 const SizedBox(width: 20),
                 Expanded(
                   child: Column(mainAxisAlignment: MainAxisAlignment.end, crossAxisAlignment: CrossAxisAlignment.start, children: [
