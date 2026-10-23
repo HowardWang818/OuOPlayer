@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/providers.dart';
+import '../../services/network_check.dart';
 import '../../services/download_service.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/dialogs.dart';
@@ -53,12 +54,13 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
     if (data?.text != null) _ctrl.text = data!.text!.trim();
   }
 
-  void _start() {
+  Future<void> _start() async {
     final urls = _ctrl.text.split(RegExp(r'\s+')).where((u) => u.startsWith('http')).toList();
     if (urls.isEmpty) {
       toast(context, '請輸入有效的網址');
       return;
     }
+    if (!await okToDownload(context, warn: ref.read(settingsProvider).wifiWarning) || !mounted) return;
     final svc = ref.read(downloadServiceProvider);
     final fmt = ref.read(settingsProvider).ytFormat;
     for (final u in urls) {

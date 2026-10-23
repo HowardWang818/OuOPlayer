@@ -131,6 +131,27 @@ class AppSettings {
   /// Smart playlists (SmartList names) not shown in the library.
   final Set<String> hiddenSmartLists;
 
+  /// 等化器 on.
+  final bool eqEnabled;
+
+  /// EqPreset name.
+  final String eqPreset;
+
+  /// The 自訂 band gains (dB).
+  final List<double> eqCustom;
+
+  /// Fade in on play / out on pause (0 = off).
+  final int fadeMs;
+
+  /// Lyrics text size, 1.0 = normal.
+  final double lyricsScale;
+
+  /// Keep the screen on while lyrics are shown.
+  final bool lyricsKeepAwake;
+
+  /// Ask before downloading without Wi-Fi.
+  final bool wifiWarning;
+
   /// Sort choices saved per list (「sort_」 + scope settings), see [sortProvider].
   final Map<String, String> sorts;
 
@@ -153,6 +174,13 @@ class AppSettings {
     this.lyricsOnline = true,
     this.deletePermanently = false,
     this.hiddenSmartLists = const {},
+    this.eqEnabled = false,
+    this.eqPreset = 'flat',
+    this.eqCustom = const [],
+    this.fadeMs = 500,
+    this.lyricsScale = 1.0,
+    this.lyricsKeepAwake = false,
+    this.wifiWarning = true,
     this.sorts = const {},
   });
 
@@ -175,6 +203,13 @@ class AppSettings {
     bool? lyricsOnline,
     bool? deletePermanently,
     Set<String>? hiddenSmartLists,
+    bool? eqEnabled,
+    String? eqPreset,
+    List<double>? eqCustom,
+    int? fadeMs,
+    double? lyricsScale,
+    bool? lyricsKeepAwake,
+    bool? wifiWarning,
   }) =>
       AppSettings(
         themeMode: themeMode ?? this.themeMode,
@@ -195,6 +230,13 @@ class AppSettings {
         lyricsOnline: lyricsOnline ?? this.lyricsOnline,
         deletePermanently: deletePermanently ?? this.deletePermanently,
         hiddenSmartLists: hiddenSmartLists ?? this.hiddenSmartLists,
+        eqEnabled: eqEnabled ?? this.eqEnabled,
+        eqPreset: eqPreset ?? this.eqPreset,
+        eqCustom: eqCustom ?? this.eqCustom,
+        fadeMs: fadeMs ?? this.fadeMs,
+        lyricsScale: lyricsScale ?? this.lyricsScale,
+        lyricsKeepAwake: lyricsKeepAwake ?? this.lyricsKeepAwake,
+        wifiWarning: wifiWarning ?? this.wifiWarning,
         sorts: sorts,
       );
 
@@ -221,6 +263,13 @@ class AppSettings {
       lyricsOnline: m['lyrics_online'] != 'false',
       deletePermanently: m['delete_permanently'] == 'true',
       hiddenSmartLists: (m['hidden_smart_lists'] ?? '').split(',').where((s) => s.isNotEmpty).toSet(),
+      eqEnabled: m['eq_enabled'] == 'true',
+      eqPreset: m['eq_preset'] ?? 'flat',
+      eqCustom: (m['eq_custom'] ?? '').split(',').map(double.tryParse).whereType<double>().toList(),
+      fadeMs: int.tryParse(m['fade_ms'] ?? '') ?? 500,
+      lyricsScale: double.tryParse(m['lyrics_scale'] ?? '') ?? 1.0,
+      lyricsKeepAwake: m['lyrics_keep_awake'] == 'true',
+      wifiWarning: m['wifi_warning'] != 'false',
       sorts: {for (final e in m.entries) if (e.key.startsWith('sort_')) e.key.substring(5): e.value},
     );
   }
@@ -316,6 +365,43 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void setSeekSeconds(int v) {
     state = state.copyWith(seekSeconds: v);
     _db.setSetting('seek_seconds', '$v');
+  }
+
+  void setEqEnabled(bool v) {
+    state = state.copyWith(eqEnabled: v);
+    _db.setSetting('eq_enabled', '$v');
+  }
+
+  void setEqPreset(String v) {
+    state = state.copyWith(eqPreset: v);
+    _db.setSetting('eq_preset', v);
+  }
+
+  /// Moving a slider switches to 自訂.
+  void setEqCustom(List<double> v) {
+    state = state.copyWith(eqCustom: v, eqPreset: 'custom');
+    _db.setSetting('eq_custom', v.join(','));
+    _db.setSetting('eq_preset', 'custom');
+  }
+
+  void setFadeMs(int v) {
+    state = state.copyWith(fadeMs: v);
+    _db.setSetting('fade_ms', '$v');
+  }
+
+  void setLyricsScale(double v) {
+    state = state.copyWith(lyricsScale: v);
+    _db.setSetting('lyrics_scale', '$v');
+  }
+
+  void setLyricsKeepAwake(bool v) {
+    state = state.copyWith(lyricsKeepAwake: v);
+    _db.setSetting('lyrics_keep_awake', '$v');
+  }
+
+  void setWifiWarning(bool v) {
+    state = state.copyWith(wifiWarning: v);
+    _db.setSetting('wifi_warning', '$v');
   }
 
   void setSmartListShown(String name, bool shown) {

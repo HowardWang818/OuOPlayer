@@ -9,6 +9,7 @@ import '../widgets/art_image.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/export_sheet.dart';
 import '../widgets/sort_button.dart';
+import '../../services/network_check.dart';
 import '../../services/track_sort.dart';
 import '../widgets/track_selection.dart';
 import '../widgets/track_tile.dart';
@@ -307,6 +308,7 @@ extension on CollectionPage {
       if (context.mounted) toast(context, '請輸入有效的網址');
       return;
     }
+    if (!context.mounted || !await okToDownload(context, warn: ref.read(settingsProvider).wifiWarning)) return;
     ref.read(downloadServiceProvider).add(
           url,
           format: ref.read(settingsProvider).ytFormat,

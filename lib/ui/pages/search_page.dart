@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
+import '../../services/network_check.dart';
 import '../../services/download_service.dart';
 import '../../services/online/itunes.dart';
 import '../widgets/art_image.dart';
@@ -141,7 +142,8 @@ class _UrlActions extends ConsumerWidget {
         leading: const Icon(Icons.download),
         title: const Text('下載到本機'),
         subtitle: const Text('直連檔案直接下載，其他網址交給 yt-dlp'),
-        onTap: () {
+        onTap: () async {
+          if (!await okToDownload(context, warn: ref.read(settingsProvider).wifiWarning) || !context.mounted) return;
           ref.read(downloadServiceProvider).add(url, format: ref.read(settingsProvider).ytFormat);
           toast(context, '已加入下載佇列');
           ref.read(tabProvider.notifier).set(3);
@@ -150,7 +152,8 @@ class _UrlActions extends ConsumerWidget {
       ListTile(
         leading: const Icon(Icons.file_download_outlined),
         title: const Text('以直接下載方式下載'),
-        onTap: () {
+        onTap: () async {
+          if (!await okToDownload(context, warn: ref.read(settingsProvider).wifiWarning) || !context.mounted) return;
           ref.read(downloadServiceProvider).add(url, kind: DownloadKind.direct);
           toast(context, '已加入下載佇列');
         },

@@ -11,6 +11,7 @@ class MainActivity : AudioServiceActivity() {
     private var normalizer: NormalizerPlugin? = null
     private var trash: TrashPlugin? = null
     private var downloads: DownloadNotifierPlugin? = null
+    private var widget: PlayerWidgetPlugin? = null
     private var share: MethodChannel? = null
     private var pendingShare: String? = null
 
@@ -21,9 +22,32 @@ class MainActivity : AudioServiceActivity() {
         bluetooth = BluetoothPlugin(applicationContext, messenger)
         normalizer = NormalizerPlugin(messenger)
         trash = TrashPlugin(applicationContext, messenger).also { it.activity = this }
+        widget = PlayerWidgetPlugin(applicationContext, messenger)
         // Download notification: progress from Dart; taps open the downloads page.
         downloads = DownloadNotifierPlugin(applicationContext, messenger).also {
             it.pendingAction = intent?.getStringExtra(DownloadForegroundService.EXTRA_OPEN)
+        }
+        // Mobile data check before downloads.
+        MethodChannel(messenger, "ouo/network").setMethodCallHandler { call, result ->
+            if (call.method != "mobileData") return@setMethodCallHandler result.notImplemented()
+            val cm = getSystemService(android.net.ConnectivityManager::class.java)
+            val caps = cm?.getNetworkCapabilities(cm.activeNetwork)
+            result.success(
+                caps != null &&
+                    caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) &&
+                    !caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) &&
+                    !caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET),
+            )
+        }
+        // Lyrics can keep the screen on while they are shown.
+        MethodChannel(messenger, "ouo/screen").setMethodCallHandler { call, result ->
+            if (call.method != "keepOn") return@setMethodCallHandler result.notImplemented()
+            if (call.arguments == true) {
+                window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            } else {
+                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+            result.success(null)
         }
         // Links shared from other apps (YouTube, browser…) go to the downloader.
         pendingShare = sharedText(intent)

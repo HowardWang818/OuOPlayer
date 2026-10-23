@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../data/db/database.dart';
 import '../../providers/providers.dart';
+import '../../services/equalizer.dart';
 import '../../services/sleep_timer.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/backup_actions.dart';
@@ -16,6 +17,7 @@ import '../../services/missing_files.dart';
 import '../../services/file_trash.dart';
 import '../widgets/sleep_timer_sheet.dart';
 import 'devices_page.dart';
+import 'equalizer_page.dart';
 import 'youtube_key_guide_page.dart';
 
 Future<bool> ensureStoragePermission() async {
@@ -119,6 +121,33 @@ class SettingsPage extends ConsumerWidget {
           onTap: scan?.running == true ? null : () => rescanLibrary(context, ref),
         ),
         header('播放'),
+        ListTile(
+          leading: const Icon(Icons.graphic_eq),
+          title: const Text('等化器'),
+          subtitle: Text(s.eqEnabled ? '已開啟：${EqPreset.byName(s.eqPreset).label}' : '關閉'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EqualizerPage())),
+        ),
+        ListTile(
+          leading: const Icon(Icons.blur_linear),
+          title: const Text('播放／暫停淡入淡出'),
+          subtitle: Text(s.fadeMs == 0 ? '關閉' : '${s.fadeMs / 1000} 秒（換歌時不淡出）'),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(72, 0, 16, 8),
+          child: SegmentedButton<int>(
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(value: 0, label: Text('關')),
+              ButtonSegment(value: 300, label: Text('0.3')),
+              ButtonSegment(value: 500, label: Text('0.5')),
+              ButtonSegment(value: 1000, label: Text('1')),
+              ButtonSegment(value: 2000, label: Text('2')),
+            ],
+            selected: {s.fadeMs},
+            onSelectionChanged: (v) => n.setFadeMs(v.first),
+          ),
+        ),
         SwitchListTile(
           secondary: const Icon(Icons.equalizer),
           title: const Text('音量標準化'),
@@ -201,6 +230,29 @@ class SettingsPage extends ConsumerWidget {
           subtitle: const Text('會取代目前的資料，還原前會先確認'),
           onTap: () => importBackup(context, ref),
         ),
+        ListTile(
+          leading: const Icon(Icons.format_size),
+          title: const Text('歌詞字體大小'),
+          subtitle: Text('預覽：這是一行歌詞', style: TextStyle(fontSize: 16 * s.lyricsScale, fontWeight: FontWeight.bold)),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(56, 0, 16, 0),
+          child: Slider(
+            min: 0.8,
+            max: 1.6,
+            divisions: 8,
+            label: '${(s.lyricsScale * 100).round()}%',
+            value: s.lyricsScale.clamp(0.8, 1.6),
+            onChanged: (v) => n.setLyricsScale(double.parse(v.toStringAsFixed(1))),
+          ),
+        ),
+        if (Platform.isAndroid)
+          SwitchListTile(
+            secondary: const Icon(Icons.light_mode_outlined),
+            title: const Text('顯示歌詞時螢幕保持常亮'),
+            value: s.lyricsKeepAwake,
+            onChanged: n.setLyricsKeepAwake,
+          ),
         header('音樂庫維護'),
         SwitchListTile(
           secondary: const Icon(Icons.cleaning_services_outlined),
@@ -259,6 +311,14 @@ class SettingsPage extends ConsumerWidget {
           onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const YouTubeKeyGuidePage())),
         ),
         header('下載'),
+        if (Platform.isAndroid)
+          SwitchListTile(
+            secondary: const Icon(Icons.wifi_off_outlined),
+            title: const Text('沒有 Wi-Fi 時下載前提醒'),
+            subtitle: const Text('使用行動數據時，開始下載前先問你'),
+            value: s.wifiWarning,
+            onChanged: n.setWifiWarning,
+          ),
         ListTile(
           leading: const Icon(Icons.download_outlined),
           title: const Text('下載位置'),
@@ -285,7 +345,7 @@ class SettingsPage extends ConsumerWidget {
           ),
         ],
         header('關於'),
-        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.9.1')),
+        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.10.0')),
       ]),
     );
   }
