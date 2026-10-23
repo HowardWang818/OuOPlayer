@@ -8,6 +8,9 @@ class TrackSource {
   static const url = 'url';
   static const podcast = 'podcast';
   static const download = 'download';
+
+  /// 30-second store previews: never recorded in history or the saved queue.
+  static const preview = 'preview';
 }
 
 class Track {

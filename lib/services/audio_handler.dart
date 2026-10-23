@@ -82,7 +82,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     // Keep a duration that may already have arrived for this track.
     mediaItem.add(item.duration == null && player.duration != null ? item.copyWith(duration: player.duration) : item);
     _applyTrackSettings(t);
-    if (record) _db.addHistory(t);
+    if (record && t.source != TrackSource.preview) _db.addHistory(t);
     _scheduleSave();
   }
 
@@ -241,6 +241,8 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   }
 
   Future<void> saveSession() async {
+    // A queue of previews isn't worth resuming (e.g. on Bluetooth reconnect).
+    if (_tracks.isEmpty || _tracks.every((t) => t.source == TrackSource.preview)) return;
     final data = {
       'tracks': _tracks.map((t) => t.toMap()).toList(),
       'index': player.currentIndex ?? 0,
