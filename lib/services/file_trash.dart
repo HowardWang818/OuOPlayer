@@ -36,4 +36,22 @@ Future<bool> moveToTrash(List<String> paths) async {
   return true;
 }
 
+/// Deletes files for good (no trash). On Android, files OuOPlayer didn't
+/// create need the system's own confirmation. Returns false if declined.
+Future<bool> deleteForever(List<String> paths) async {
+  if (paths.isEmpty) return true;
+  if (Platform.isAndroid) {
+    try {
+      return await const MethodChannel('ouo/trash').invokeMethod<bool>('delete', {'paths': paths}) ?? false;
+    } on PlatformException catch (e) {
+      throw e.message ?? '刪除失敗';
+    }
+  }
+  for (final f in paths) {
+    final file = File(f);
+    if (await file.exists()) await file.delete();
+  }
+  return true;
+}
+
 String get trashName => Platform.isWindows ? '資源回收筒' : '垃圾桶';

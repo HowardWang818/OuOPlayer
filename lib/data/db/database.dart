@@ -122,6 +122,40 @@ class AppDatabase {
     _notify();
   }
 
+  /// Where removing these songs from the library takes them out of: the
+  /// playlists holding them (name → rows), how many are liked, and the albums
+  /// and artists left with no other song.
+  Future<RemovalImpact> removalImpact(List<String> ids) async {
+    final set = ids.toSet();
+    final playlists = <String, int>{};
+    var favorites = 0;
+    final list = set.toList();
+    for (var i = 0; i < list.length; i += 500) {
+      final chunk = list.sublist(i, (i + 500).clamp(0, list.length));
+      final marks = List.filled(chunk.length, '?').join(',');
+      final rows = await db.rawQuery(
+          'SELECT p.name AS name, COUNT(*) AS c FROM playlist_tracks pt JOIN playlists p ON p.id = pt.playlist_id '
+          'WHERE pt.track_id IN ($marks) GROUP BY p.id ORDER BY p.name COLLATE NOCASE',
+          chunk);
+      for (final r in rows) {
+        playlists.update(r['name'] as String, (v) => v + (r['c'] as int), ifAbsent: () => r['c'] as int);
+      }
+      final f = await db.rawQuery('SELECT COUNT(*) AS c FROM favorites WHERE track_id IN ($marks)', chunk);
+      favorites += f.first['c'] as int;
+    }
+    final all = await tracks();
+    final removed = all.where((t) => set.contains(t.id));
+    final kept = all.where((t) => !set.contains(t.id));
+    final keptAlbums = kept.map((t) => t.album).toSet();
+    final keptArtists = kept.map((t) => t.artist).toSet();
+    return RemovalImpact(
+      playlists: playlists,
+      favorites: favorites,
+      emptyAlbums: removed.map((t) => t.album).toSet().where((a) => !keptAlbums.contains(a) && a != '未知專輯').toList(),
+      emptyArtists: removed.map((t) => t.artist).toSet().where((a) => !keptArtists.contains(a) && a != '未知演出者').toList(),
+    );
+  }
+
   Future<List<Track>> search(String q) async {
     final like = '%$q%';
     final rows = await db.query('tracks',
@@ -428,4 +462,13 @@ class AppDatabase {
 List<Track> withoutDuplicates(List<Track> tracks) {
   final seen = <String>{};
   return [for (final t in tracks) if (seen.add(t.id)) t];
+}
+
+/// See [AppDatabase.removalImpact].
+class RemovalImpact {
+  const RemovalImpact({this.playlists = const {}, this.favorites = 0, this.emptyAlbums = const [], this.emptyArtists = const []});
+  final Map<String, int> playlists;
+  final int favorites;
+  final List<String> emptyAlbums;
+  final List<String> emptyArtists;
 }

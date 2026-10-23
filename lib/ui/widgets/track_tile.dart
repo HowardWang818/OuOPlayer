@@ -10,6 +10,7 @@ import '../../theme/app_theme.dart';
 import '../pages/collection_page.dart';
 import 'art_image.dart';
 import 'dialogs.dart';
+import 'removal_summary.dart';
 import 'track_selection.dart';
 
 class TrackTile extends ConsumerWidget {
@@ -191,9 +192,11 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
               subtitle: const Text('不會刪除檔案；重新掃描後會再出現'),
               onTap: () async {
                 Navigator.pop(ctx);
+                final where = await _removalLines(ref, [track]);
+                if (!context.mounted) return;
                 if (await confirmDelete(context,
                     title: '從音樂庫隱藏「${track.title}」？',
-                    message: '檔案不會被刪除，但會從播放清單和已按讚的歌曲中移除；重新掃描後會再出現在音樂庫。',
+                    message: '檔案不會被刪除，重新掃描後會再出現在音樂庫。會從以下地方移除：\n${where.map((l) => '• $l').join('\n')}',
                     action: '隱藏')) {
                   await db.deleteTracks([track.id]);
                 }
@@ -202,8 +205,8 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
           if (track.source == TrackSource.local || track.source == TrackSource.download)
             ListTile(
               leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
-              title: const Text('刪除檔案', style: TextStyle(color: Colors.redAccent)),
-              subtitle: Text('移到$trashName，可以還原'),
+              title: Text(ref.read(settingsProvider).deletePermanently ? '永久刪除檔案' : '刪除檔案', style: const TextStyle(color: Colors.redAccent)),
+              subtitle: Text(ref.read(settingsProvider).deletePermanently ? '無法還原' : '移到$trashName，可以還原'),
               onTap: () {
                 Navigator.pop(ctx);
                 deleteTrackFiles(context, ref, [track]);
@@ -215,35 +218,55 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
   );
 }
 
-/// Asks first, moves the files to the trash (one system prompt on Android),
-/// then removes the songs from the library, playlists, likes and the queue.
+/// Where removing [tracks] takes them out of (see [describeRemoval]).
+Future<List<String>> _removalLines(WidgetRef ref, List<Track> tracks) async {
+  final impact = await ref.read(dbProvider).removalImpact(tracks.map((t) => t.id).toList());
+  final ids = {for (final t in tracks) t.id};
+  final inQueue = ref.read(audioHandlerProvider).tracks.where((t) => ids.contains(t.id)).length;
+  return describeRemoval(impact, songs: tracks.length, inQueue: inQueue);
+}
+
+/// Asks first (listing everywhere the songs will be removed from), moves the
+/// files to the trash — or deletes them for good if 永久刪除 is on — then
+/// removes the songs from the library, playlists, likes and the queue.
 /// Returns true if they were deleted.
 Future<bool> deleteTrackFiles(BuildContext context, WidgetRef ref, List<Track> tracks) async {
   if (tracks.isEmpty) return false;
+  final forever = ref.read(settingsProvider).deletePermanently;
+  final where = await _removalLines(ref, tracks);
+  if (!context.mounted) return false;
   final ok = await showDialog<bool>(
     context: context,
     useRootNavigator: true,
     builder: (ctx) => AlertDialog(
-      title: Text(tracks.length == 1 ? '刪除檔案？' : '刪除 ${tracks.length} 個檔案？'),
-      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        for (final t in tracks.take(5)) Text(p.basename(t.uri), style: const TextStyle(fontWeight: FontWeight.bold)),
-        if (tracks.length > 5) Text('…以及其他 ${tracks.length - 5} 個'),
-        const SizedBox(height: 8),
-        Text('檔案會移到$trashName，並從音樂庫、播放清單和已按讚的歌曲中移除。'),
-      ]),
+      title: Text('${forever ? '永久刪除' : '刪除'}${tracks.length == 1 ? '檔案' : ' ${tracks.length} 個檔案'}？'),
+      content: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          for (final t in tracks.take(5)) Text(p.basename(t.uri), style: const TextStyle(fontWeight: FontWeight.bold)),
+          if (tracks.length > 5) Text('…以及其他 ${tracks.length - 5} 個'),
+          const SizedBox(height: 8),
+          forever
+              ? const Text('檔案會永久刪除，無法還原。', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))
+              : Text('檔案會移到$trashName，可以還原。'),
+          const SizedBox(height: 4),
+          const Text('並從以下地方移除：'),
+          RemovalList(where),
+        ]),
+      ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
           onPressed: () => Navigator.pop(ctx, true),
-          child: const Text('刪除'),
+          child: Text(forever ? '永久刪除' : '刪除'),
         ),
       ],
     ),
   );
   if (ok != true) return false;
   try {
-    if (!await moveToTrash(tracks.map((t) => t.uri).toList())) {
+    final paths = tracks.map((t) => t.uri).toList();
+    if (!await (forever ? deleteForever(paths) : moveToTrash(paths))) {
       if (context.mounted) toast(context, '已取消刪除');
       return false;
     }
@@ -252,7 +275,7 @@ Future<bool> deleteTrackFiles(BuildContext context, WidgetRef ref, List<Track> t
       await handler.removeTrack(t.id);
     }
     await ref.read(dbProvider).deleteTracks(tracks.map((t) => t.id));
-    if (context.mounted) toast(context, '已移到$trashName');
+    if (context.mounted) toast(context, forever ? '已永久刪除' : '已移到$trashName');
     return true;
   } catch (e) {
     if (context.mounted) toast(context, '刪除失敗：$e');

@@ -16,8 +16,9 @@ import java.io.File
 
 /**
  * Moves music files to the system trash (Android 11+), so a deletion can be
- * undone from the Files app for about 30 days. Files OuOPlayer created are
- * trashed directly; for the others Android shows one confirmation dialog.
+ * undone from the Files app for about 30 days, or ("delete") removes them
+ * for good. Files OuOPlayer created are handled directly; for the others
+ * Android shows one confirmation dialog.
  */
 class TrashPlugin(private val context: Context, messenger: BinaryMessenger) : MethodChannel.MethodCallHandler {
     companion object {
@@ -34,21 +35,46 @@ class TrashPlugin(private val context: Context, messenger: BinaryMessenger) : Me
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
-        if (call.method != "trash") return result.notImplemented()
+        if (call.method != "trash" && call.method != "delete") return result.notImplemented()
+        val forever = call.method == "delete"
         val paths = call.argument<List<String>>("paths") ?: return result.error("args", "paths missing", null)
         if (paths.isEmpty()) return result.success(true)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            // No system trash before Android 11.
+            // No system trash (and no scoped storage) before Android 11.
             return result.success(paths.all { File(it).delete() })
         }
-        // The scanner returns each file's MediaStore URI, indexing it first if needed.
+        if (forever) {
+            // Files this app created can simply be deleted; ask only for the rest.
+            val rest = paths.filter { !File(it).delete() && File(it).exists() }
+            if (rest.isEmpty()) return result.success(true)
+            return withUris(rest) { uris -> deleteForever(uris, result) }
+        }
+        withUris(paths) { uris -> trash(uris, result) }
+    }
+
+    /** The scanner returns each file's MediaStore URI, indexing it first if needed. */
+    private fun withUris(paths: List<String>, then: (List<Uri>) -> Unit) {
         val uris = mutableListOf<Uri?>()
         MediaScannerConnection.scanFile(context, paths.toTypedArray(), null) { _, uri ->
             val done = synchronized(uris) {
                 uris.add(uri)
                 uris.size == paths.size
             }
-            if (done) main.post { trash(uris.filterNotNull(), result) }
+            if (done) main.post { then(uris.filterNotNull()) }
+        }
+    }
+
+    private fun deleteForever(uris: List<Uri>, result: MethodChannel.Result) {
+        if (uris.isEmpty()) return result.error("notFound", "系統找不到這些檔案", null)
+        val act = activity ?: return result.error("noActivity", "無法顯示確認視窗", null)
+        try {
+            val request = MediaStore.createDeleteRequest(context.contentResolver, uris)
+            pending?.success(false)
+            pending = result
+            act.startIntentSenderForResult(request.intentSender, REQUEST_CODE, null, 0, 0, 0)
+        } catch (e: Exception) {
+            pending = null
+            result.error("delete", e.message, null)
         }
     }
 

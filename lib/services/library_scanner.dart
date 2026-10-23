@@ -6,6 +6,8 @@ import 'dart:isolate';
 import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
+
+import 'missing_files.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../data/db/database.dart';
@@ -50,7 +52,9 @@ class LibraryScanner {
         if (!await dir.exists()) continue;
         try {
           await for (final e in dir.list(recursive: true, followLinks: false)) {
-            if (e is File && audioExtensions.contains(p.extension(e.path).toLowerCase())) files.add(e.path);
+            if (e is File && audioExtensions.contains(p.extension(e.path).toLowerCase()) && !isHiddenPath(e.path)) {
+              files.add(e.path);
+            }
           }
         } catch (_) {}
       }

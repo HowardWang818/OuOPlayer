@@ -10,6 +10,8 @@ import '../../providers/providers.dart';
 import '../../services/sleep_timer.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/missing_files_dialog.dart';
+import '../../services/missing_files.dart';
+import '../../services/file_trash.dart';
 import '../widgets/sleep_timer_sheet.dart';
 import 'devices_page.dart';
 import 'youtube_key_guide_page.dart';
@@ -88,7 +90,12 @@ class SettingsPage extends ConsumerWidget {
           onTap: () async {
             await ensureStoragePermission();
             final dir = await FilePicker.getDirectoryPath(dialogTitle: '選擇音樂資料夾');
-            if (dir == null || s.musicDirs.contains(dir)) return;
+            if (dir == null) return;
+            final cover = coveringFolder(dir, {...s.musicDirs, s.downloadDir});
+            if (cover != null) {
+              if (context.mounted) toast(context, cover == dir ? '這個資料夾已經在清單裡' : '已包含在「$cover」裡，不需要另外加入');
+              return;
+            }
             n.setMusicDirs([...s.musicDirs, dir]);
             if (ref.read(settingsProvider).autoScanNewFolders) {
               final added = await ref.read(scannerProvider).scan([dir]);
@@ -187,6 +194,15 @@ class SettingsPage extends ConsumerWidget {
           value: s.autoCleanMissing,
           onChanged: n.setAutoCleanMissing,
         ),
+        SwitchListTile(
+          secondary: const Icon(Icons.delete_forever_outlined),
+          title: const Text('刪除檔案時直接永久刪除'),
+          subtitle: Text(s.deletePermanently
+              ? '已開啟：刪除的檔案無法還原。不是 OuOPlayer 下載的檔案，系統會再請你確認一次'
+              : '關閉時，刪除的檔案會移到$trashName，可以還原'),
+          value: s.deletePermanently,
+          onChanged: n.setDeletePermanently,
+        ),
         ListTile(
           leading: const Icon(Icons.search),
           title: const Text('立即檢查已不存在的歌曲'),
@@ -239,7 +255,7 @@ class SettingsPage extends ConsumerWidget {
           ),
         ],
         header('關於'),
-        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.8.0')),
+        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.8.1')),
       ]),
     );
   }

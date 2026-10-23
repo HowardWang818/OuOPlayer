@@ -19,7 +19,13 @@ Future<void> checkMissingFiles(BuildContext context, WidgetRef ref, {bool manual
   if (_asking) return;
   final s = ref.read(settingsProvider);
   final db = ref.read(dbProvider);
-  final missing = findMissingTracks(await db.tracks(), {...s.musicDirs, s.downloadDir}.toList());
+  final all = await db.tracks();
+  final trashed = findTrashedTracks(all);
+  final trashedIds = {for (final t in trashed) t.id};
+  final missing = [
+    ...trashed,
+    ...findMissingTracks(all, {...s.musicDirs, s.downloadDir}.toList()).where((t) => !trashedIds.contains(t.id)),
+  ];
   final fresh = manual ? missing : missing.where((t) => !_keptThisSession.contains(t.id)).toList();
   if (fresh.isEmpty) {
     if (manual && context.mounted) toast(context, '沒有已不存在的歌曲');
@@ -29,7 +35,7 @@ Future<void> checkMissingFiles(BuildContext context, WidgetRef ref, {bool manual
   _asking = true;
   final bool ok;
   try {
-    ok = await _confirm(context, missing);
+    ok = await _confirm(context, missing, trashed: trashed.length);
   } finally {
     _asking = false;
   }
@@ -46,18 +52,28 @@ Future<void> checkMissingFiles(BuildContext context, WidgetRef ref, {bool manual
   if (context.mounted) toast(context, '已從音樂庫移除 ${missing.length} 首');
 }
 
-Future<bool> _confirm(BuildContext context, List<Track> missing) async {
+Future<bool> _confirm(BuildContext context, List<Track> missing, {required int trashed}) async {
+  final gone = missing.length - trashed;
+  final title = trashed == 0
+      ? '有 $gone 首歌的檔案已不存在'
+      : gone == 0
+          ? '有 $trashed 首是垃圾桶裡的檔案'
+          : '有 ${missing.length} 首歌要從音樂庫移除';
+  final why = [
+    if (gone > 0) '$gone 首的檔案已不存在',
+    if (trashed > 0) '$trashed 首是垃圾桶裡已刪除的檔案（垃圾桶裡的檔案不會被動到，仍可還原）',
+  ].join('；');
   final albums = missing.map((t) => t.album).toSet().length;
   final artists = missing.map((t) => t.artist).toSet().length;
   final result = await showDialog<bool>(
     context: context,
     useRootNavigator: true,
     builder: (ctx) => AlertDialog(
-      title: Text('有 ${missing.length} 首歌的檔案已不存在'),
+      title: Text(title),
       content: SizedBox(
         width: 420,
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('要從音樂庫、播放清單和已按讚的歌曲中移除嗎？涉及 $albums 張專輯、$artists 位演出者；只剩這些歌的專輯和演出者也會一起消失。不會刪除任何檔案。'),
+          Text('$why。\n要從音樂庫、播放清單和已按讚的歌曲中移除嗎？涉及 $albums 張專輯、$artists 位演出者；只剩這些歌的專輯和演出者也會一起消失。不會刪除任何檔案。'),
           const SizedBox(height: 8),
           Flexible(
             child: ExpansionTile(

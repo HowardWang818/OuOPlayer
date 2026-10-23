@@ -125,6 +125,9 @@ class AppSettings {
   /// Look lyrics up on LRCLIB when the file and .lrc have none.
   final bool lyricsOnline;
 
+  /// 刪除檔案 deletes for good instead of moving to the trash.
+  final bool deletePermanently;
+
   /// Sort choices saved per list (「sort_」 + scope settings), see [sortProvider].
   final Map<String, String> sorts;
 
@@ -145,6 +148,7 @@ class AppSettings {
     this.allowPlaylistDuplicates = false,
     this.autoCleanMissing = true,
     this.lyricsOnline = true,
+    this.deletePermanently = false,
     this.sorts = const {},
   });
 
@@ -165,6 +169,7 @@ class AppSettings {
     bool? allowPlaylistDuplicates,
     bool? autoCleanMissing,
     bool? lyricsOnline,
+    bool? deletePermanently,
   }) =>
       AppSettings(
         themeMode: themeMode ?? this.themeMode,
@@ -183,6 +188,7 @@ class AppSettings {
         allowPlaylistDuplicates: allowPlaylistDuplicates ?? this.allowPlaylistDuplicates,
         autoCleanMissing: autoCleanMissing ?? this.autoCleanMissing,
         lyricsOnline: lyricsOnline ?? this.lyricsOnline,
+        deletePermanently: deletePermanently ?? this.deletePermanently,
         sorts: sorts,
       );
 
@@ -207,6 +213,7 @@ class AppSettings {
       allowPlaylistDuplicates: m['allow_playlist_duplicates'] == 'true',
       autoCleanMissing: m['auto_clean_missing'] != 'false',
       lyricsOnline: m['lyrics_online'] != 'false',
+      deletePermanently: m['delete_permanently'] == 'true',
       sorts: {for (final e in m.entries) if (e.key.startsWith('sort_')) e.key.substring(5): e.value},
     );
   }
@@ -299,6 +306,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void setSeekSeconds(int v) {
     state = state.copyWith(seekSeconds: v);
     _db.setSetting('seek_seconds', '$v');
+  }
+
+  void setDeletePermanently(bool v) {
+    state = state.copyWith(deletePermanently: v);
+    _db.setSetting('delete_permanently', '$v');
   }
 
   void setLyricsOnline(bool v) {

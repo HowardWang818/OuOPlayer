@@ -22,13 +22,25 @@ class LyricsView extends ConsumerWidget {
     final lyrics = ref.watch(lyricsProvider(LyricsKey(track)));
     return lyrics.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => _Empty(track: track, message: '查詢歌詞失敗：${e is DioException ? '請檢查網路' : e}'),
+      error: (e, _) => _Empty(
+          track: track,
+          retry: true,
+          message: e is DioException && LyricsService.isTemporary(e)
+              ? 'LRCLIB 暫時忙碌或連線逾時，請稍後再試'
+              : e is DioException
+                  ? '查詢歌詞失敗${e.response?.statusCode != null ? '（HTTP ${e.response!.statusCode}）' : '，請檢查網路'}'
+                  : '查詢歌詞失敗：$e'),
       data: (l) => l == null || l.isEmpty
-          ? _Empty(track: track, message: ref.watch(settingsProvider.select((s) => s.lyricsOnline)) ? '找不到歌詞' : '找不到歌詞（自動上網找歌詞已關閉）')
+          ? _Empty(
+              track: track,
+              retry: true,
+              message: ref.watch(settingsProvider.select((s) => s.lyricsOnline)) ? '找不到歌詞' : '找不到歌詞（自動上網找歌詞已關閉）')
           : Column(children: [
               Expanded(child: l.synced ? _SyncedLyrics(lyrics: l) : _PlainLyrics(lyrics: l)),
               Row(children: [
                 Expanded(child: Text('來源：${l.source}${l.synced ? '' : '（未同步）'}', style: TextStyle(fontSize: 12, color: muted))),
+                if (l.source == 'LRCLIB')
+                  TextButton(onPressed: () => refreshLyrics(ref, track), child: const Text('重新查詢')),
                 TextButton(onPressed: () => showLyricsSearch(context, ref, track), child: const Text('不對？手動搜尋')),
               ]),
             ]),
@@ -37,9 +49,10 @@ class LyricsView extends ConsumerWidget {
 }
 
 class _Empty extends ConsumerWidget {
-  const _Empty({required this.track, required this.message});
+  const _Empty({required this.track, required this.message, this.retry = false});
   final Track track;
   final String message;
+  final bool retry;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => Center(
@@ -48,11 +61,19 @@ class _Empty extends ConsumerWidget {
           const SizedBox(height: 12),
           Text(message, textAlign: TextAlign.center),
           const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: () => showLyricsSearch(context, ref, track),
-            icon: const Icon(Icons.search),
-            label: const Text('手動搜尋'),
-          ),
+          Wrap(spacing: 8, children: [
+            if (retry)
+              OutlinedButton.icon(
+                onPressed: () => refreshLyrics(ref, track),
+                icon: const Icon(Icons.refresh),
+                label: const Text('重新查詢'),
+              ),
+            OutlinedButton.icon(
+              onPressed: () => showLyricsSearch(context, ref, track),
+              icon: const Icon(Icons.search),
+              label: const Text('手動搜尋'),
+            ),
+          ]),
         ]),
       );
 }
@@ -133,6 +154,12 @@ class _SyncedLyricsState extends ConsumerState<_SyncedLyrics> {
   }
 }
 
+/// Forgets the saved LRCLIB result (or "not found") and asks again.
+Future<void> refreshLyrics(WidgetRef ref, Track track) async {
+  await ref.read(lyricsServiceProvider).forget(track);
+  ref.invalidate(lyricsProvider(LyricsKey(track)));
+}
+
 /// Search LRCLIB with an editable title/artist and pick the right lyrics.
 Future<void> showLyricsSearch(BuildContext context, WidgetRef ref, Track track) async {
   final title = TextEditingController(text: track.title.replaceAll('（試聽）', '').trim());
@@ -154,7 +181,11 @@ Future<void> showLyricsSearch(BuildContext context, WidgetRef ref, Track track) 
           try {
             results = await service.search(title.text.trim(), artist.text.trim());
           } catch (e) {
-            error = e is DioException ? '無法連線到 LRCLIB，請檢查網路' : '$e';
+            error = e is DioException && LyricsService.isTemporary(e)
+                ? 'LRCLIB 暫時忙碌或連線逾時，請稍後再按「搜尋」'
+                : e is DioException
+                    ? '無法連線到 LRCLIB，請檢查網路'
+                    : '$e';
           }
           if (ctx.mounted) setState(() => busy = false);
         }

@@ -190,7 +190,8 @@ class _SelectionBar extends ConsumerWidget {
                 if (local.isNotEmpty)
                   PopupMenuItem(
                     value: 'delete',
-                    child: Text('刪除檔案（${local.length} 首，移到$trashName）', style: const TextStyle(color: Colors.redAccent)),
+                    child: Text(ref.read(settingsProvider).deletePermanently ? '永久刪除檔案（${local.length} 首）' : '刪除檔案（${local.length} 首，移到$trashName）',
+                        style: const TextStyle(color: Colors.redAccent)),
                   ),
               ],
             ),

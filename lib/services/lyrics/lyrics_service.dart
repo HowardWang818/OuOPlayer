@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../data/models/track.dart';
+import '../download_match.dart';
 import '../library_scanner.dart';
 import 'lrc.dart';
 
@@ -44,14 +45,45 @@ class LyricsService {
   LyricsService(this._scanner, {Dio? dio})
       : _dio = dio ??
             Dio(BaseOptions(
-              connectTimeout: const Duration(seconds: 10),
-              receiveTimeout: const Duration(seconds: 15),
+              connectTimeout: const Duration(seconds: 30),
+              receiveTimeout: const Duration(seconds: 30),
               headers: {'User-Agent': 'OuOPlayer (personal music player)'},
             ));
 
   final LibraryScanner _scanner;
   final Dio _dio;
   static const _api = 'https://lrclib.net/api';
+
+  /// "Nothing on LRCLIB" is remembered this long, then asked again.
+  static const notFoundFor = Duration(days: 3);
+
+  /// Waits before the retries when LRCLIB is busy (it answers 503 now and
+  /// then) or slow.
+  static const retryDelays = [Duration(seconds: 1), Duration(seconds: 3)];
+
+  Future<Response<T>> _get<T>(String path, Map<String, dynamic> query) async {
+    for (var attempt = 0;; attempt++) {
+      try {
+        return await _dio.get<T>('$_api/$path', queryParameters: query);
+      } on DioException catch (e) {
+        if (attempt >= retryDelays.length || !isTemporary(e)) rethrow;
+        await Future.delayed(retryDelays[attempt]);
+      }
+    }
+  }
+
+  /// Busy server, timeouts and dropped connections: worth trying again.
+  static bool isTemporary(DioException e) {
+    final code = e.response?.statusCode;
+    return code == 429 ||
+        code == 502 ||
+        code == 503 ||
+        code == 504 ||
+        e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.sendTimeout ||
+        e.type == DioExceptionType.connectionError;
+  }
 
   /// Null when nothing was found.
   Future<Lyrics?> find(Track t, {required bool online}) async {
@@ -73,9 +105,13 @@ class LyricsService {
     if (cache.existsSync()) {
       try {
         final j = jsonDecode(await cache.readAsString()) as Map;
-        // An empty entry remembers "LRCLIB has nothing", so it isn't asked again.
-        if (j['none'] == true) return null;
-        return Lyrics.parse(j['lrc'] as String, source: j['source'] as String? ?? 'LRCLIB');
+        // "LRCLIB has nothing" is remembered for a while, then asked again.
+        if (j['none'] == true) {
+          final at = DateTime.fromMillisecondsSinceEpoch((j['at'] as int?) ?? 0);
+          if (DateTime.now().difference(at) < notFoundFor) return null;
+        } else {
+          return Lyrics.parse(j['lrc'] as String, source: j['source'] as String? ?? 'LRCLIB');
+        }
       } catch (_) {}
     }
     if (!online || t.source == TrackSource.podcast) return null;
@@ -90,7 +126,7 @@ class LyricsService {
 
   /// LRCLIB search for the manual 「手動搜尋」 dialog.
   Future<List<LrclibResult>> search(String title, String artist) async {
-    final res = await _dio.get<List<dynamic>>('$_api/search', queryParameters: {
+    final res = await _get<List<dynamic>>('search', {
       'track_name': title,
       if (artist.trim().isNotEmpty) 'artist_name': artist,
     });
@@ -106,32 +142,61 @@ class LyricsService {
     if (f.existsSync()) await f.delete();
   }
 
+  /// Exact match first; if that has no synced lyrics (LRCLIB often has a
+  /// plain copy and several synced ones of the same song), search too, also
+  /// with the title cleaned up and with the title alone (then the artist
+  /// must match).
   Future<LrclibResult?> _lookup(Track t) async {
     final title = t.title.replaceAll('（試聽）', '').trim();
     final artist = t.artist == '未知演出者' ? '' : t.artist;
+    final durationMs = t.source == TrackSource.preview ? null : t.durationMs;
+    LrclibResult? exact;
     if (artist.isNotEmpty) {
       try {
-        final res = await _dio.get<Map<String, dynamic>>('$_api/get', queryParameters: {
+        final res = await _get<Map<String, dynamic>>('get', {
           'track_name': title,
           'artist_name': artist,
           if (t.album != '未知專輯') 'album_name': t.album,
-          if (t.durationMs != null && t.source != TrackSource.preview) 'duration': (t.durationMs! / 1000).round(),
+          if (durationMs != null) 'duration': (durationMs / 1000).round(),
         });
-        final r = LrclibResult.fromJson(res.data);
-        if (r != null && r.hasLyrics) return r;
+        exact = LrclibResult.fromJson(res.data);
+        if (exact != null && (exact.synced ?? '').trim().isNotEmpty) return exact;
       } on DioException catch (e) {
         if (e.response?.statusCode != 404) rethrow;
       }
     }
-    final found = await search(title, artist);
-    if (found.isEmpty) return null;
-    // Prefer the result closest in length, when we know the length.
-    final d = t.source == TrackSource.preview ? null : t.durationMs;
-    if (d != null) {
-      found.sort((a, b) => ((a.durationSec ?? 0) * 1000 - d).abs().compareTo(((b.durationSec ?? 0) * 1000 - d).abs()));
+    final clean = cleanSongTitle(title);
+    final found = <LrclibResult>[
+      ...await search(title, artist),
+      if (clean != title && clean.isNotEmpty) ...await search(clean, artist),
+    ];
+    if (found.isEmpty && artist.isNotEmpty) {
+      found.addAll((await search(clean.isEmpty ? title : clean, '')).where((r) => sameArtist(r.artist, artist)));
     }
-    return found.first;
+    return pickBest([if (exact != null && exact.hasLyrics) exact, ...found], durationMs: durationMs);
   }
+
+  /// Synced lyrics first, then the closest length.
+  static LrclibResult? pickBest(List<LrclibResult> results, {int? durationMs}) {
+    final usable = results.where((r) => r.hasLyrics).toList();
+    if (usable.isEmpty) return null;
+    int score(LrclibResult r) {
+      final synced = (r.synced ?? '').trim().isNotEmpty ? 0 : 1 << 30;
+      final off = durationMs == null || r.durationSec == null ? 0 : (r.durationSec! * 1000 - durationMs).abs();
+      return synced + off;
+    }
+
+    usable.sort((a, b) => score(a).compareTo(score(b)));
+    return usable.first;
+  }
+
+  /// Drops 「(Official Audio)」, 【MV】, 「feat. …」 and similar from a title.
+  static String cleanSongTitle(String title) => title
+      .replaceAll(RegExp(r'[\(（\[【［<＜].*?[\)）\]】］>＞]'), ' ')
+      .replaceAll(RegExp(r'\s(feat\.?|ft\.)\s.*$', caseSensitive: false), '')
+      .replaceAll(RegExp(r'\b(official\s+)?(music\s+)?(video|audio|mv|lyric video|lyrics)\b', caseSensitive: false), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
 
   Future<File> _cacheFile(Track t) async {
     final dir = Directory(p.join((await getApplicationSupportDirectory()).path, 'lyrics'));
@@ -142,6 +207,7 @@ class LyricsService {
 
   Future<void> _save(File f, LrclibResult? r) async {
     final lrc = r == null ? null : ((r.synced ?? '').trim().isNotEmpty ? r.synced : r.plain);
-    await f.writeAsString(jsonEncode(lrc == null ? {'none': true} : {'lrc': lrc, 'source': 'LRCLIB'}));
+    await f.writeAsString(jsonEncode(
+        lrc == null ? {'none': true, 'at': DateTime.now().millisecondsSinceEpoch} : {'lrc': lrc, 'source': 'LRCLIB'}));
   }
 }
