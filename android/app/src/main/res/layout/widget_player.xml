@@ -63,23 +63,29 @@
         android:layout_width="40dp"
         android:layout_height="40dp"
         android:background="@android:color/transparent"
+        android:padding="8dp"
+        android:scaleType="fitCenter"
         android:contentDescription="上一首"
-        android:src="@android:drawable/ic_media_previous" />
+        android:src="@drawable/widget_prev" />
 
     <ImageButton
         android:id="@+id/widget_play"
         android:layout_width="48dp"
         android:layout_height="48dp"
         android:background="@android:color/transparent"
+        android:padding="8dp"
+        android:scaleType="fitCenter"
         android:contentDescription="播放或暫停"
-        android:src="@android:drawable/ic_media_play" />
+        android:src="@drawable/widget_play" />
 
     <ImageButton
         android:id="@+id/widget_next"
         android:layout_width="40dp"
         android:layout_height="40dp"
         android:background="@android:color/transparent"
+        android:padding="8dp"
+        android:scaleType="fitCenter"
         android:contentDescription="下一首"
-        android:src="@android:drawable/ic_media_next" />
+        android:src="@drawable/widget_next" />
 </LinearLayout>
 </FrameLayout>
