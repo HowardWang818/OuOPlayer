@@ -128,6 +128,9 @@ class AppSettings {
   /// 刪除檔案 deletes for good instead of moving to the trash.
   final bool deletePermanently;
 
+  /// Smart playlists (SmartList names) not shown in the library.
+  final Set<String> hiddenSmartLists;
+
   /// Sort choices saved per list (「sort_」 + scope settings), see [sortProvider].
   final Map<String, String> sorts;
 
@@ -149,6 +152,7 @@ class AppSettings {
     this.autoCleanMissing = true,
     this.lyricsOnline = true,
     this.deletePermanently = false,
+    this.hiddenSmartLists = const {},
     this.sorts = const {},
   });
 
@@ -170,6 +174,7 @@ class AppSettings {
     bool? autoCleanMissing,
     bool? lyricsOnline,
     bool? deletePermanently,
+    Set<String>? hiddenSmartLists,
   }) =>
       AppSettings(
         themeMode: themeMode ?? this.themeMode,
@@ -189,6 +194,7 @@ class AppSettings {
         autoCleanMissing: autoCleanMissing ?? this.autoCleanMissing,
         lyricsOnline: lyricsOnline ?? this.lyricsOnline,
         deletePermanently: deletePermanently ?? this.deletePermanently,
+        hiddenSmartLists: hiddenSmartLists ?? this.hiddenSmartLists,
         sorts: sorts,
       );
 
@@ -214,6 +220,7 @@ class AppSettings {
       autoCleanMissing: m['auto_clean_missing'] != 'false',
       lyricsOnline: m['lyrics_online'] != 'false',
       deletePermanently: m['delete_permanently'] == 'true',
+      hiddenSmartLists: (m['hidden_smart_lists'] ?? '').split(',').where((s) => s.isNotEmpty).toSet(),
       sorts: {for (final e in m.entries) if (e.key.startsWith('sort_')) e.key.substring(5): e.value},
     );
   }
@@ -309,6 +316,13 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void setSeekSeconds(int v) {
     state = state.copyWith(seekSeconds: v);
     _db.setSetting('seek_seconds', '$v');
+  }
+
+  void setSmartListShown(String name, bool shown) {
+    final hidden = {...state.hiddenSmartLists};
+    shown ? hidden.remove(name) : hidden.add(name);
+    state = state.copyWith(hiddenSmartLists: hidden);
+    _db.setSetting('hidden_smart_lists', hidden.join(','));
   }
 
   void setDeletePermanently(bool v) {

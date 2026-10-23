@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../data/db/database.dart';
 import '../../providers/providers.dart';
 import '../../services/sleep_timer.dart';
 import '../widgets/dialogs.dart';
@@ -223,6 +224,21 @@ class SettingsPage extends ConsumerWidget {
           onTap: () => checkMissingFiles(context, ref, manual: true),
         ),
         header('播放清單'),
+        ExpansionTile(
+          leading: const Icon(Icons.auto_awesome_outlined),
+          title: const Text('顯示智慧播放清單'),
+          subtitle: Text('顯示 ${SmartList.values.where((l) => !s.hiddenSmartLists.contains(l.name)).length} / ${SmartList.values.length} 個'),
+          children: [
+            for (final l in SmartList.values)
+              SwitchListTile(
+                contentPadding: const EdgeInsets.only(left: 72, right: 16),
+                title: Text(l.label),
+                subtitle: Text(l.description),
+                value: !s.hiddenSmartLists.contains(l.name),
+                onChanged: (v) => n.setSmartListShown(l.name, v),
+              ),
+          ],
+        ),
         SwitchListTile(
           secondary: const Icon(Icons.copy_all_outlined),
           title: const Text('允許歌曲重複'),
@@ -269,7 +285,7 @@ class SettingsPage extends ConsumerWidget {
           ),
         ],
         header('關於'),
-        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.9.0')),
+        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.9.1')),
       ]),
     );
   }
