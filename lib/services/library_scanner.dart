@@ -37,7 +37,9 @@ class LibraryScanner {
     return dir.path;
   }
 
-  Future<int> scan(List<String> folders, {bool removeMissing = true}) async {
+  /// Adds new and changed files. Songs whose file is gone are handled by
+  /// checkMissingFiles, which asks first.
+  Future<int> scan(List<String> folders) async {
     if (_running) return 0;
     _running = true;
     try {
@@ -59,10 +61,6 @@ class LibraryScanner {
           .map((t) => t.id)
           .toSet();
       final fresh = files.where((f) => !known.contains(f) || garbled.contains(f)).toList();
-      if (removeMissing) {
-        final local = (await _db.tracks()).where((t) => t.source == TrackSource.local && !File(t.uri).existsSync());
-        await _db.deleteTracks(local.map((t) => t.id));
-      }
       final artDir = await _artDir();
       var done = 0;
       const batchSize = 40;
@@ -81,6 +79,41 @@ class LibraryScanner {
   }
 
   /// Import a single file (e.g. a finished download) into the library.
+  /// Deletes cached cover images no library song uses any more.
+  Future<int> cleanArtCache() async {
+    final used = (await _db.tracks()).map((t) => t.art).whereType<String>().map(p.normalize).toSet();
+    var removed = 0;
+    await for (final f in Directory(await _artDir()).list(followLinks: false)) {
+      if (f is File && !used.contains(p.normalize(f.path))) {
+        try {
+          await f.delete();
+          removed++;
+        } catch (_) {}
+      }
+    }
+    return removed;
+  }
+
+  /// The artist tag of a file, or null if it has none.
+  Future<String?> readArtist(String path) => Isolate.run(() {
+        try {
+          final a = fixTagText(readMetadata(File(path)).artist ?? '');
+          return a.isEmpty ? null : a;
+        } catch (_) {
+          return null;
+        }
+      });
+
+  /// Lyrics stored in the file's tags, or null.
+  Future<String?> readLyrics(String path) => Isolate.run(() {
+        try {
+          final l = fixTagText(readMetadata(File(path)).lyrics ?? '');
+          return l.isEmpty ? null : l;
+        } catch (_) {
+          return null;
+        }
+      });
+
   Future<Track?> importFile(String path, {String source = TrackSource.download}) async {
     final artDir = await _artDir();
     final maps = await Isolate.run(() => _readBatch([path], artDir, source));

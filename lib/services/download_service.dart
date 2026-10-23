@@ -288,10 +288,21 @@ class DownloadService {
   /// with the same name is already there), adds it to the library and the
   /// task's playlist, and returns the library path.
   Future<String> _finish(DownloadTask t, String path) async {
-    final target = p.join(outDir, p.basename(path));
+    var target = p.join(outDir, p.basename(path));
+    if (File(target).existsSync()) {
+      // Same title by another artist (natori's and 9Lana's 「propose」): keep
+      // both, naming the new one 「title - artist」.
+      final mine = await _scanner.readArtist(path);
+      final theirs = await _artistOf(target);
+      if (mine != null && theirs != null && !sameArtist(mine, theirs)) {
+        final safe = mine.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+        target = p.join(outDir, '${p.basenameWithoutExtension(path)} - $safe${p.extension(path)}');
+        t.addLog('同名但歌手不同（$theirs），存成：${p.basename(target)}');
+      }
+    }
     Track? track;
     if (File(target).existsSync()) {
-      // Same file name = same song downloaded again: drop the new copy.
+      // Same song (same name and artist) downloaded again: drop the new copy.
       await File(path).delete();
       t.duplicates++;
       t.addLog('已存在，刪除重複檔：${p.basename(path)}');
@@ -435,11 +446,25 @@ class DownloadService {
 
   /// A file for this song that is already in the download folder: from the
   /// download history (same source URL) or, for songs downloaded before that
-  /// existed, a file named after the song's title.
+  /// existed, a file with the song's title AND artist. If the artist can't
+  /// be confirmed the song is downloaded (two artists' songs can share a
+  /// title, e.g. natori's and 9Lana's 「propose」).
   Future<String?> _alreadyDownloaded(PlaylistEntry entry, ExistingFiles existing) async {
     final known = await _db.downloadedPath(sourceKey(entry.url));
     if (known != null && File(known).existsSync()) return known;
-    return existing.match(entry.title);
+    final artist = entry.artist;
+    if (artist == null) return null;
+    for (final path in existing.candidates(entry.title, artist)) {
+      if (sameArtist(await _artistOf(path) ?? '', artist)) return path;
+    }
+    return null;
+  }
+
+  /// A file's artist: from the library, else its tags.
+  Future<String?> _artistOf(String path) async {
+    final a = (await _db.track(path))?.artist;
+    if (a != null && a != '未知演出者') return a;
+    return _scanner.readArtist(path);
   }
 
   Future<void> _runDirect(DownloadTask t, String workDir) async {
@@ -608,7 +633,12 @@ class PlaylistListing {
         url = 'https://www.youtube.com/watch?v=$id';
       }
       if (url == null) continue;
-      entries.add(PlaylistEntry(entries.length + 1, url, (e['title'] as String?) ?? url));
+      final artists = e['artists'];
+      final artist = cleanArtist((artists is List && artists.isNotEmpty ? artists.first : null) as String? ??
+          e['artist'] as String? ??
+          e['channel'] as String? ??
+          e['uploader'] as String?);
+      entries.add(PlaylistEntry(entries.length + 1, url, (e['title'] as String?) ?? url, artist));
     }
     return PlaylistListing(json['title'] as String?, entries);
   }
@@ -619,7 +649,10 @@ class PlaylistEntry {
   final int index;
   final String url;
   final String title;
-  const PlaylistEntry(this.index, this.url, this.title);
+
+  /// From the listing (artist, channel or uploader); null if unknown.
+  final String? artist;
+  const PlaylistEntry(this.index, this.url, this.title, [this.artist]);
 }
 
 /// Songs can be downloaded one by one only if they are web pages (not

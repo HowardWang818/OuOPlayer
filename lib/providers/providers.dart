@@ -15,6 +15,8 @@ import '../services/audio_handler.dart';
 import '../services/bluetooth/bluetooth_service.dart';
 import '../services/download_service.dart';
 import '../services/library_scanner.dart';
+import '../services/lyrics/lrc.dart';
+import '../services/lyrics/lyrics_service.dart';
 import '../services/online/itunes.dart';
 import '../services/online/youtube_link.dart';
 import '../services/podcast_service.dart';
@@ -26,6 +28,40 @@ final scannerProvider = Provider<LibraryScanner>((ref) => LibraryScanner(ref.wat
 final podcastServiceProvider = Provider<PodcastService>((ref) => PodcastService());
 final iTunesSearchProvider = Provider<ITunesSearch>((ref) => ITunesSearch());
 final youTubeLinkFinderProvider = Provider<YouTubeLinkFinder>((ref) => YouTubeLinkFinder());
+final lyricsServiceProvider = Provider<LyricsService>((ref) => LyricsService(ref.watch(scannerProvider)));
+
+/// Identifies a song for [lyricsProvider]: the current track is rebuilt on
+/// every media update (e.g. when its length arrives), so compare by content.
+class LyricsKey {
+  LyricsKey(this.track);
+  final Track track;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LyricsKey &&
+      other.track.uri == track.uri &&
+      other.track.title == track.title &&
+      other.track.artist == track.artist &&
+      other.track.album == track.album;
+
+  @override
+  int get hashCode => Object.hash(track.uri, track.title, track.artist, track.album);
+}
+
+/// Lyrics for a song (null if none were found).
+final lyricsProvider = FutureProvider.family<Lyrics?, LyricsKey>((ref, k) {
+  final online = ref.watch(settingsProvider.select((s) => s.lyricsOnline));
+  return ref.read(lyricsServiceProvider).find(k.track, online: online);
+}, retry: (_, __) => null);
+
+/// Whether the now-playing page shows lyrics instead of (or beside) the cover.
+class ShowLyricsNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+  void toggle() => state = !state;
+}
+
+final showLyricsProvider = NotifierProvider<ShowLyricsNotifier, bool>(ShowLyricsNotifier.new);
 final onlineSearchProvider = FutureProvider.family<List<ITunesSong>, String>(
   (ref, q) {
     if (q.trim().isEmpty) return Future.value(const []);
@@ -83,6 +119,15 @@ class AppSettings {
   /// Manual 加入播放清單 may add a song that is already in the playlist.
   final bool allowPlaylistDuplicates;
 
+  /// Look for songs whose file is gone (asks before removing them).
+  final bool autoCleanMissing;
+
+  /// Look lyrics up on LRCLIB when the file and .lrc have none.
+  final bool lyricsOnline;
+
+  /// Sort choices saved per list (「sort_」 + scope settings), see [sortProvider].
+  final Map<String, String> sorts;
+
   const AppSettings({
     required this.themeMode,
     required this.musicDirs,
@@ -98,6 +143,9 @@ class AppSettings {
     required this.seekSeconds,
     required this.youtubeApiKey,
     this.allowPlaylistDuplicates = false,
+    this.autoCleanMissing = true,
+    this.lyricsOnline = true,
+    this.sorts = const {},
   });
 
   AppSettings copyWith({
@@ -115,6 +163,8 @@ class AppSettings {
     int? seekSeconds,
     String? youtubeApiKey,
     bool? allowPlaylistDuplicates,
+    bool? autoCleanMissing,
+    bool? lyricsOnline,
   }) =>
       AppSettings(
         themeMode: themeMode ?? this.themeMode,
@@ -131,6 +181,9 @@ class AppSettings {
         seekSeconds: seekSeconds ?? this.seekSeconds,
         youtubeApiKey: youtubeApiKey ?? this.youtubeApiKey,
         allowPlaylistDuplicates: allowPlaylistDuplicates ?? this.allowPlaylistDuplicates,
+        autoCleanMissing: autoCleanMissing ?? this.autoCleanMissing,
+        lyricsOnline: lyricsOnline ?? this.lyricsOnline,
+        sorts: sorts,
       );
 
   static Future<AppSettings> load(AppDatabase db) async {
@@ -152,6 +205,9 @@ class AppSettings {
       seekSeconds: int.tryParse(m['seek_seconds'] ?? '') ?? 15,
       youtubeApiKey: m['youtube_api_key'] ?? '',
       allowPlaylistDuplicates: m['allow_playlist_duplicates'] == 'true',
+      autoCleanMissing: m['auto_clean_missing'] != 'false',
+      lyricsOnline: m['lyrics_online'] != 'false',
+      sorts: {for (final e in m.entries) if (e.key.startsWith('sort_')) e.key.substring(5): e.value},
     );
   }
 
@@ -245,6 +301,16 @@ class SettingsNotifier extends Notifier<AppSettings> {
     _db.setSetting('seek_seconds', '$v');
   }
 
+  void setLyricsOnline(bool v) {
+    state = state.copyWith(lyricsOnline: v);
+    _db.setSetting('lyrics_online', '$v');
+  }
+
+  void setAutoCleanMissing(bool v) {
+    state = state.copyWith(autoCleanMissing: v);
+    _db.setSetting('auto_clean_missing', '$v');
+  }
+
   void setAllowPlaylistDuplicates(bool v) {
     state = state.copyWith(allowPlaylistDuplicates: v);
     _db.setSetting('allow_playlist_duplicates', '$v');
@@ -258,6 +324,23 @@ class SettingsNotifier extends Notifier<AppSettings> {
 }
 
 final settingsProvider = NotifierProvider<SettingsNotifier, AppSettings>(SettingsNotifier.new);
+
+/// A list's saved sort choice (encoded [TrackSort] or [GroupSort]), by scope
+/// such as 'songs', 'albums', 'playlist', 'favorites'.
+class SortNotifier extends Notifier<String?> {
+  SortNotifier(this.scope);
+  final String scope;
+
+  @override
+  String? build() => ref.read(initialSettingsProvider).sorts[scope];
+
+  void set(String v) {
+    state = v;
+    ref.read(dbProvider).setSetting('sort_$scope', v);
+  }
+}
+
+final sortProvider = NotifierProvider.family<SortNotifier, String?, String>(SortNotifier.new);
 
 // ---------- library ----------
 final tracksProvider = FutureProvider<List<Track>>((ref) {

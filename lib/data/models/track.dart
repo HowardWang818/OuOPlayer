@@ -114,14 +114,20 @@ class Album {
   final String artist;
   final String? art;
   final int count;
-  const Album(this.name, this.artist, this.art, this.count);
+
+  /// When its newest song was added (ms since epoch).
+  final int added;
+  const Album(this.name, this.artist, this.art, this.count, [this.added = 0]);
 }
 
 class Artist {
   final String name;
   final String? art;
   final int count;
-  const Artist(this.name, this.art, this.count);
+
+  /// When their newest song was added (ms since epoch).
+  final int added;
+  const Artist(this.name, this.art, this.count, [this.added = 0]);
 }
 
 class Playlist {
