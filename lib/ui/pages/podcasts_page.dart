@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
+import '../../services/network_check.dart';
 import '../../services/download_service.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/art_image.dart';
@@ -143,7 +144,8 @@ class PodcastEpisodesPage extends ConsumerWidget {
                 IconButton(
                   tooltip: '下載',
                   icon: const Icon(Icons.download_for_offline_outlined),
-                  onPressed: () {
+                  onPressed: () async {
+                    if (!await okToDownload(context, warn: ref.read(settingsProvider).wifiWarning) || !context.mounted) return;
                     ref.read(downloadServiceProvider).add(f.episodes[i].uri, kind: DownloadKind.direct, title: f.episodes[i].title);
                     toast(context, '已加入下載佇列');
                   },

@@ -7,6 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'providers/providers.dart';
 import 'services/download_notifier.dart';
+import 'services/equalizer.dart';
+import 'services/network_check.dart';
+import 'services/player_widget.dart';
 import 'services/volume_normalizer.dart';
 import 'theme/app_theme.dart';
 import 'ui/shell/app_shell.dart';
@@ -22,6 +25,8 @@ class OuoApp extends ConsumerWidget {
     ref.watch(bluetoothAutomationProvider);
     ref.watch(shareIntentProvider);
     ref.watch(volumeNormalizationProvider);
+    ref.watch(equalizerProvider);
+    ref.watch(playerWidgetProvider);
     ref.watch(playbackSettingsProvider);
     ref.watch(downloadNotificationProvider);
     return MaterialApp(
@@ -115,6 +120,7 @@ final playbackSettingsProvider = Provider<void>((ref) {
         podcastSkipSilence: s.podcastSkipSilence,
         continueAfterQueue: s.continueAfterQueue,
         seekSeconds: s.seekSeconds,
+        fadeMs: s.fadeMs,
       );
 });
 
@@ -124,9 +130,10 @@ final shareIntentProvider = Provider<void>((ref) {
   // Needed for the playback and download notifications on Android 13+.
   Permission.notification.request();
   const channel = MethodChannel('ouo/share');
-  void handle(String? text) {
+  Future<void> handle(String? text) async {
     final url = RegExp(r'https?://\S+').firstMatch(text ?? '')?.group(0);
     if (url == null) return;
+    if (!await okToDownload(rootNavigatorKey.currentContext, warn: ref.read(settingsProvider).wifiWarning)) return;
     ref.read(downloadServiceProvider).add(url, format: ref.read(settingsProvider).ytFormat);
     ref.read(tabProvider.notifier).set(3);
   }

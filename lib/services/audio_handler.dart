@@ -18,7 +18,12 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   }
 
   final AppDatabase _db;
-  final player = AudioPlayer();
+  /// Android's system equalizer on the player's audio session (null on
+  /// Windows, where mpv filters are used instead).
+  final AndroidEqualizer? equalizer = Platform.isAndroid ? AndroidEqualizer() : null;
+  late final player = AudioPlayer(
+    audioPipeline: equalizer == null ? null : AudioPipeline(androidAudioEffects: [equalizer!]),
+  );
   List<Track> _tracks = [];
   Timer? _saveTimer;
   Track? _currentListenedTrack;
@@ -43,6 +48,29 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   bool podcastSkipSilence = false;
   bool continueAfterQueue = true;
   int seekSeconds = 15;
+
+  /// 播放／暫停淡入淡出 length (0 = off). Track changes never fade.
+  int fadeMs = 500;
+  int _fadeRun = 0;
+
+  /// Ramps the volume to [target]; a newer ramp (or [_stopFade]) cancels it.
+  Future<void> _fadeTo(double target) async {
+    final run = ++_fadeRun;
+    const step = Duration(milliseconds: 25);
+    final steps = max(1, fadeMs ~/ step.inMilliseconds);
+    final from = player.volume;
+    for (var i = 1; i <= steps; i++) {
+      await Future.delayed(step);
+      if (run != _fadeRun) return;
+      await player.setVolume(fadeVolume(from, target, i / steps));
+    }
+  }
+
+  /// Ends any ramp and puts the volume back to full.
+  Future<void> _stopFade() async {
+    _fadeRun++;
+    if (player.volume != 1) await player.setVolume(1);
+  }
 
   List<Track> get tracks => List.unmodifiable(_tracks);
   /// Podcast resume points: saved every few seconds while an episode plays,
@@ -105,9 +133,10 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration.music());
     // Headphones unplugged / Bluetooth disconnected → pause.
-    session.becomingNoisyEventStream.listen((_) => pause());
+    // No fade here: the sound must stop before it comes out of the speaker.
+    session.becomingNoisyEventStream.listen((_) => pause(fade: false));
     session.interruptionEventStream.listen((e) {
-      if (e.begin && e.type != AudioInterruptionType.duck) pause();
+      if (e.begin && e.type != AudioInterruptionType.duck) pause(fade: false);
     });
 
     player.playbackEventStream.listen(_broadcastState, onError: (Object e, StackTrace st) {});
@@ -177,7 +206,9 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     required bool podcastSkipSilence,
     required bool continueAfterQueue,
     required int seekSeconds,
+    int fadeMs = 500,
   }) {
+    this.fadeMs = fadeMs;
     this.podcastSpeed = podcastSpeed;
     this.podcastSkipSilence = podcastSkipSilence;
     this.continueAfterQueue = continueAfterQueue;
@@ -298,6 +329,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       } catch (_) {}
     });
     await _applyPreviewLoop();
+    await _stopFade();
     player.play();
     _scheduleSave();
   }
@@ -430,12 +462,25 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     if (_tracks.isEmpty) {
       if (!await restoreSession()) return;
     }
+    if (fadeMs > 0 && !player.playing) {
+      await player.setVolume(0);
+      unawaited(_fadeTo(1));
+    } else {
+      await _stopFade();
+    }
     await player.play();
   }
 
+  /// Fades out first (unless [fade] is false, e.g. headphones unplugged).
   @override
-  Future<void> pause() async {
+  Future<void> pause({bool fade = true}) async {
+    if (fade && fadeMs > 0 && player.playing) {
+      await _fadeTo(0);
+      // Cancelled by a play() during the fade: keep playing.
+      if (player.volume > 0) return;
+    }
     await player.pause();
+    await _stopFade();
     await saveSession();
   }
 
@@ -563,4 +608,10 @@ List<T> unshuffledQueue<T>(List<T> original, List<T> queue) {
   final kept = [for (final t in original) if (queue.any((q) => identical(q, t))) t];
   final added = [for (final q in queue) if (!kept.any((t) => identical(t, q))) q];
   return [...kept, ...added];
+}
+
+/// Volume part way ([t] from 0 to 1) through a fade; eased so it sounds even.
+double fadeVolume(double from, double to, double t) {
+  final eased = t * t * (3 - 2 * t);
+  return (from + (to - from) * eased).clamp(0.0, 1.0);
 }

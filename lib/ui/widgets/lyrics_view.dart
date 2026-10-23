@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -11,8 +14,38 @@ import 'dialogs.dart';
 
 /// Lyrics of the current song: synced ones follow playback (current line
 /// lit, tap a line to jump there), plain ones just scroll.
-class LyricsView extends ConsumerWidget {
+class LyricsView extends ConsumerStatefulWidget {
   const LyricsView({super.key});
+
+  @override
+  ConsumerState<LyricsView> createState() => _LyricsViewState();
+}
+
+/// 顯示歌詞時螢幕保持常亮: on while this view is shown.
+class _LyricsViewState extends ConsumerState<LyricsView> {
+  bool _awake = false;
+
+  void _keepAwake(bool on) {
+    if (on == _awake) return;
+    _awake = on;
+    keepScreenOn(on);
+  }
+
+  @override
+  void dispose() {
+    if (_awake) keepScreenOn(false);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _keepAwake(ref.watch(settingsProvider.select((s) => s.lyricsKeepAwake)));
+    return const _LyricsBody();
+  }
+}
+
+class _LyricsBody extends ConsumerWidget {
+  const _LyricsBody();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -83,16 +116,19 @@ class _PlainLyrics extends StatelessWidget {
   final Lyrics lyrics;
 
   @override
-  Widget build(BuildContext context) => ListView(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        children: [
-          for (final l in lyrics.lines)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text(l.text, style: const TextStyle(fontSize: 18, height: 1.4)),
-            ),
-        ],
-      );
+  Widget build(BuildContext context) => Consumer(builder: (context, ref, _) {
+        final scale = ref.watch(settingsProvider.select((s) => s.lyricsScale));
+        return ListView(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          children: [
+            for (final l in lyrics.lines)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(l.text, style: TextStyle(fontSize: 18 * scale, height: 1.4)),
+              ),
+          ],
+        );
+      });
 }
 
 class _SyncedLyrics extends ConsumerStatefulWidget {
@@ -123,6 +159,7 @@ class _SyncedLyricsState extends ConsumerState<_SyncedLyrics> {
   @override
   Widget build(BuildContext context) {
     final pos = ref.watch(positionProvider).value ?? Duration.zero;
+    final scale = ref.watch(settingsProvider.select((s) => s.lyricsScale));
     final current = widget.lyrics.indexAt(pos);
     _follow(current);
     final muted = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45);
@@ -140,7 +177,7 @@ class _SyncedLyricsState extends ConsumerState<_SyncedLyrics> {
               child: AnimatedDefaultTextStyle(
                 duration: const Duration(milliseconds: 200),
                 style: TextStyle(
-                  fontSize: 22,
+                  fontSize: 22 * scale,
                   height: 1.3,
                   fontWeight: FontWeight.bold,
                   color: i == current ? AppColors.accent : muted,
@@ -152,6 +189,12 @@ class _SyncedLyricsState extends ConsumerState<_SyncedLyrics> {
       ]),
     );
   }
+}
+
+/// Keeps the screen from turning off (Android; nothing elsewhere).
+void keepScreenOn(bool on) {
+  if (!Platform.isAndroid) return;
+  const MethodChannel('ouo/screen').invokeMethod('keepOn', on).catchError((_) => null);
 }
 
 /// Forgets the saved LRCLIB result (or "not found") and asks again.
