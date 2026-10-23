@@ -40,9 +40,10 @@ class YtDlpAndroid implements YtDlpBackend {
           final ev = parser.parse(e['line'] as String? ?? '');
           if (ev != null) controller.add(ev);
         case 'done':
+          // Lines the callback missed (e.g. --print output) are in the final stdout.
           for (final l in (e['out'] as String? ?? '').split('\n')) {
             final ev = parser.parse(l);
-            if (ev is YtDlpFileDone) controller.add(ev);
+            if (ev is YtDlpFileDone || ev is YtDlpPlaylistTitle) controller.add(ev!);
           }
           controller.add(YtDlpFinished(e['success'] == true, e['error'] as String?));
           sub.cancel();

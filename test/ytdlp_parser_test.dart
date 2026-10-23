@@ -22,6 +22,17 @@ void main() {
     expect(parser.parse('   '), isNull);
   });
 
+  test('reads the source playlist title, ignoring single videos', () {
+    final parser = YtDlpLineParser();
+    final t = parser.parse('OUOPLAYLIST 我的最愛 2026') as YtDlpPlaylistTitle;
+    expect(t.title, '我的最愛 2026');
+    expect(parser.parse('OUOPLAYLIST NA'), isNull);
+    // Title must be printed before the file so the playlist exists first.
+    const opts = YtDlpOptions(url: 'u', format: 'mp3', playlist: true, outDir: 'o');
+    expect(opts.args.indexOf('after_move:OUOPLAYLIST %(playlist_title)s'),
+        lessThan(opts.args.indexOf('after_move:OUOFILE %(filepath)s')));
+  });
+
   test('builds yt-dlp arguments for audio extraction', () {
     const opts = YtDlpOptions(url: 'https://example.com/v', format: 'm4a', playlist: false, outDir: 'out');
     expect(opts.args, containsAllInOrder(['-x', '--audio-format', 'm4a']));

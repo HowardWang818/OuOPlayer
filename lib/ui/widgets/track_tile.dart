@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
+import '../../services/file_trash.dart';
 import '../../theme/app_theme.dart';
 import '../pages/collection_page.dart';
 import 'art_image.dart';
@@ -159,8 +161,55 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
                 db.deleteTracks([track.id]);
               },
             ),
+          if (track.source == TrackSource.local || track.source == TrackSource.download)
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+              title: const Text('刪除檔案', style: TextStyle(color: Colors.redAccent)),
+              subtitle: Text('移到$trashName，可以還原'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _deleteFile(context, ref, track);
+              },
+            ),
         ]),
       ),
     ),
   );
+}
+
+/// Asks first, moves the file to the trash, then removes the song from the
+/// library, playlists, likes and the play queue.
+Future<void> _deleteFile(BuildContext context, WidgetRef ref, Track track) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    useRootNavigator: true,
+    builder: (ctx) => AlertDialog(
+      title: const Text('刪除檔案？'),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(p.basename(track.uri), style: const TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Text('檔案會移到$trashName，並從音樂庫、播放清單和已按讚的歌曲中移除。'),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('刪除'),
+        ),
+      ],
+    ),
+  );
+  if (ok != true) return;
+  try {
+    if (!await moveToTrash(track.uri)) {
+      if (context.mounted) toast(context, '已取消刪除');
+      return;
+    }
+    await ref.read(audioHandlerProvider).removeTrack(track.id);
+    await ref.read(dbProvider).deleteTracks([track.id]);
+    if (context.mounted) toast(context, '已移到$trashName');
+  } catch (e) {
+    if (context.mounted) toast(context, '刪除失敗：$e');
+  }
 }
