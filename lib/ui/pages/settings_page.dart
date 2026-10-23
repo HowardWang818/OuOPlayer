@@ -9,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../providers/providers.dart';
 import '../../services/sleep_timer.dart';
 import '../widgets/dialogs.dart';
+import '../widgets/missing_files_dialog.dart';
 import '../widgets/sleep_timer_sheet.dart';
 import 'devices_page.dart';
 import 'youtube_key_guide_page.dart';
@@ -30,7 +31,9 @@ Future<void> rescanLibrary(BuildContext context, WidgetRef ref) async {
   final s = ref.read(settingsProvider);
   final dirs = {...s.musicDirs, s.downloadDir}.toList();
   final added = await ref.read(scannerProvider).scan(dirs);
-  if (context.mounted) toast(context, '掃描完成，新增 $added 首歌曲');
+  if (!context.mounted) return;
+  toast(context, '掃描完成，新增 $added 首歌曲');
+  await checkMissingFiles(context, ref);
 }
 
 class SettingsPage extends ConsumerWidget {
@@ -88,7 +91,7 @@ class SettingsPage extends ConsumerWidget {
             if (dir == null || s.musicDirs.contains(dir)) return;
             n.setMusicDirs([...s.musicDirs, dir]);
             if (ref.read(settingsProvider).autoScanNewFolders) {
-              final added = await ref.read(scannerProvider).scan([dir], removeMissing: false);
+              final added = await ref.read(scannerProvider).scan([dir]);
               if (context.mounted) toast(context, '「${p.basename(dir)}」掃描完成，新增 $added 首歌曲');
             }
           },
@@ -168,6 +171,27 @@ class SettingsPage extends ConsumerWidget {
             onSelectionChanged: (v) => n.setSeekSeconds(v.first),
           ),
         ),
+        header('歌詞'),
+        SwitchListTile(
+          secondary: const Icon(Icons.lyrics_outlined),
+          title: const Text('自動上網找歌詞'),
+          subtitle: const Text('歌曲檔案和 .lrc 檔都沒有歌詞時，從 LRCLIB 查詢（免費，只會送出歌名、歌手、專輯和長度）'),
+          value: s.lyricsOnline,
+          onChanged: n.setLyricsOnline,
+        ),
+        header('音樂庫維護'),
+        SwitchListTile(
+          secondary: const Icon(Icons.cleaning_services_outlined),
+          title: const Text('自動檢查已不存在的歌曲'),
+          subtitle: const Text('開啟 App 和切回 App 時檢查；發現檔案已不存在的歌曲時，先問你再從音樂庫移除'),
+          value: s.autoCleanMissing,
+          onChanged: n.setAutoCleanMissing,
+        ),
+        ListTile(
+          leading: const Icon(Icons.search),
+          title: const Text('立即檢查已不存在的歌曲'),
+          onTap: () => checkMissingFiles(context, ref, manual: true),
+        ),
         header('播放清單'),
         SwitchListTile(
           secondary: const Icon(Icons.copy_all_outlined),
@@ -215,7 +239,7 @@ class SettingsPage extends ConsumerWidget {
           ),
         ],
         header('關於'),
-        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.7.0')),
+        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.8.0')),
       ]),
     );
   }

@@ -11,6 +11,7 @@ import 'services/volume_normalizer.dart';
 import 'theme/app_theme.dart';
 import 'ui/shell/app_shell.dart';
 import 'ui/widgets/dialogs.dart';
+import 'ui/widgets/missing_files_dialog.dart';
 
 class OuoApp extends ConsumerWidget {
   const OuoApp({super.key});
@@ -30,9 +31,48 @@ class OuoApp extends ConsumerWidget {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: mode,
-      home: const AppShell(),
+      home: const MissingFilesWatcher(child: AppShell()),
     );
   }
+}
+
+/// Checks for songs whose file is gone at start-up and whenever the app comes
+/// back to the foreground (at most once a minute), if enabled.
+class MissingFilesWatcher extends ConsumerStatefulWidget {
+  const MissingFilesWatcher({super.key, required this.child});
+  final Widget child;
+
+  @override
+  ConsumerState<MissingFilesWatcher> createState() => _MissingFilesWatcherState();
+}
+
+class _MissingFilesWatcherState extends ConsumerState<MissingFilesWatcher> {
+  late final AppLifecycleListener _lifecycle;
+  DateTime? _last;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycle = AppLifecycleListener(onResume: _check);
+    Future.delayed(const Duration(seconds: 3), _check);
+  }
+
+  void _check() {
+    if (!mounted || !ref.read(settingsProvider).autoCleanMissing) return;
+    final now = DateTime.now();
+    if (_last != null && now.difference(_last!) < const Duration(minutes: 1)) return;
+    _last = now;
+    checkMissingFiles(context, ref);
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 /// Root navigator, for dialogs started from outside the widget tree

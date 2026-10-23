@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 
+import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../theme/app_theme.dart';
 import 'art_image.dart';
@@ -142,5 +143,53 @@ class VolumeSlider extends ConsumerWidget {
       ),
       SizedBox(width: 110, child: Slider(value: v, onChanged: player.setVolume)),
     ]);
+  }
+}
+
+/// Podcast playback speed for the player bars: tap for the next speed,
+/// long-press to pick one. Hidden unless a podcast is playing.
+class PodcastSpeedButton extends ConsumerWidget {
+  const PodcastSpeedButton({super.key, this.color});
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final track = ref.watch(currentTrackProvider);
+    if (track?.source != TrackSource.podcast) return const SizedBox.shrink();
+    final speed = ref.watch(settingsProvider.select((s) => s.podcastSpeed));
+    final notifier = ref.read(settingsProvider.notifier);
+    final next = podcastSpeeds[(podcastSpeeds.indexOf(speed) + 1) % podcastSpeeds.length];
+    return Tooltip(
+      message: '播放速度（點一下切換，長按選擇）',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => notifier.setPodcastSpeed(next),
+        onLongPress: () => showModalBottomSheet(
+          context: context,
+          useRootNavigator: true,
+          showDragHandle: true,
+          builder: (ctx) => SafeArea(
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const ListTile(title: Text('播放速度', style: TextStyle(fontWeight: FontWeight.bold))),
+                for (final v in podcastSpeeds)
+                  ListTile(
+                    title: Text('${v}x'),
+                    trailing: v == speed ? const Icon(Icons.check, color: AppColors.accent) : null,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      notifier.setPodcastSpeed(v);
+                    },
+                  ),
+              ]),
+            ),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          child: Text('${speed}x', style: TextStyle(fontWeight: FontWeight.bold, color: color)),
+        ),
+      ),
+    );
   }
 }

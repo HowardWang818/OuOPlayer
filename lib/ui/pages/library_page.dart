@@ -6,6 +6,8 @@ import '../../providers/providers.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/art_image.dart';
 import '../widgets/dialogs.dart';
+import '../widgets/sort_button.dart';
+import '../../services/track_sort.dart';
 import '../widgets/track_selection.dart';
 import '../widgets/track_tile.dart';
 import 'collection_page.dart';
@@ -44,6 +46,14 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     if (mounted) _push(CollectionPage.playlist(id, n));
   }
 
+  Widget _sortRow(String text, Widget button) => Padding(
+        padding: const EdgeInsets.only(left: 16, right: 4),
+        child: Row(children: [
+          Expanded(child: Text(text, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant))),
+          button,
+        ]),
+      );
+
   @override
   Widget build(BuildContext context) {
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
@@ -76,26 +86,6 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
               subtitle: Text('${f.path == null ? '本機' : '資料夾'} • ${f.count} 首歌曲', style: TextStyle(color: muted)),
               onTap: () => _push(CollectionPage.folder(f.path, f.name)),
             ),
-          ListTile(
-            leading: Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(4), color: Theme.of(context).colorScheme.surfaceContainerHigh),
-              child: const Icon(Icons.add),
-            ),
-            title: const Text('建立播放清單'),
-            onTap: _newPlaylist,
-          ),
-          ListTile(
-            leading: Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(4), color: Theme.of(context).colorScheme.surfaceContainerHigh),
-              child: const Icon(Icons.create_new_folder_outlined),
-            ),
-            title: const Text('建立資料夾'),
-            onTap: () => createPlaylistFolder(context, ref),
-          ),
           for (final f in playlistFolders)
             ListTile(
               leading: PlaylistFolderArt(folder: f, size: 56),
@@ -112,29 +102,41 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
             ),
         ]);
       case _Filter.albums:
-        final albums = ref.watch(albumsProvider).value ?? const [];
+        final sort = GroupSort.decode(ref.watch(sortProvider('albums')));
+        final albums = sort.apply(ref.watch(albumsProvider).value ?? const <Album>[],
+            name: (a) => a.name, count: (a) => a.count, added: (a) => a.added);
         body = ListView.builder(
-          itemCount: albums.length,
-          itemBuilder: (_, i) => ListTile(
-            leading: ArtImage(albums[i].art, size: 56),
-            title: Text(albums[i].name, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text('專輯 • ${albums[i].artist}', maxLines: 1, style: TextStyle(color: muted)),
-            onTap: () => _push(CollectionPage.album(albums[i].name)),
-          ),
+          itemCount: albums.length + 1,
+          itemBuilder: (_, i) => i == 0
+              ? _sortRow('${albums.length} 張專輯',
+                  GroupSortButton(sort: sort, onChanged: (v) => ref.read(sortProvider('albums').notifier).set(v.encode())))
+              : ListTile(
+                  leading: ArtImage(albums[i - 1].art, size: 56),
+                  title: Text(albums[i - 1].name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text('專輯 • ${albums[i - 1].artist}', maxLines: 1, style: TextStyle(color: muted)),
+                  onTap: () => _push(CollectionPage.album(albums[i - 1].name)),
+                ),
         );
       case _Filter.artists:
-        final artists = ref.watch(artistsProvider).value ?? const [];
+        final sort = GroupSort.decode(ref.watch(sortProvider('artists')));
+        final artists = sort.apply(ref.watch(artistsProvider).value ?? const <Artist>[],
+            name: (a) => a.name, count: (a) => a.count, added: (a) => a.added);
         body = ListView.builder(
-          itemCount: artists.length,
-          itemBuilder: (_, i) => ListTile(
-            leading: ArtImage(artists[i].art, size: 56, circle: true, icon: Icons.person),
-            title: Text(artists[i].name),
-            subtitle: Text('演出者 • ${artists[i].count} 首', style: TextStyle(color: muted)),
-            onTap: () => _push(CollectionPage.artist(artists[i].name)),
-          ),
+          itemCount: artists.length + 1,
+          itemBuilder: (_, i) => i == 0
+              ? _sortRow('${artists.length} 位演出者',
+                  GroupSortButton(sort: sort, onChanged: (v) => ref.read(sortProvider('artists').notifier).set(v.encode())))
+              : ListTile(
+                  leading: ArtImage(artists[i - 1].art, size: 56, circle: true, icon: Icons.person),
+                  title: Text(artists[i - 1].name),
+                  subtitle: Text('演出者 • ${artists[i - 1].count} 首', style: TextStyle(color: muted)),
+                  onTap: () => _push(CollectionPage.artist(artists[i - 1].name)),
+                ),
         );
       case _Filter.songs:
-        final tracks = ref.watch(tracksProvider).value ?? const [];
+        final sort = TrackSort.decode(ref.watch(sortProvider('songs')), fallback: const TrackSort(TrackSortKey.title));
+        final all = ref.watch(tracksProvider).value ?? const <Track>[];
+        final tracks = [for (final i in sort.order(all)) all[i]];
         final handler = ref.read(audioHandlerProvider);
         body = TrackSelectionScope(
           tracks: tracks,
@@ -145,6 +147,11 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                   leading: const Icon(Icons.shuffle, color: AppColors.accent),
                   title: Text('隨機播放全部（${tracks.length} 首）'),
                   onTap: tracks.isEmpty ? null : () => handler.playTracks(tracks, shuffle: true),
+                  trailing: TrackSortButton(
+                    sort: sort,
+                    allowCustom: false,
+                    onChanged: (v) => ref.read(sortProvider('songs').notifier).set(v.encode()),
+                  ),
                 )
               : TrackTile(track: tracks[i - 1], selectIndex: i - 1, onTap: () => handler.playTracks(tracks, index: i - 1)),
           ),
@@ -156,7 +163,17 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('你的音樂庫'),
-        actions: [IconButton(icon: const Icon(Icons.add), tooltip: '建立播放清單', onPressed: _newPlaylist)],
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.add),
+            tooltip: '建立',
+            onSelected: (v) => v == 'folder' ? createPlaylistFolder(context, ref) : _newPlaylist(),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'playlist', child: ListTile(leading: Icon(Icons.queue_music), title: Text('建立播放清單'))),
+              PopupMenuItem(value: 'folder', child: ListTile(leading: Icon(Icons.create_new_folder_outlined), title: Text('建立資料夾'))),
+            ],
+          ),
+        ],
       ),
       body: Column(children: [
         SizedBox(

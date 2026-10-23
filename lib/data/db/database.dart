@@ -133,9 +133,11 @@ class AppDatabase {
   }
 
   Future<List<Album>> albums() async {
-    final rows = await db.rawQuery('''SELECT album, MAX(artist) AS artist, MAX(art) AS art, COUNT(*) AS c
+    final rows = await db.rawQuery('''SELECT album, MAX(artist) AS artist, MAX(art) AS art, COUNT(*) AS c, MAX(added_at) AS a
       FROM tracks WHERE source NOT IN ('url', 'podcast', 'preview') GROUP BY album ORDER BY album COLLATE NOCASE''');
-    return rows.map((r) => Album(r['album'] as String? ?? '未知專輯', r['artist'] as String? ?? '', r['art'] as String?, r['c'] as int)).toList();
+    return rows
+        .map((r) => Album(r['album'] as String? ?? '未知專輯', r['artist'] as String? ?? '', r['art'] as String?, r['c'] as int, (r['a'] as int?) ?? 0))
+        .toList();
   }
 
   Future<List<Album>> recentAlbums({int limit = 12}) async {
@@ -145,9 +147,9 @@ class AppDatabase {
   }
 
   Future<List<Artist>> artists() async {
-    final rows = await db.rawQuery('''SELECT artist, MAX(art) AS art, COUNT(*) AS c
+    final rows = await db.rawQuery('''SELECT artist, MAX(art) AS art, COUNT(*) AS c, MAX(added_at) AS a
       FROM tracks WHERE source NOT IN ('url', 'podcast', 'preview') GROUP BY artist ORDER BY artist COLLATE NOCASE''');
-    return rows.map((r) => Artist(r['artist'] as String? ?? '未知演出者', r['art'] as String?, r['c'] as int)).toList();
+    return rows.map((r) => Artist(r['artist'] as String? ?? '未知演出者', r['art'] as String?, r['c'] as int, (r['a'] as int?) ?? 0)).toList();
   }
 
   /// Tracks stored under [folder] (path prefix match; avoids LIKE wildcards in paths).

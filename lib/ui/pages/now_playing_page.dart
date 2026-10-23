@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../widgets/art_image.dart';
+import '../widgets/lyrics_view.dart';
 import '../widgets/output_device_chip.dart';
 import '../widgets/player_controls.dart';
 import '../widgets/sleep_timer_sheet.dart';
@@ -20,6 +21,7 @@ class NowPlayingPage extends ConsumerWidget {
     final bg = theme.scaffoldBackgroundColor;
     final color = ref.watch(artColorProvider(track?.art)).value ?? theme.colorScheme.surfaceContainerHigh;
     final wide = MediaQuery.sizeOf(context).width > 900;
+    final showLyrics = ref.watch(showLyricsProvider);
 
     final cover = LayoutBuilder(builder: (context, c) {
       final size = c.maxWidth.clamp(120.0, 520.0);
@@ -52,6 +54,13 @@ class NowPlayingPage extends ConsumerWidget {
       const SizedBox(height: 8),
       Row(children: [
         const Expanded(child: OutputDeviceChip()),
+        IconButton(
+          tooltip: '歌詞',
+          isSelected: showLyrics,
+          icon: const Icon(Icons.lyrics_outlined),
+          selectedIcon: const Icon(Icons.lyrics),
+          onPressed: ref.read(showLyricsProvider.notifier).toggle,
+        ),
         const SleepTimerButton(),
         IconButton(
           tooltip: '佇列',
@@ -93,9 +102,12 @@ class NowPlayingPage extends ConsumerWidget {
                         Expanded(child: cover),
                         const SizedBox(width: 48),
                         Expanded(child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 520), child: info))),
+                        // Desktop: lyrics in a panel on the right.
+                        if (showLyrics) ...[const SizedBox(width: 48), const Expanded(child: LyricsView())],
                       ])
                     : Column(children: [
-                        Expanded(child: cover),
+                        // Phone: lyrics take the cover's place.
+                        Expanded(child: showLyrics ? const LyricsView() : cover),
                         const SizedBox(height: 24),
                         info,
                       ]),

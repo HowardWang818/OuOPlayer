@@ -55,6 +55,7 @@ class MiniPlayer extends ConsumerWidget {
                   ]),
                 ),
                 OutputDeviceChip(dense: true, color: fg),
+                PodcastSpeedButton(color: fg),
                 IconTheme(data: IconThemeData(color: fg), child: FavoriteButton(activeColor: fg)),
                 IconTheme(
                   data: IconThemeData(color: fg),
@@ -118,6 +119,7 @@ class DesktopPlayerBar extends ConsumerWidget {
               icon: const Icon(Icons.queue_music),
               onPressed: () => Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => const QueuePage())),
             ),
+            const PodcastSpeedButton(),
             const OutputDeviceChip(dense: true),
             const VolumeSlider(),
           ]),

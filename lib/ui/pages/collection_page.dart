@@ -8,6 +8,8 @@ import '../../theme/app_theme.dart';
 import '../widgets/art_image.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/export_sheet.dart';
+import '../widgets/sort_button.dart';
+import '../../services/track_sort.dart';
 import '../widgets/track_selection.dart';
 import '../widgets/track_tile.dart';
 import 'folder_page.dart';
@@ -42,7 +44,13 @@ class CollectionPage extends ConsumerWidget {
       CollectionKind.allSongs => ref.watch(tracksProvider),
       CollectionKind.folder => ref.watch(folderTracksProvider(folder)),
     };
-    final tracks = tracksAsync.value ?? const <Track>[];
+    final source = tracksAsync.value ?? const <Track>[];
+    // Shown order; [order] maps each row back to its place in [source] so
+    // removing from a playlist hits the right song.
+    final sortScope = kind.name;
+    final sort = TrackSort.decode(ref.watch(sortProvider(sortScope)));
+    final order = sort.order(source);
+    final tracks = [for (final i in order) source[i]];
     final info = playlistId == null ? null : ref.watch(playlistInfoProvider(playlistId!)).value;
     // A custom playlist cover wins over the first song's cover.
     final art = info?.cover ?? tracks.where((t) => t.art != null).firstOrNull?.art;
@@ -66,7 +74,7 @@ class CollectionPage extends ConsumerWidget {
     ].join(' • ');
 
     Future<void> Function(List<int>)? removeMany = switch (kind) {
-      CollectionKind.playlist => (idx) => db.removeFromPlaylistAt(playlistId!, idx),
+      CollectionKind.playlist => (idx) => db.removeFromPlaylistAt(playlistId!, [for (final i in idx) order[i]]),
       CollectionKind.favorites => (idx) async {
           for (final i in idx) {
             await db.setFavorite(tracks[i], false);
@@ -196,6 +204,16 @@ class CollectionPage extends ConsumerWidget {
                   icon: const Icon(Icons.download_for_offline_outlined),
                   onPressed: () => _downloadToPlaylist(context, ref),
                 ),
+              TrackSortButton(
+                sort: sort,
+                customLabel: switch (kind) {
+                  CollectionKind.playlist => '自訂順序',
+                  CollectionKind.favorites => '按讚順序',
+                  CollectionKind.album => '曲目順序',
+                  _ => '預設順序',
+                },
+                onChanged: (v) => ref.read(sortProvider(sortScope).notifier).set(v.encode()),
+              ),
               const Spacer(),
               IconButton.filled(
                 iconSize: 32,
@@ -220,7 +238,7 @@ class CollectionPage extends ConsumerWidget {
               showArt: kind != CollectionKind.album,
               onTap: () => handler.playTracks(tracks, index: i),
               onRemove: kind == CollectionKind.playlist
-                  ? () => db.removeFromPlaylist(playlistId!, i)
+                  ? () => db.removeFromPlaylist(playlistId!, order[i])
                   : kind == CollectionKind.favorites
                       ? () => db.setFavorite(tracks[i], false)
                       : null,
