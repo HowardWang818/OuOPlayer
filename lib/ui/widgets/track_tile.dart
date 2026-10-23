@@ -10,6 +10,7 @@ import '../../theme/app_theme.dart';
 import '../pages/collection_page.dart';
 import 'art_image.dart';
 import 'dialogs.dart';
+import 'edit_track_dialog.dart';
 import 'removal_summary.dart';
 import 'track_selection.dart';
 
@@ -183,6 +184,16 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
               onTap: () async {
                 Navigator.pop(ctx);
                 if (await confirmDelete(context, title: '$removeLabel？', message: track.title)) onRemove();
+              },
+            ),
+          if (track.source == TrackSource.local || track.source == TrackSource.download)
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('編輯資訊'),
+              subtitle: const Text('歌名、歌手、專輯、封面'),
+              onTap: () {
+                Navigator.pop(ctx);
+                showEditTrack(context, ref, track);
               },
             ),
           if (track.source == TrackSource.local || track.source == TrackSource.download)

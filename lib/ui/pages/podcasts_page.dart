@@ -69,6 +69,17 @@ class PodcastEpisodesPage extends ConsumerWidget {
     final feed = ref.watch(podcastFeedProvider(podcast.feedUrl));
     final handler = ref.read(audioHandlerProvider);
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final progress = ref.watch(podcastProgressProvider).value ?? const {};
+    String? state(Track e) {
+      final s = progress[e.uri];
+      if (s == null) return null;
+      if (s.finished) return '已聽完';
+      final total = s.duration ?? e.duration;
+      if (total == null) return '聽到 ${formatDuration(s.position)}';
+      final left = total - s.position;
+      return '剩 ${(left.inSeconds / 60).ceil()} 分鐘';
+    }
+
     return Scaffold(
       appBar: AppBar(title: Text(podcast.title), actions: [
         PopupMenuButton<String>(
@@ -110,12 +121,24 @@ class PodcastEpisodesPage extends ConsumerWidget {
             ListTile(
               title: Text(f.episodes[i].title, maxLines: 2, overflow: TextOverflow.ellipsis),
               subtitle: Text(
-                [f.descriptions[f.episodes[i].uri], if (f.episodes[i].duration != null) formatDuration(f.episodes[i].duration)]
+                [
+                  state(f.episodes[i]),
+                  f.descriptions[f.episodes[i].uri],
+                  if (f.episodes[i].duration != null) formatDuration(f.episodes[i].duration),
+                ]
                     .whereType<String>()
                     .join(' • '),
                 style: TextStyle(color: muted),
               ),
               onTap: () => handler.playTracks(f.episodes, index: i),
+              onLongPress: progress[f.episodes[i].uri] == null
+                  ? null
+                  : () async {
+                      if (await confirmDelete(context,
+                          title: '清除「${f.episodes[i].title}」的收聽進度？', message: '會變回未聽過，下次從頭開始播放。', action: '清除')) {
+                        await ref.read(dbProvider).clearPodcastProgress(f.episodes[i].uri);
+                      }
+                    },
               trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                 IconButton(
                   tooltip: '下載',

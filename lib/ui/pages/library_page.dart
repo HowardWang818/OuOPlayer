@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/db/database.dart';
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/art_image.dart';
 import '../widgets/dialogs.dart';
+import '../widgets/import_playlist.dart';
 import '../widgets/sort_button.dart';
 import '../../services/track_sort.dart';
 import '../widgets/track_selection.dart';
@@ -85,6 +87,23 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
               title: Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis),
               subtitle: Text('${f.path == null ? '本機' : '資料夾'} • ${f.count} 首歌曲', style: TextStyle(color: muted)),
               onTap: () => _push(CollectionPage.folder(f.path, f.name)),
+            ),
+          for (final s in SmartList.values)
+            ListTile(
+              leading: Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(borderRadius: BorderRadius.circular(4), color: Theme.of(context).colorScheme.surfaceContainerHigh),
+                child: Icon(switch (s) {
+                  SmartList.mostPlayed => Icons.local_fire_department_outlined,
+                  SmartList.recentlyAdded => Icons.new_releases_outlined,
+                  SmartList.notPlayedLately => Icons.history_toggle_off,
+                  SmartList.neverPlayed => Icons.fiber_new_outlined,
+                }, color: AppColors.accent),
+              ),
+              title: Text(s.label),
+              subtitle: Text('智慧播放清單 • ${s.description}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted)),
+              onTap: () => _push(CollectionPage.smart(s)),
             ),
           for (final f in playlistFolders)
             ListTile(
@@ -167,10 +186,15 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
           PopupMenuButton<String>(
             icon: const Icon(Icons.add),
             tooltip: '建立',
-            onSelected: (v) => v == 'folder' ? createPlaylistFolder(context, ref) : _newPlaylist(),
+            onSelected: (v) => switch (v) {
+              'folder' => createPlaylistFolder(context, ref),
+              'import' => importM3uPlaylist(context, ref),
+              _ => _newPlaylist(),
+            },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'playlist', child: ListTile(leading: Icon(Icons.queue_music), title: Text('建立播放清單'))),
               PopupMenuItem(value: 'folder', child: ListTile(leading: Icon(Icons.create_new_folder_outlined), title: Text('建立資料夾'))),
+              PopupMenuItem(value: 'import', child: ListTile(leading: Icon(Icons.file_open_outlined), title: Text('匯入播放清單（M3U）'))),
             ],
           ),
         ],

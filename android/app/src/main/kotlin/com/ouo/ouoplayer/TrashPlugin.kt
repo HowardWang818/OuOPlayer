@@ -28,6 +28,9 @@ class TrashPlugin(private val context: Context, messenger: BinaryMessenger) : Me
     private val method = MethodChannel(messenger, "ouo/trash")
     private val main = Handler(Looper.getMainLooper())
     private var pending: MethodChannel.Result? = null
+
+    /** Runs once the user allowed a write request, before [pending] answers. */
+    private var afterGrant: (() -> Unit)? = null
     var activity: Activity? = null
 
     init {
@@ -35,6 +38,7 @@ class TrashPlugin(private val context: Context, messenger: BinaryMessenger) : Me
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+        if (call.method == "overwrite") return overwrite(call, result)
         if (call.method != "trash" && call.method != "delete") return result.notImplemented()
         val forever = call.method == "delete"
         val paths = call.argument<List<String>>("paths") ?: return result.error("args", "paths missing", null)
@@ -61,6 +65,38 @@ class TrashPlugin(private val context: Context, messenger: BinaryMessenger) : Me
                 uris.size == paths.size
             }
             if (done) main.post { then(uris.filterNotNull()) }
+        }
+    }
+
+    /**
+     * Replaces a music file's contents with [temp] (edited tags). Files this
+     * app created are written directly; for the others Android asks first.
+     */
+    private fun overwrite(call: MethodCall, result: MethodChannel.Result) {
+        val path = call.argument<String>("path") ?: return result.error("args", "path missing", null)
+        val temp = call.argument<String>("temp") ?: return result.error("args", "temp missing", null)
+        try {
+            File(temp).copyTo(File(path), overwrite = true)
+            return result.success(true)
+        } catch (e: Exception) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return result.error("write", e.message, null)
+        }
+        withUris(listOf(path)) { uris ->
+            val uri = uris.firstOrNull() ?: return@withUris result.error("notFound", "系統找不到這個檔案", null)
+            val act = activity ?: return@withUris result.error("noActivity", "無法顯示確認視窗", null)
+            try {
+                val request = MediaStore.createWriteRequest(context.contentResolver, listOf(uri))
+                pending?.success(false)
+                pending = result
+                afterGrant = {
+                    context.contentResolver.openOutputStream(uri, "wt")!!.use { out -> File(temp).inputStream().use { it.copyTo(out) } }
+                }
+                act.startIntentSenderForResult(request.intentSender, REQUEST_CODE, null, 0, 0, 0)
+            } catch (e: Exception) {
+                pending = null
+                afterGrant = null
+                result.error("write", e.message, null)
+            }
         }
     }
 
@@ -106,8 +142,23 @@ class TrashPlugin(private val context: Context, messenger: BinaryMessenger) : Me
     /** Called from MainActivity with the result of the system dialog. */
     fun onActivityResult(requestCode: Int, resultCode: Int): Boolean {
         if (requestCode != REQUEST_CODE) return false
-        pending?.success(resultCode == Activity.RESULT_OK)
+        val result = pending
+        val after = afterGrant
         pending = null
+        afterGrant = null
+        if (resultCode != Activity.RESULT_OK || after == null) {
+            result?.success(resultCode == Activity.RESULT_OK)
+            return true
+        }
+        Thread {
+            val error = try {
+                after()
+                null
+            } catch (e: Exception) {
+                e.message ?: "寫入失敗"
+            }
+            main.post { if (error == null) result?.success(true) else result?.error("write", error, null) }
+        }.start()
         return true
     }
 }

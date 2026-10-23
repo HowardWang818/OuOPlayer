@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:crypto/crypto.dart';
@@ -83,6 +84,14 @@ class LibraryScanner {
   }
 
   /// Import a single file (e.g. a finished download) into the library.
+  /// Keeps a cover picked in 編輯資訊 in the art cache; returns its path.
+  Future<String> storeArt(Uint8List bytes, String mime) async {
+    final name = '${md5.convert(bytes)}.${mime.contains('png') ? 'png' : 'jpg'}';
+    final f = File(p.join(await _artDir(), name));
+    if (!f.existsSync()) await f.writeAsBytes(bytes);
+    return f.path;
+  }
+
   /// Deletes cached cover images no library song uses any more.
   Future<int> cleanArtCache() async {
     final used = (await _db.tracks()).map((t) => t.art).whereType<String>().map(p.normalize).toSet();

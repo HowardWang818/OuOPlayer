@@ -20,6 +20,9 @@ class AppDatabase {
   Stream<void> get changes => _changes.stream;
   void _notify() => _changes.add(null);
 
+  /// For changes made straight on [db] (e.g. restoring a backup).
+  void notifyChanged() => _notify();
+
   static Future<AppDatabase> open() async {
     if (Platform.isWindows || Platform.isLinux) {
       sqfliteFfiInit();
@@ -27,7 +30,7 @@ class AppDatabase {
     }
     final dir = await getApplicationSupportDirectory();
     final path = p.join(dir.path, 'ouoplayer.db');
-    final db = await openDatabase(path, version: 3, onUpgrade: migrate, onCreate: (db, _) async {
+    final db = await openDatabase(path, version: schemaVersion, onUpgrade: migrate, onCreate: (db, _) async {
       await db.execute('''CREATE TABLE tracks(
         id TEXT PRIMARY KEY, uri TEXT NOT NULL, title TEXT NOT NULL, artist TEXT, album TEXT,
         duration_ms INTEGER, art TEXT, source TEXT, track_no INTEGER, added_at INTEGER)''');
@@ -39,7 +42,7 @@ class AppDatabase {
       await db.execute('CREATE TABLE history(track_id TEXT, played_at INTEGER)');
       await db.execute('CREATE TABLE podcasts(feed_url TEXT PRIMARY KEY, title TEXT, author TEXT, image TEXT, added_at INTEGER)');
       await db.execute('CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT)');
-      await migrate(db, 1, 3);
+      await migrate(db, 1, schemaVersion);
     });
     // Previews from v0.3.0 were recorded as history; they don't belong there.
     await db.execute("DELETE FROM history WHERE track_id LIKE 'https://audio-ssl.itunes.apple.com/%'");
@@ -48,18 +51,28 @@ class AppDatabase {
     return AppDatabase._(db);
   }
 
+  static const schemaVersion = 4;
+
   /// Schema changes since version 1; existing data is kept.
   static Future<void> migrate(Database db, int from, int to) async {
-    if (from < 2) {
+    if (from < 2 && to >= 2) {
       // v0.5.0: custom playlist covers and playlist folders.
       await db.execute('ALTER TABLE playlists ADD COLUMN cover TEXT');
       await db.execute('ALTER TABLE playlists ADD COLUMN folder_id INTEGER');
       await db.execute('CREATE TABLE playlist_folders(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at INTEGER)');
     }
-    if (from < 3) {
+    if (from < 3 && to >= 3) {
       // v0.6.0: which source (e.g. a YouTube video) became which file, so
       // playlist downloads can skip songs that are already there.
       await db.execute('CREATE TABLE download_history(source TEXT PRIMARY KEY, path TEXT NOT NULL, created_at INTEGER)');
+    }
+    if (from < 4 && to >= 4) {
+      // v0.9.0: play counts for the smart playlists (history keeps only the
+      // last 1000 plays), seeded from that history; podcast resume points.
+      await db.execute('CREATE TABLE plays(track_id TEXT PRIMARY KEY, count INTEGER NOT NULL, last_played INTEGER)');
+      await db.execute('INSERT INTO plays SELECT track_id, COUNT(*), MAX(played_at) FROM history GROUP BY track_id');
+      await db.execute(
+          'CREATE TABLE podcast_progress(uri TEXT PRIMARY KEY, position_ms INTEGER, duration_ms INTEGER, finished INTEGER, updated_at INTEGER)');
     }
   }
 
@@ -110,6 +123,12 @@ class AppDatabase {
     final rows = await db.query('tracks', where: 'id IN (${List.filled(ids.length, '?').join(',')})', whereArgs: ids);
     final byId = {for (final r in rows) r['id'] as String: Track.fromMap(r)};
     return [for (final id in ids) if (byId[id] != null) byId[id]!];
+  }
+
+  /// Saves edited details (編輯資訊) of a song already in the library.
+  Future<void> updateTrackInfo(Track t) async {
+    await db.update('tracks', {'title': t.title, 'artist': t.artist, 'album': t.album, 'art': t.art}, where: 'id = ?', whereArgs: [t.id]);
+    _notify();
   }
 
   Future<void> deleteTracks(Iterable<String> ids) async {
@@ -243,8 +262,74 @@ class AppDatabase {
 
   // ---------- history ----------
   Future<void> addHistory(Track t) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
     await db.insert('tracks', t.toMap(), conflictAlgorithm: ConflictAlgorithm.ignore);
-    await db.insert('history', {'track_id': t.id, 'played_at': DateTime.now().millisecondsSinceEpoch});
+    await db.insert('history', {'track_id': t.id, 'played_at': now});
+    // No UPSERT: older Android versions ship SQLite without it.
+    await db.rawInsert('INSERT OR IGNORE INTO plays(track_id, count, last_played) VALUES(?, 0, ?)', [t.id, now]);
+    await db.rawUpdate('UPDATE plays SET count = count + 1, last_played = ? WHERE track_id = ?', [now, t.id]);
+    _notify();
+  }
+
+  // ---------- smart playlists ----------
+  static const _music = "t.source NOT IN ('url', 'podcast', 'preview')";
+
+  Future<List<Track>> smartTracks(SmartList kind, {int limit = 100}) async {
+    final monthAgo = DateTime.now().subtract(const Duration(days: 30)).millisecondsSinceEpoch;
+    final rows = switch (kind) {
+      SmartList.mostPlayed => await db.rawQuery(
+          'SELECT t.* FROM plays pl JOIN tracks t ON t.id = pl.track_id WHERE $_music ORDER BY pl.count DESC, pl.last_played DESC LIMIT ?',
+          [limit]),
+      SmartList.recentlyAdded => await db.rawQuery('SELECT t.* FROM tracks t WHERE $_music ORDER BY t.added_at DESC LIMIT ?', [limit]),
+      SmartList.notPlayedLately => await db.rawQuery(
+          'SELECT t.* FROM plays pl JOIN tracks t ON t.id = pl.track_id WHERE $_music AND pl.last_played < ? ORDER BY pl.last_played LIMIT ?',
+          [monthAgo, limit]),
+      SmartList.neverPlayed => await db.rawQuery(
+          'SELECT t.* FROM tracks t LEFT JOIN plays pl ON pl.track_id = t.id WHERE $_music AND pl.track_id IS NULL ORDER BY t.added_at DESC LIMIT ?',
+          [limit]),
+    };
+    return rows.map(Track.fromMap).toList();
+  }
+
+  /// track id → times played.
+  Future<Map<String, int>> playCounts() async {
+    final rows = await db.query('plays', columns: ['track_id', 'count']);
+    return {for (final r in rows) r['track_id'] as String: r['count'] as int};
+  }
+
+  // ---------- podcast progress ----------
+  /// [notify] refreshes the episode lists; the periodic saves while playing
+  /// skip it so the whole UI isn't rebuilt every few seconds.
+  Future<void> savePodcastProgress(String uri, Duration position, Duration? duration, {bool finished = false, bool notify = true}) async {
+    await db.insert(
+      'podcast_progress',
+      {
+        'uri': uri,
+        'position_ms': position.inMilliseconds,
+        'duration_ms': duration?.inMilliseconds,
+        'finished': finished ? 1 : 0,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    if (notify) _notify();
+  }
+
+  /// uri → (position, finished) for podcast episodes started before.
+  Future<Map<String, ({Duration position, Duration? duration, bool finished})>> podcastProgress() async {
+    final rows = await db.query('podcast_progress');
+    return {
+      for (final r in rows)
+        r['uri'] as String: (
+          position: Duration(milliseconds: (r['position_ms'] as int?) ?? 0),
+          duration: r['duration_ms'] == null ? null : Duration(milliseconds: r['duration_ms'] as int),
+          finished: r['finished'] == 1,
+        ),
+    };
+  }
+
+  Future<void> clearPodcastProgress(String uri) async {
+    await db.delete('podcast_progress', where: 'uri = ?', whereArgs: [uri]);
     _notify();
   }
 
@@ -471,4 +556,16 @@ class RemovalImpact {
   final int favorites;
   final List<String> emptyAlbums;
   final List<String> emptyArtists;
+}
+
+/// Playlists made from the play counts; they update by themselves.
+enum SmartList {
+  mostPlayed('最常播放', '播放次數最多的歌'),
+  recentlyAdded('最近加入', '最新加入音樂庫的歌'),
+  notPlayedLately('很久沒聽', '超過 30 天沒播放的歌'),
+  neverPlayed('從沒播過', '還沒播放過的歌');
+
+  const SmartList(this.label, this.description);
+  final String label;
+  final String description;
 }

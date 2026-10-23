@@ -9,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../providers/providers.dart';
 import '../../services/sleep_timer.dart';
 import '../widgets/dialogs.dart';
+import '../widgets/backup_actions.dart';
 import '../widgets/missing_files_dialog.dart';
 import '../../services/missing_files.dart';
 import '../../services/file_trash.dart';
@@ -186,6 +187,19 @@ class SettingsPage extends ConsumerWidget {
           value: s.lyricsOnline,
           onChanged: n.setLyricsOnline,
         ),
+        header('備份與還原'),
+        ListTile(
+          leading: const Icon(Icons.backup_outlined),
+          title: const Text('備份資料'),
+          subtitle: const Text('播放清單、資料夾、已按讚的歌曲、播放次數、Podcast 和設定，存成一個檔案（不含 YouTube 金鑰）'),
+          onTap: () => exportBackup(context, ref),
+        ),
+        ListTile(
+          leading: const Icon(Icons.settings_backup_restore),
+          title: const Text('從備份還原'),
+          subtitle: const Text('會取代目前的資料，還原前會先確認'),
+          onTap: () => importBackup(context, ref),
+        ),
         header('音樂庫維護'),
         SwitchListTile(
           secondary: const Icon(Icons.cleaning_services_outlined),
@@ -255,7 +269,7 @@ class SettingsPage extends ConsumerWidget {
           ),
         ],
         header('關於'),
-        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.8.1')),
+        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.9.0')),
       ]),
     );
   }
