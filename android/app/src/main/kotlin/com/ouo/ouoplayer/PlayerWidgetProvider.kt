@@ -61,7 +61,7 @@ class PlayerWidgetProvider : AppWidgetProvider() {
             v.setTextViewText(R.id.widget_artist, prefs.getString("artist", null) ?: "沒有播放中的歌曲")
             v.setImageViewResource(
                 R.id.widget_play,
-                if (prefs.getBoolean("playing", false)) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
+                if (prefs.getBoolean("playing", false)) R.drawable.widget_pause else R.drawable.widget_play,
             )
             val bg = prefs.getInt("bg", DEFAULT_BG)
             val fg = prefs.getInt("fg", DEFAULT_FG)
