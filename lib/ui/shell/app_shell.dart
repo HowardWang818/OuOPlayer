@@ -11,6 +11,7 @@ import '../pages/podcasts_page.dart';
 import '../pages/search_page.dart';
 import '../pages/settings_page.dart';
 import '../widgets/art_image.dart';
+import '../widgets/dialogs.dart';
 import '../widgets/mini_player.dart';
 
 const _tabs = [
@@ -72,9 +73,12 @@ class _AppShellState extends ConsumerState<AppShell> {
           _go(0);
         }
       },
-      child: Navigator(
-        key: _navKey,
-        onGenerateRoute: (_) => MaterialPageRoute(builder: (_) => _tabPage(tab)),
+      // Pages in here sit above the player bar; toasts use this to move up.
+      child: PlayerBarScope(
+        child: Navigator(
+          key: _navKey,
+          onGenerateRoute: (_) => MaterialPageRoute(builder: (_) => _tabPage(tab)),
+        ),
       ),
     );
 
