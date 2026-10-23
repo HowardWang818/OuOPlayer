@@ -37,6 +37,8 @@ class AppDatabase {
       await db.execute('CREATE TABLE podcasts(feed_url TEXT PRIMARY KEY, title TEXT, author TEXT, image TEXT, added_at INTEGER)');
       await db.execute('CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT)');
     });
+    // Keep play history bounded (v0.2.0 pre-release builds could flood it).
+    await db.execute('DELETE FROM history WHERE rowid NOT IN (SELECT rowid FROM history ORDER BY played_at DESC LIMIT 1000)');
     return AppDatabase._(db);
   }
 
@@ -68,6 +70,13 @@ class AppDatabase {
   Future<List<Track>> tracks({String orderBy = 'title COLLATE NOCASE'}) async {
     final rows = await db.query('tracks', where: "source != 'url' AND source != 'podcast'", orderBy: orderBy);
     return rows.map(Track.fromMap).toList();
+  }
+
+  /// Random library songs (not streams/podcasts), skipping [exclude].
+  Future<List<Track>> randomTracks(int count, {Set<String> exclude = const {}}) async {
+    final rows = await db.query('tracks',
+        where: "source != 'url' AND source != 'podcast'", orderBy: 'RANDOM()', limit: count + exclude.length);
+    return rows.map(Track.fromMap).where((t) => !exclude.contains(t.id) && t.fileExists).take(count).toList();
   }
 
   Future<Track?> track(String id) async {

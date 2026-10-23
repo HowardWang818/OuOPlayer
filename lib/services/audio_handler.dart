@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
@@ -19,6 +20,14 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   final player = AudioPlayer();
   List<Track> _tracks = [];
   Timer? _saveTimer;
+  Track? _currentListenedTrack;
+  bool _loadingQueue = false;
+
+  // Playback settings, kept in sync by playbackSettingsProvider.
+  double podcastSpeed = 1.0;
+  bool podcastSkipSilence = false;
+  bool continueAfterQueue = true;
+  int seekSeconds = 15;
 
   List<Track> get tracks => List.unmodifiable(_tracks);
   Track? get currentTrack {
@@ -39,23 +48,98 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     player.playingStream.listen((_) => _broadcastState(player.playbackEvent));
     player.shuffleModeEnabledStream.listen((_) => _broadcastState(player.playbackEvent));
     player.loopModeStream.listen((_) => _broadcastState(player.playbackEvent));
+    // currentIndexStream re-emits on every playback event, not only when the
+    // track changes; reacting to each one (setSpeed emits another event) looped.
     player.currentIndexStream.listen((i) {
-      if (i == null || i >= _tracks.length) return;
-      final t = _tracks[i];
-      mediaItem.add(t.toMediaItem());
-      _db.addHistory(t);
-      _scheduleSave();
+      // While a new queue loads, the index can still point into the old one.
+      if (!_loadingQueue) _onTrackIndex(i);
     });
     player.durationStream.listen((d) {
+      // The new track's duration can arrive before its index change; only
+      // update the item it belongs to, or a stale item reaches the system
+      // (audio_service sends updates on separate threads, so order can flip).
       final item = mediaItem.value;
-      if (item != null && d != null && item.duration != d) mediaItem.add(item.copyWith(duration: d));
+      final t = currentTrack;
+      if (item == null || d == null || t == null || item.id != t.uri || item.duration == d) return;
+      mediaItem.add(item.copyWith(duration: d));
     });
     player.processingStateStream.listen((s) {
-      if (s == ProcessingState.completed) {
-        player.pause();
-        player.seek(Duration.zero, index: 0);
-      }
+      if (s == ProcessingState.completed) _onQueueEnd();
     });
+  }
+
+  /// Called when the current index may have changed; acts only on a real track change.
+  void _onTrackIndex(int? i, {bool record = true}) {
+    if (i == null || i >= _tracks.length) return;
+    final t = _tracks[i];
+    if (identical(t, _currentListenedTrack)) return;
+    // Only act when the player really holds this track at [i].
+    final sequence = player.sequence;
+    final tag = i < sequence.length ? sequence[i].tag : null;
+    if (tag is! MediaItem || tag.id != t.uri) return;
+    _currentListenedTrack = t;
+    final item = t.toMediaItem();
+    // Keep a duration that may already have arrived for this track.
+    mediaItem.add(item.duration == null && player.duration != null ? item.copyWith(duration: player.duration) : item);
+    _applyTrackSettings(t);
+    if (record) _db.addHistory(t);
+    _scheduleSave();
+  }
+
+  /// Runs [load] with index events muted, then handles the resulting track once.
+  Future<void> _loadQueue(Future<void> Function() load, {bool record = true}) async {
+    _loadingQueue = true;
+    try {
+      await load();
+    } finally {
+      _loadingQueue = false;
+    }
+    _onTrackIndex(player.currentIndex, record: record);
+  }
+
+  void updatePlaybackSettings({
+    required double podcastSpeed,
+    required bool podcastSkipSilence,
+    required bool continueAfterQueue,
+    required int seekSeconds,
+  }) {
+    this.podcastSpeed = podcastSpeed;
+    this.podcastSkipSilence = podcastSkipSilence;
+    this.continueAfterQueue = continueAfterQueue;
+    this.seekSeconds = seekSeconds;
+    _applyTrackSettings(currentTrack);
+  }
+
+  /// Speed and skip-silence only apply to podcasts; music always plays as is.
+  Future<void> _applyTrackSettings(Track? t) async {
+    final podcast = t?.source == TrackSource.podcast;
+    final speed = podcast ? podcastSpeed : 1.0;
+    final skip = podcast && podcastSkipSilence;
+    try {
+      if (player.speed != speed) await player.setSpeed(speed);
+      if (Platform.isAndroid && player.skipSilenceEnabled != skip) await player.setSkipSilenceEnabled(skip);
+    } catch (_) {}
+  }
+
+  /// End of the queue: keep going with random library songs, or stop.
+  Future<void> _onQueueEnd() async {
+    if (continueAfterQueue) {
+      final more = await _db.randomTracks(20, exclude: _tracks.map((t) => t.id).toSet());
+      if (more.isNotEmpty) {
+        await playTracks(more);
+        return;
+      }
+    }
+    await player.pause();
+    await player.seek(Duration.zero, index: 0);
+  }
+
+  Future<void> seekBy(int seconds) async {
+    var target = player.position + Duration(seconds: seconds);
+    final d = player.duration;
+    if (target < Duration.zero) target = Duration.zero;
+    if (d != null && target > d) target = d;
+    await player.seek(target);
   }
 
   void _broadcastState(PlaybackEvent event) {
@@ -101,16 +185,18 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     final start = list[index.clamp(0, list.length - 1)];
     var startIndex = playable.indexOf(start);
     if (startIndex < 0) startIndex = 0;
-    _tracks = playable;
-    queue.add(_tracks.map((t) => t.toMediaItem()).toList());
-    await player.setShuffleModeEnabled(shuffle);
-    try {
-      await player.setAudioSources(_tracks.map(_source).toList(), initialIndex: startIndex, initialPosition: Duration.zero);
-      if (shuffle) await player.shuffle();
-      if (shuffle && player.effectiveIndices.isNotEmpty) {
-        await player.seek(Duration.zero, index: player.effectiveIndices.first);
-      }
-    } catch (_) {}
+    await _loadQueue(() async {
+      _tracks = playable;
+      queue.add(_tracks.map((t) => t.toMediaItem()).toList());
+      await player.setShuffleModeEnabled(shuffle);
+      try {
+        await player.setAudioSources(_tracks.map(_source).toList(), initialIndex: startIndex, initialPosition: Duration.zero);
+        if (shuffle) await player.shuffle();
+        if (shuffle && player.effectiveIndices.isNotEmpty) {
+          await player.seek(Duration.zero, index: player.effectiveIndices.first);
+        }
+      } catch (_) {}
+    });
     player.play();
     _scheduleSave();
   }
@@ -171,11 +257,14 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       final data = jsonDecode(raw) as Map<String, dynamic>;
       final list = (data['tracks'] as List).map((m) => Track.fromMap((m as Map).cast<String, Object?>())).where((t) => t.fileExists).toList();
       if (list.isEmpty) return false;
-      _tracks = list;
-      queue.add(_tracks.map((t) => t.toMediaItem()).toList());
       final index = (data['index'] as int).clamp(0, list.length - 1);
-      await player.setAudioSources(list.map(_source).toList(),
-          initialIndex: index, initialPosition: Duration(milliseconds: data['position'] as int? ?? 0));
+      // Restoring isn't listening yet, so it doesn't go into the history.
+      await _loadQueue(record: false, () async {
+        _tracks = list;
+        queue.add(_tracks.map((t) => t.toMediaItem()).toList());
+        await player.setAudioSources(list.map(_source).toList(),
+            initialIndex: index, initialPosition: Duration(milliseconds: data['position'] as int? ?? 0));
+      });
       if (autoPlay) player.play();
       return true;
     } catch (_) {
@@ -210,6 +299,12 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   @override
   Future<void> skipToNext() => player.seekToNext();
+
+  @override
+  Future<void> fastForward() => seekBy(seekSeconds);
+
+  @override
+  Future<void> rewind() => seekBy(-seekSeconds);
 
   @override
   Future<void> skipToPrevious() async {

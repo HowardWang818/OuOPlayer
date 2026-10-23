@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../widgets/art_image.dart';
 import '../widgets/output_device_chip.dart';
 import '../widgets/player_controls.dart';
+import '../widgets/sleep_timer_sheet.dart';
 import '../widgets/track_tile.dart';
 import 'queue_page.dart';
 
@@ -46,9 +48,11 @@ class NowPlayingPage extends ConsumerWidget {
       const SeekBar(),
       const SizedBox(height: 8),
       const TransportControls(),
+      if (track?.source == TrackSource.podcast) const PodcastControls(),
       const SizedBox(height: 8),
       Row(children: [
         const Expanded(child: OutputDeviceChip()),
+        const SleepTimerButton(),
         IconButton(
           tooltip: '佇列',
           icon: const Icon(Icons.queue_music),
@@ -101,5 +105,34 @@ class NowPlayingPage extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+/// Rewind / speed / forward row, shown only while a podcast is playing.
+class PodcastControls extends ConsumerWidget {
+  const PodcastControls({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(settingsProvider);
+    final handler = ref.read(audioHandlerProvider);
+    final next = podcastSpeeds[(podcastSpeeds.indexOf(s.podcastSpeed) + 1) % podcastSpeeds.length];
+    return Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+      TextButton.icon(
+        onPressed: () => handler.seekBy(-s.seekSeconds),
+        icon: const Icon(Icons.replay),
+        label: Text('${s.seekSeconds} 秒'),
+      ),
+      OutlinedButton(
+        onPressed: () => ref.read(settingsProvider.notifier).setPodcastSpeed(next),
+        child: Text('${s.podcastSpeed}x'),
+      ),
+      TextButton.icon(
+        onPressed: () => handler.seekBy(s.seekSeconds),
+        // Mirrored replay arrow, so forward and rewind look like a pair.
+        icon: Transform.flip(flipX: true, child: const Icon(Icons.replay)),
+        label: Text('${s.seekSeconds} 秒'),
+      ),
+    ]);
   }
 }

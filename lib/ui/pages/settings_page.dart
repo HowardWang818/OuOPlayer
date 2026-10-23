@@ -7,7 +7,9 @@ import 'package:path/path.dart' as p;
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../providers/providers.dart';
+import '../../services/sleep_timer.dart';
 import '../widgets/dialogs.dart';
+import '../widgets/sleep_timer_sheet.dart';
 import 'devices_page.dart';
 
 Future<bool> ensureStoragePermission() async {
@@ -106,6 +108,60 @@ class SettingsPage extends ConsumerWidget {
           value: s.normalizeVolume,
           onChanged: n.setNormalizeVolume,
         ),
+        if (s.normalizeVolume)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(72, 0, 16, 8),
+            child: SegmentedButton<NormalizeLevel>(
+              segments: [for (final l in NormalizeLevel.values) ButtonSegment(value: l, label: Text(l.label))],
+              selected: {s.normalizeLevel},
+              onSelectionChanged: (v) => n.setNormalizeLevel(v.first),
+            ),
+          ),
+        ListTile(
+          leading: const Icon(Icons.speed),
+          title: const Text('Podcast 播放速度'),
+          subtitle: const Text('音樂一律以原速播放'),
+          trailing: DropdownButton<double>(
+            value: s.podcastSpeed,
+            underline: const SizedBox(),
+            items: [for (final v in podcastSpeeds) DropdownMenuItem(value: v, child: Text('${v}x'))],
+            onChanged: (v) => n.setPodcastSpeed(v!),
+          ),
+        ),
+        if (Platform.isAndroid)
+          SwitchListTile(
+            secondary: const Icon(Icons.content_cut),
+            title: const Text('Podcast 跳過靜音'),
+            subtitle: const Text('自動略過沒有聲音的段落'),
+            value: s.podcastSkipSilence,
+            onChanged: n.setPodcastSkipSilence,
+          ),
+        ListTile(
+          leading: const Icon(Icons.bedtime_outlined),
+          title: const Text('睡眠計時器'),
+          subtitle: Text(sleepTimerLabel(ref.watch(sleepTimerProvider))),
+          onTap: () => showSleepTimerSheet(context, ref),
+        ),
+        SwitchListTile(
+          secondary: const Icon(Icons.all_inclusive),
+          title: const Text('佇列播完後繼續播放'),
+          subtitle: const Text('從音樂庫隨機接著播放'),
+          value: s.continueAfterQueue,
+          onChanged: n.setContinueAfterQueue,
+        ),
+        const ListTile(
+          leading: Icon(Icons.fast_forward_outlined),
+          title: Text('快轉 / 倒轉秒數'),
+          subtitle: Text('播放 Podcast 時使用'),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(72, 0, 16, 8),
+          child: SegmentedButton<int>(
+            segments: [for (final v in seekSecondOptions) ButtonSegment(value: v, label: Text('$v 秒'))],
+            selected: {s.seekSeconds},
+            onSelectionChanged: (v) => n.setSeekSeconds(v.first),
+          ),
+        ),
         header('下載'),
         ListTile(
           leading: const Icon(Icons.download_outlined),
@@ -133,7 +189,7 @@ class SettingsPage extends ConsumerWidget {
           ),
         ],
         header('關於'),
-        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.1.0')),
+        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.2.0')),
       ]),
     );
   }
