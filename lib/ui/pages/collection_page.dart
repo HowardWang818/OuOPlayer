@@ -7,6 +7,7 @@ import '../../providers/providers.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/art_image.dart';
 import '../widgets/dialogs.dart';
+import '../widgets/export_sheet.dart';
 import '../widgets/track_selection.dart';
 import '../widgets/track_tile.dart';
 import 'folder_page.dart';
@@ -84,6 +85,12 @@ class CollectionPage extends ConsumerWidget {
           expandedHeight: 300,
           backgroundColor: Color.lerp(color, theme.scaffoldBackgroundColor, 0.3),
           actions: [
+            if (kind == CollectionKind.favorites)
+              IconButton(
+                icon: const Icon(Icons.ios_share),
+                tooltip: '複製／匯出歌單',
+                onPressed: () => showExportSheet(context, name, tracks),
+              ),
             if (kind == CollectionKind.playlist)
               PopupMenuButton<String>(
                 onSelected: (v) async {
@@ -105,6 +112,8 @@ class CollectionPage extends ConsumerWidget {
                     await resetPlaylistCover(ref, info);
                   } else if (info != null && v == 'folder') {
                     await movePlaylistToFolder(context, ref, info);
+                  } else if (v == 'export') {
+                    await showExportSheet(context, info?.name ?? name, tracks);
                   } else if (v == 'dedupe') {
                     final extra = tracks.length - withoutDuplicates(tracks).length;
                     if (extra == 0) {
@@ -125,6 +134,7 @@ class CollectionPage extends ConsumerWidget {
                   const PopupMenuItem(value: 'cover', child: Text('更換封面')),
                   if (info?.cover != null) const PopupMenuItem(value: 'resetCover', child: Text('移除自訂封面')),
                   const PopupMenuItem(value: 'folder', child: Text('移到資料夾')),
+                  const PopupMenuItem(value: 'export', child: Text('複製／匯出歌單')),
                   const PopupMenuItem(value: 'dedupe', child: Text('移除重複的歌曲')),
                   const PopupMenuItem(value: 'delete', child: Text('刪除播放清單')),
                 ],

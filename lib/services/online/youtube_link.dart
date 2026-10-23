@@ -7,7 +7,11 @@ class YouTubeVideo {
   final String channel;
   const YouTubeVideo(this.id, this.title, this.channel);
 
-  String get url => 'https://www.youtube.com/watch?v=$id';
+  String get url => 'https://music.youtube.com/watch?v=$id';
+
+  /// Auto-generated "Artist - Topic" channels hold the official audio that
+  /// YouTube Music plays (not an MV, live version or cover).
+  bool get isOfficialAudio => channel.endsWith(' - Topic');
 }
 
 /// A failure explained in plain Traditional Chinese for the UI.
@@ -18,8 +22,8 @@ class YouTubeLinkException implements Exception {
   String toString() => message;
 }
 
-/// Finds a song's video with the official YouTube Data API v3. Only returns a
-/// link; nothing is played or downloaded here.
+/// Finds a song's YouTube Music link with the official YouTube Data API v3.
+/// Only returns a link; nothing is played or downloaded here.
 class YouTubeLinkFinder {
   YouTubeLinkFinder({Dio? dio}) : _dio = dio ?? Dio(BaseOptions(connectTimeout: const Duration(seconds: 10), receiveTimeout: const Duration(seconds: 15)));
 
@@ -30,7 +34,7 @@ class YouTubeLinkFinder {
     try {
       final res = await _dio.get<Map<String, dynamic>>(
         'https://www.googleapis.com/youtube/v3/search',
-        queryParameters: {'part': 'snippet', 'type': 'video', 'maxResults': 1, 'q': query, 'key': apiKey.trim()},
+        queryParameters: {'part': 'snippet', 'type': 'video', 'maxResults': 5, 'q': query, 'key': apiKey.trim()},
       );
       return parse(res.data ?? const {});
     } on DioException catch (e) {
@@ -43,15 +47,18 @@ class YouTubeLinkFinder {
     await find(apiKey, 'OuOPlayer test');
   }
 
+  /// The first official-audio result, else the first result. (A search costs
+  /// the same quota for 1 or 5 results.)
   static YouTubeVideo? parse(Map<String, dynamic> body) {
     final items = body['items'] as List? ?? const [];
+    final videos = <YouTubeVideo>[];
     for (final item in items.cast<Map<String, dynamic>>()) {
       final id = (item['id'] as Map?)?['videoId'] as String?;
       if (id == null) continue;
       final snippet = item['snippet'] as Map? ?? const {};
-      return YouTubeVideo(id, snippet['title'] as String? ?? '', snippet['channelTitle'] as String? ?? '');
+      videos.add(YouTubeVideo(id, snippet['title'] as String? ?? '', snippet['channelTitle'] as String? ?? ''));
     }
-    return null;
+    return videos.where((v) => v.isOfficialAudio).firstOrNull ?? videos.firstOrNull;
   }
 
   /// Turns Google's error payload into an actionable message.

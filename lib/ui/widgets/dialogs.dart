@@ -28,6 +28,7 @@ Future<String?> promptText(BuildContext context, {required String title, String 
 
 Future<void> showAddToPlaylist(BuildContext context, WidgetRef ref, List<Track> tracks) async {
   final db = ref.read(dbProvider);
+  final allow = ref.read(settingsProvider).allowPlaylistDuplicates;
   final lists = await db.playlists();
   if (!context.mounted) return;
   await showModalBottomSheet(
@@ -44,7 +45,7 @@ Future<void> showAddToPlaylist(BuildContext context, WidgetRef ref, List<Track> 
             final name = await promptText(context, title: '為播放清單命名', hint: '我的播放清單 #${lists.length + 1}');
             if (name == null) return;
             final id = await db.createPlaylist(name.isEmpty ? '我的播放清單 #${lists.length + 1}' : name);
-            await db.addToPlaylist(id, tracks);
+            await db.addToPlaylist(id, tracks, allowDuplicates: allow);
             if (context.mounted) _toast(context, '已加入「${name.isEmpty ? '我的播放清單 #${lists.length + 1}' : name}」');
           },
         ),
@@ -55,7 +56,7 @@ Future<void> showAddToPlaylist(BuildContext context, WidgetRef ref, List<Track> 
             subtitle: Text('${pl.count} 首歌曲'),
             onTap: () async {
               Navigator.pop(ctx);
-              final added = await db.addToPlaylist(pl.id, tracks);
+              final added = await db.addToPlaylist(pl.id, tracks, allowDuplicates: allow);
               if (!context.mounted) return;
               final already = tracks.length - added;
               _toast(

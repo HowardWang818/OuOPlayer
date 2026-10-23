@@ -55,7 +55,7 @@ void main() {
         },
       ],
     })!;
-    expect(v.url, 'https://www.youtube.com/watch?v=x8VYWazR5mE');
+    expect(v.url, 'https://music.youtube.com/watch?v=x8VYWazR5mE');
     expect(v.channel, 'Ayase / YOASOBI');
     expect(YouTubeLinkFinder.parse({'items': []}), isNull);
   });

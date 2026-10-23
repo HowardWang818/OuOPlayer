@@ -97,6 +97,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     // Keep a duration that may already have arrived for this track.
     mediaItem.add(item.duration == null && player.duration != null ? item.copyWith(duration: player.duration) : item);
     _applyTrackSettings(t);
+    _applyPreviewLoop();
     if (record && t.source != TrackSource.preview) _db.addHistory(t);
     _scheduleSave();
   }
@@ -136,9 +137,30 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     } catch (_) {}
   }
 
+  /// Only 30-second previews are queued: they play once and stop.
+  bool get _previewOnly => _tracks.isNotEmpty && _tracks.every((t) => t.source == TrackSource.preview);
+
+  /// The repeat mode chosen by the user while previews keep the player's own
+  /// loop mode off; restored when real songs are queued again.
+  LoopMode? _loopBeforePreview;
+
+  Future<void> _applyPreviewLoop() async {
+    if (_previewOnly) {
+      if (_loopBeforePreview == null && player.loopMode != LoopMode.off) {
+        _loopBeforePreview = player.loopMode;
+        await player.setLoopMode(LoopMode.off);
+      }
+    } else if (_loopBeforePreview != null) {
+      final mode = _loopBeforePreview!;
+      _loopBeforePreview = null;
+      await player.setLoopMode(mode);
+    }
+  }
+
   /// End of the queue: keep going with random library songs, or stop.
+  /// A finished preview always stops.
   Future<void> _onQueueEnd() async {
-    if (continueAfterQueue) {
+    if (continueAfterQueue && !_previewOnly) {
       final more = await _db.randomTracks(20, exclude: _tracks.map((t) => t.id).toSet());
       if (more.isNotEmpty) {
         await playTracks(more);
@@ -216,6 +238,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             initialIndex: shuffleOn ? 0 : startIndex, initialPosition: Duration.zero);
       } catch (_) {}
     });
+    await _applyPreviewLoop();
     player.play();
     _scheduleSave();
   }
@@ -422,20 +445,30 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   }
 
   @override
-  Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) => player.setLoopMode(const {
+  Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) => _setLoop(const {
         AudioServiceRepeatMode.none: LoopMode.off,
         AudioServiceRepeatMode.one: LoopMode.one,
         AudioServiceRepeatMode.all: LoopMode.all,
         AudioServiceRepeatMode.group: LoopMode.all,
       }[repeatMode]!);
 
+  /// While previews play, a new repeat mode is kept for later instead.
+  Future<void> _setLoop(LoopMode mode) async {
+    if (_previewOnly) {
+      _loopBeforePreview = mode == LoopMode.off ? null : mode;
+      return;
+    }
+    _loopBeforePreview = null;
+    await player.setLoopMode(mode);
+  }
+
   Future<void> toggleShuffle() => setShuffleMode(_shuffled ? AudioServiceShuffleMode.none : AudioServiceShuffleMode.all);
 
-  Future<void> cycleRepeat() => player.setLoopMode(const {
+  Future<void> cycleRepeat() => _setLoop(const {
         LoopMode.off: LoopMode.all,
         LoopMode.all: LoopMode.one,
         LoopMode.one: LoopMode.off,
-      }[player.loopMode]!);
+      }[_loopBeforePreview ?? player.loopMode]!);
 
   @override
   Future<void> onTaskRemoved() => stop();
