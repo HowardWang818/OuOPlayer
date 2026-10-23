@@ -11,6 +11,7 @@ import '../../services/sleep_timer.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/sleep_timer_sheet.dart';
 import 'devices_page.dart';
+import 'youtube_key_guide_page.dart';
 
 Future<bool> ensureStoragePermission() async {
   if (!Platform.isAndroid) return true;
@@ -162,6 +163,18 @@ class SettingsPage extends ConsumerWidget {
             onSelectionChanged: (v) => n.setSeekSeconds(v.first),
           ),
         ),
+        header('線上搜尋'),
+        ListTile(
+          leading: const Icon(Icons.key_outlined),
+          title: const Text('YouTube Data API 金鑰'),
+          subtitle: Text(s.youtubeApiKey.isEmpty ? '未設定（用於「取得 YouTube 連結」）' : '已設定 •••${s.youtubeApiKey.substring(s.youtubeApiKey.length > 4 ? s.youtubeApiKey.length - 4 : 0)}',
+              style: TextStyle(color: muted)),
+          trailing: TextButton(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const YouTubeKeyGuidePage())),
+            child: const Text('如何申請？'),
+          ),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const YouTubeKeyGuidePage())),
+        ),
         header('下載'),
         ListTile(
           leading: const Icon(Icons.download_outlined),
@@ -189,7 +202,7 @@ class SettingsPage extends ConsumerWidget {
           ),
         ],
         header('關於'),
-        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.2.0')),
+        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.3.0')),
       ]),
     );
   }

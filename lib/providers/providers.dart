@@ -15,6 +15,8 @@ import '../services/audio_handler.dart';
 import '../services/bluetooth/bluetooth_service.dart';
 import '../services/download_service.dart';
 import '../services/library_scanner.dart';
+import '../services/online/itunes.dart';
+import '../services/online/youtube_link.dart';
 import '../services/podcast_service.dart';
 
 // ---------- core singletons (overridden in main) ----------
@@ -22,6 +24,16 @@ final dbProvider = Provider<AppDatabase>((ref) => throw UnimplementedError());
 final audioHandlerProvider = Provider<OuoAudioHandler>((ref) => throw UnimplementedError());
 final scannerProvider = Provider<LibraryScanner>((ref) => LibraryScanner(ref.watch(dbProvider)));
 final podcastServiceProvider = Provider<PodcastService>((ref) => PodcastService());
+final iTunesSearchProvider = Provider<ITunesSearch>((ref) => ITunesSearch());
+final youTubeLinkFinderProvider = Provider<YouTubeLinkFinder>((ref) => YouTubeLinkFinder());
+final onlineSearchProvider = FutureProvider.family<List<ITunesSong>, String>(
+  (ref, q) {
+    if (q.trim().isEmpty) return Future.value(const []);
+    return ref.watch(iTunesSearchProvider).search(q.trim());
+  },
+  // Show network errors right away instead of retrying in the background.
+  retry: (_, __) => null,
+);
 final bluetoothProvider = Provider<BluetoothService>((ref) => BluetoothService());
 final downloadServiceProvider = Provider<DownloadService>((ref) {
   final svc = DownloadService(ref.watch(scannerProvider));
@@ -66,6 +78,7 @@ class AppSettings {
   final bool podcastSkipSilence;
   final bool continueAfterQueue;
   final int seekSeconds;
+  final String youtubeApiKey;
 
   const AppSettings({
     required this.themeMode,
@@ -80,6 +93,7 @@ class AppSettings {
     required this.podcastSkipSilence,
     required this.continueAfterQueue,
     required this.seekSeconds,
+    required this.youtubeApiKey,
   });
 
   AppSettings copyWith({
@@ -95,6 +109,7 @@ class AppSettings {
     bool? podcastSkipSilence,
     bool? continueAfterQueue,
     int? seekSeconds,
+    String? youtubeApiKey,
   }) =>
       AppSettings(
         themeMode: themeMode ?? this.themeMode,
@@ -109,6 +124,7 @@ class AppSettings {
         podcastSkipSilence: podcastSkipSilence ?? this.podcastSkipSilence,
         continueAfterQueue: continueAfterQueue ?? this.continueAfterQueue,
         seekSeconds: seekSeconds ?? this.seekSeconds,
+        youtubeApiKey: youtubeApiKey ?? this.youtubeApiKey,
       );
 
   static Future<AppSettings> load(AppDatabase db) async {
@@ -127,6 +143,7 @@ class AppSettings {
       podcastSkipSilence: m['podcast_skip_silence'] == 'true',
       continueAfterQueue: m['continue_after_queue'] != 'false',
       seekSeconds: int.tryParse(m['seek_seconds'] ?? '') ?? 15,
+      youtubeApiKey: m['youtube_api_key'] ?? '',
     );
   }
 
@@ -218,6 +235,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void setSeekSeconds(int v) {
     state = state.copyWith(seekSeconds: v);
     _db.setSetting('seek_seconds', '$v');
+  }
+
+  /// Stored only in the local database, never in source code.
+  void setYoutubeApiKey(String v) {
+    state = state.copyWith(youtubeApiKey: v.trim());
+    _db.setSetting('youtube_api_key', v.trim());
   }
 }
 
@@ -356,3 +379,28 @@ class TabNotifier extends Notifier<int> {
 }
 
 final tabProvider = NotifierProvider<TabNotifier, int>(TabNotifier.new);
+
+/// What the Search page shows, kept here so it survives switching tabs.
+class SearchState {
+  final String text;
+  final bool online;
+
+  /// Online searches run on submit, so this can lag behind [text].
+  final String onlineQuery;
+  const SearchState({this.text = '', this.online = false, this.onlineQuery = ''});
+
+  SearchState copyWith({String? text, bool? online, String? onlineQuery}) =>
+      SearchState(text: text ?? this.text, online: online ?? this.online, onlineQuery: onlineQuery ?? this.onlineQuery);
+}
+
+class SearchStateNotifier extends Notifier<SearchState> {
+  @override
+  SearchState build() => const SearchState();
+
+  void setText(String v) => state = state.copyWith(text: v);
+  void setOnline(bool v) => state = state.copyWith(online: v);
+  void setOnlineQuery(String v) => state = state.copyWith(onlineQuery: v);
+  void clear() => state = SearchState(online: state.online);
+}
+
+final searchStateProvider = NotifierProvider<SearchStateNotifier, SearchState>(SearchStateNotifier.new);
