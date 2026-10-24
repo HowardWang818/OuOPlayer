@@ -266,6 +266,13 @@ class SettingsPage extends ConsumerWidget {
             onChanged: (v) => n.setLyricsScale(double.parse(v.toStringAsFixed(1))),
           ),
         ),
+        SwitchListTile(
+          secondary: const Icon(Icons.subtitles_outlined),
+          title: const Text('在車上和通知列顯示歌詞'),
+          subtitle: const Text('有同步歌詞時，Android Auto、通知列和鎖定畫面的歌手那一行會換成正在唱的歌詞。開車時請注意安全'),
+          value: s.lyricsInMetadata,
+          onChanged: n.setLyricsInMetadata,
+        ),
         if (Platform.isAndroid)
           SwitchListTile(
             secondary: const Icon(Icons.light_mode_outlined),
@@ -407,7 +414,7 @@ class SettingsPage extends ConsumerWidget {
           onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StatsPage())),
         ),
         header('關於'),
-        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.12.2')),
+        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.12.3')),
       ]),
     );
   }

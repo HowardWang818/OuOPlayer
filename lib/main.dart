@@ -29,6 +29,7 @@ Future<void> main() async {
       androidNotificationOngoing: true,
       androidStopForegroundOnPause: true,
       androidNotificationIcon: 'drawable/ic_stat_music',
+      androidBrowsableRootExtras: CarBrowser.rootExtras,
     ),
   );
   await handler.restoreSession();
