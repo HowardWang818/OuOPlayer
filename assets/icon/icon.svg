@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+<defs>
+<linearGradient id="back" x1="0.500" y1="0.000" x2="0.500" y2="1.000">
+<stop offset="0" stop-color="#237096"/>
+<stop offset="1" stop-color="#163A58"/>
+</linearGradient>
+<linearGradient id="right_back" x1="0.500" y1="0.000" x2="0.500" y2="1.000">
+<stop offset="0" stop-color="#1C4A64"/>
+<stop offset="1" stop-color="#183F58"/>
+</linearGradient>
+<linearGradient id="middle" x1="0.500" y1="0.000" x2="0.500" y2="1.000">
+<stop offset="0" stop-color="#2C86AE"/>
+<stop offset="1" stop-color="#277AA0"/>
+</linearGradient>
+<linearGradient id="right" x1="0.500" y1="0.000" x2="0.500" y2="1.000">
+<stop offset="0" stop-color="#2E88B2"/>
+<stop offset="1" stop-color="#2A80AA"/>
+</linearGradient>
+<linearGradient id="big" x1="0.854" y1="0.146" x2="0.146" y2="0.854">
+<stop offset="0" stop-color="#8AD5F7"/>
+<stop offset="0.5" stop-color="#67C6F4"/>
+<stop offset="1" stop-color="#44778F"/>
+</linearGradient>
+<linearGradient id="small" x1="0.500" y1="0.000" x2="0.500" y2="1.000">
+<stop offset="0" stop-color="#78C9EC"/>
+<stop offset="0.5" stop-color="#54BAEA"/>
+<stop offset="1" stop-color="#4693BD"/>
+</linearGradient>
+</defs>
+<rect width="1024" height="1024" fill="#10151C"/>
+<g transform="translate(512.0 512.0) scale(0.85 1.15) translate(-512.0 -512.0)">
+<rect x="292.0" y="292.0" width="440.1" height="440.1" rx="70.4" fill="url(#back)" transform="rotate(45 512 512)"/>
+<rect x="542.6" y="370.6" width="280.9" height="280.9" rx="44.9" fill="url(#right_back)" transform="rotate(45 683 511)"/>
+<rect x="395.3" y="396.3" width="229.4" height="229.4" rx="36.7" fill="url(#middle)" transform="rotate(45 510 511)"/>
+<rect x="710.9" y="435.9" width="148.2" height="148.2" rx="23.7" fill="url(#right)" transform="rotate(45 785 510)"/>
+<rect x="192.5" y="349.5" width="323.0" height="323.0" rx="51.7" fill="url(#big)" transform="rotate(45 354 511)"/>
+<rect x="594.5" y="434.5" width="152.9" height="152.9" rx="24.5" fill="url(#small)" transform="rotate(45 671 511)"/>
+</g>
+</svg>

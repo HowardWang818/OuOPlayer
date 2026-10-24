@@ -71,7 +71,7 @@ class SettingsPage extends StatelessWidget {
         section(Icons.backup_outlined, '備份與還原', '手動備份、自動備份、從備份清單還原', const BackupPage()),
         section(Icons.storage_outlined, '儲存空間', '封面、歌手圖片、歌詞、下載暫存檔佔用的空間', const StoragePage()),
         const Divider(),
-        section(Icons.info_outline, '關於與更新', '版本 0.18.1${Updater.supported ? ' • 檢查更新' : ''}', const AboutSettingsPage()),
+        section(Icons.info_outline, '關於與更新', '版本 0.18.2${Updater.supported ? ' • 檢查更新' : ''}', const AboutSettingsPage()),
       ]),
     );
   }
