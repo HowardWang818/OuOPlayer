@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../providers/providers.dart';
+import '../../../services/app_icon.dart';
 import '../../../services/updater.dart';
+import '../../widgets/dialogs.dart';
 import '../../widgets/update_dialog.dart';
 import 'section_page.dart';
 
-/// 關於與更新: the version, and in-app updates (Android).
+/// 關於與更新: the version, the app icon and in-app updates (Android).
 class AboutSettingsPage extends ConsumerStatefulWidget {
   const AboutSettingsPage({super.key});
 
@@ -16,13 +18,85 @@ class AboutSettingsPage extends ConsumerStatefulWidget {
 
 class _AboutSettingsPageState extends ConsumerState<AboutSettingsPage> {
   bool _checking = false;
+  bool? _light;
+
+  @override
+  void initState() {
+    super.initState();
+    if (AppIcon.supported) {
+      AppIcon.isLight().then((v) {
+        if (mounted) setState(() => _light = v);
+      }).catchError((_) {});
+    }
+  }
+
+  Future<void> _setIcon(bool light) async {
+    if (light == _light) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      useRootNavigator: true,
+      builder: (ctx) => AlertDialog(
+        title: Text('換成${light ? '淺色' : '深色'}圖示？'),
+        content: const Text('桌面上的圖示會在幾秒內換成新的。\n\n'
+            '有些桌面會把舊圖示移除，這時從 App 清單把 OuOPlayer 重新拖到桌面就好。少數手機會關閉 App 一次，重新打開即可。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('更換')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await AppIcon.setLight(light);
+      if (!mounted) return;
+      setState(() => _light = light);
+      toast(context, '已換成${light ? '淺色' : '深色'}圖示');
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  Widget _iconChoice(String label, String asset, bool light) {
+    final selected = _light == light;
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: _light == null ? null : () => _setIcon(light),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: selected ? cs.primary : cs.outlineVariant, width: selected ? 2 : 1),
+        ),
+        child: Column(children: [
+          ClipOval(child: Image.asset(asset, width: 64, height: 64)),
+          const SizedBox(height: 6),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            if (selected) Icon(Icons.check, size: 16, color: cs.primary),
+            Text(label),
+          ]),
+        ]),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(settingsProvider);
     final n = ref.read(settingsProvider.notifier);
     return SettingsSectionPage(title: '關於與更新', children: [
-      const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.18.2')),
+      const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.18.3')),
+      if (AppIcon.supported) ...[
+        const ListTile(leading: Icon(Icons.palette_outlined), title: Text('App 圖示'), subtitle: Text('桌面和 App 清單上的圖示')),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(72, 0, 16, 8),
+          child: Row(children: [
+            _iconChoice('深色', 'assets/icon/app_icon_dark.png', false),
+            const SizedBox(width: 12),
+            _iconChoice('淺色', 'assets/icon/app_icon_light.png', true),
+          ]),
+        ),
+      ],
       if (Updater.supported) ...[
         ListTile(
           leading: _checking

@@ -1,7 +1,7 @@
 name: ouoplayer
 description: "OuOPlayer - a Spotify-style music player for Android and Windows."
 publish_to: 'none'
-version: 0.18.2+42
+version: 0.18.3+43
 
 environment:
   sdk: ^3.6.0
@@ -47,6 +47,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    # The two choices in 設定 → 關於與更新 → App 圖示.
+    - assets/icon/app_icon_dark.png
+    - assets/icon/app_icon_light.png
 
 flutter_launcher_icons:
   android: true

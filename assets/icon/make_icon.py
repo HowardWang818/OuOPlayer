@@ -18,6 +18,8 @@ SCALE = 0.72       # drawing size inside the adaptive icon (keeps the safe zone)
 SS = 4             # supersampling
 # Narrower and taller (width, height): the diamonds become tall rhombi.
 STRETCH = (0.85, 1.15)
+# Shadow under the front diamonds: colour and strength.
+SHADOW = ('#000000', 0.45)
 N = 1024
 
 # Back to front. tip = centre-to-corner distance (1024 grid); stops run along
@@ -32,6 +34,66 @@ DIAMONDS = [
     dict(name='small', cx=671, cy=511, tip=98, angle=90,
          stops=[(0, '#78C9EC'), (0.5, '#54BAEA'), (1, '#4693BD')], front=True),
 ]
+
+
+# The light icon (設定 → 關於與更新 → App 圖示): pale background, the back
+# diamonds a clear step darker than the front ones, a faint blue shadow.
+LIGHT = dict(
+    bg='#EEF3F8',
+    shadow=('#1D5B85', 0.30),
+    stops={
+        'back': [(0, '#3A86BA'), (1, '#1F5E90')],
+        'right_back': [(0, '#2C6E9E'), (1, '#245F8D')],
+        'middle': [(0, '#3F96C8'), (1, '#3482B5')],
+        'right': [(0, '#4AA3D5'), (1, '#3F94C8')],
+        'big': [(0, '#8AD5F7'), (0.5, '#67C6F4'), (1, '#4B95C4')],
+        'small': [(0, '#7FCDEF'), (0.5, '#5CC0EE'), (1, '#4FA3D2')],
+    },
+)
+
+RES = os.path.join(HERE, '..', '..', 'android', 'app', 'src', 'main', 'res')
+DENSITIES = {'mdpi': 1, 'hdpi': 1.5, 'xhdpi': 2, 'xxhdpi': 3, 'xxxhdpi': 4}
+
+
+def use_light():
+    global BG, SHADOW
+    BG, SHADOW = LIGHT['bg'], LIGHT['shadow']
+    for d in DIAMONDS:
+        d['stops'] = LIGHT['stops'][d['name']]
+
+
+def android_light(icon, foreground):
+    """The light icon as Android resources beside flutter_launcher_icons' dark
+    ones (ic_launcher_light*), used by the .LightIcon activity-alias."""
+    for name, k in DENSITIES.items():
+        mip = os.path.join(RES, f'mipmap-{name}')
+        os.makedirs(mip, exist_ok=True)
+        icon.resize((round(48 * k), round(48 * k)), Image.LANCZOS).save(os.path.join(mip, 'ic_launcher_light.png'))
+        dr = os.path.join(RES, f'drawable-{name}')
+        os.makedirs(dr, exist_ok=True)
+        foreground.resize((round(108 * k), round(108 * k)), Image.LANCZOS).save(os.path.join(dr, 'ic_launcher_light_foreground.png'))
+    os.makedirs(os.path.join(RES, 'mipmap-anydpi-v26'), exist_ok=True)
+    with open(os.path.join(RES, 'mipmap-anydpi-v26', 'ic_launcher_light.xml'), 'w', encoding='utf-8') as f:
+        f.write('''<?xml version="1.0" encoding="utf-8"?>
+<!-- Made by assets/icon/make_icon.py: the light app icon. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+  <background android:drawable="@color/ic_launcher_light_background"/>
+  <foreground android:drawable="@drawable/ic_launcher_light_foreground"/>
+  <monochrome android:drawable="@drawable/ic_launcher_monochrome"/>
+</adaptive-icon>
+''')
+    with open(os.path.join(RES, 'values', 'ic_launcher_light.xml'), 'w', encoding='utf-8') as f:
+        f.write(f'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_light_background">{LIGHT['bg']}</color>
+</resources>
+''')
+
+
+def preview(foreground):
+    """The part launchers show, small, for the choice in the app."""
+    c = round(N * (1 - 72 / 108) / 2)
+    return foreground.crop((c, c, N - c, N - c)).resize((192, 192), Image.LANCZOS)
 
 
 def hex_rgb(h):
@@ -88,8 +150,8 @@ def draw(size, scale=1.0, background=True):
         m = diamond_mask(d, inner)
         if d['front']:
             # A soft shadow on what is behind.
-            shadow = m.filter(ImageFilter.GaussianBlur(inner * 0.012)).point(lambda v: round(v * 0.45))
-            art = Image.composite(Image.new('RGB', art.size, (0, 0, 0)), art, shadow)
+            shadow = m.filter(ImageFilter.GaussianBlur(inner * 0.012)).point(lambda v: round(v * SHADOW[1]))
+            art = Image.composite(Image.new('RGB', art.size, hex_rgb(SHADOW[0])), art, shadow)
         art = Image.composite(gradient(d, inner), art, m)
         alpha = ImageChops.lighter(alpha, m)
     art, alpha = stretch(art), stretch(alpha)
@@ -154,4 +216,12 @@ if __name__ == '__main__':
     down(monochrome(N * SS, SCALE)).save(os.path.join(HERE, 'monochrome.png'))
     with open(os.path.join(HERE, 'icon.svg'), 'w', encoding='utf-8') as f:
         f.write(svg())
+    preview(fg).save(os.path.join(HERE, 'app_icon_dark.png'))
+
+    use_light()
+    down(draw(N * SS)).save(os.path.join(HERE, 'artwork_light.png'))
+    light = down(draw(N * SS, SCALE))
+    light.save(os.path.join(HERE, 'foreground_light.png'))
+    preview(light).save(os.path.join(HERE, 'app_icon_light.png'))
+    android_light(light, light)
     print('ok')
