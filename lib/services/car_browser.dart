@@ -20,23 +20,26 @@ class CarBrowser {
   static const root = AudioService.browsableRootId;
   static const recent = AudioService.recentRootId;
 
-  /// The four tabs Android Auto shows (it shows at most four).
+  /// The four tabs, laid out like the phone app (Android Auto shows at most four).
+  static const home = 'home';
   static const library = 'library';
+  static const podcasts = 'podcasts';
   static const albums = 'albums';
   static const artists = 'artists';
-  static const podcasts = 'podcasts';
   static const liked = 'liked';
 
   /// Big lists are cut short; the car's screen can't show more anyway.
   static const maxItems = 200;
+  static const homeRow = 8;
 
-  // Android Auto layout hints (androidx.media.utils.MediaConstants).
+  // Android Auto layout hints (androidx.media.utils.MediaConstants). Newer
+  // versions read them from each folder, so every folder carries its own.
   static const browsableHint = 'android.media.browse.CONTENT_STYLE_BROWSABLE_HINT';
   static const playableHint = 'android.media.browse.CONTENT_STYLE_PLAYABLE_HINT';
   static const groupTitle = 'android.media.browse.CONTENT_STYLE_GROUP_TITLE_HINT';
   static const styleList = 1, styleGrid = 2;
 
-  /// Given to AudioServiceConfig: grids for folders, lists for songs, search on.
+  /// Given to AudioServiceConfig: defaults, plus the search button.
   static const rootExtras = <String, dynamic>{
     'android.media.browse.CONTENT_STYLE_SUPPORTED': true,
     browsableHint: styleGrid,
@@ -47,58 +50,87 @@ class CarBrowser {
   static const _artAuthority = 'com.ouo.ouoplayer.art';
 
   /// The car can't open the app's files: local covers go through
-  /// ArtProvider (which only serves the art cache and playlist covers).
-  static Uri? artUri(String? art) {
+  /// ArtProvider (which only serves the art cache and playlist covers),
+  /// cropped to a square, or a circle for artists.
+  static Uri? artUri(String? art, {bool circle = false}) {
     if (art == null || art.isEmpty) return null;
     if (art.startsWith('http')) return Uri.tryParse(art);
-    return Uri.parse('content://$_artAuthority/f/${Uri.encodeComponent(art)}');
+    return Uri.parse('content://$_artAuthority/${circle ? 'circle' : 'sq'}/${Uri.encodeComponent(art)}');
   }
 
+  /// A folder icon on an accent tile (for grids).
   static Uri icon(String name) => Uri.parse('content://$_artAuthority/icon/$name');
 
-  static MediaItem folder(String id, String title, {String? subtitle, String? art, String? icon, String? group, int? childStyle}) =>
+  /// A tab icon: a plain vector the car tints itself.
+  static Uri tabIcon(String drawable) => Uri.parse('android.resource://com.ouo.ouoplayer/drawable/$drawable');
+
+  /// A browsable entry. [children]: how its own content is laid out.
+  static MediaItem folder(String id, String title,
+          {String? subtitle, String? art, bool circle = false, String? icon, Uri? iconUri, String? group, int children = styleGrid}) =>
       MediaItem(
         id: id,
         title: title,
         artist: subtitle,
         playable: false,
-        artUri: artUri(art) ?? (icon == null ? null : CarBrowser.icon(icon)),
+        artUri: artUri(art, circle: circle) ?? iconUri ?? (icon == null ? null : CarBrowser.icon(icon)),
         extras: {
           if (group != null) groupTitle: group,
-          if (childStyle != null) browsableHint: childStyle,
+          browsableHint: children,
+          playableHint: styleList,
         },
       );
+
+  /// A list of songs (playlist, album…): opens as a list.
+  static MediaItem songList(String id, String title, {String? subtitle, String? art, String? icon, String? group}) =>
+      folder(id, title, subtitle: subtitle, art: art, icon: icon, group: group, children: styleList);
 
   Future<List<MediaItem>> children(String parent) async {
     switch (parent) {
       case root:
         return [
-          folder(library, '音樂庫', icon: 'library'),
-          folder(albums, '專輯', icon: 'album'),
-          folder(artists, '演出者', icon: 'artist'),
-          folder(podcasts, 'Podcast', icon: 'podcast'),
+          folder(home, '首頁', iconUri: tabIcon('car_home')),
+          songList(recent, '最近播放', icon: 'recent').copyWith(artUri: tabIcon('car_recent')),
+          folder(library, '音樂庫', iconUri: tabIcon('car_library')),
+          folder(podcasts, 'Podcast', iconUri: tabIcon('car_podcast')),
+        ];
+      case home:
+        // Like the phone's home page.
+        final recentAlbums = <String, Track>{};
+        for (final t in await db.recentlyPlayed(limit: 40)) {
+          if (t.album != '未知專輯') recentAlbums.putIfAbsent(t.album, () => t);
+        }
+        return [
+          songList(liked, '已按讚的歌曲', icon: 'favorite', group: '快速播放'),
+          songList('smart:${SmartList.mostPlayed.name}', SmartList.mostPlayed.label, icon: 'smart', group: '快速播放'),
+          songList('smart:${SmartList.recentlyAdded.name}', SmartList.recentlyAdded.label, icon: 'smart', group: '快速播放'),
+          for (final t in recentAlbums.values.take(homeRow))
+            songList('album:${t.album}', t.album, subtitle: t.artist, art: t.art, icon: 'album', group: '最近播放'),
+          for (final a in await db.recentAlbums(limit: homeRow))
+            songList('album:${a.name}', a.name, subtitle: a.artist, art: a.art, icon: 'album', group: '最近加入的專輯'),
+          for (final p in (await db.playlists()).take(homeRow))
+            songList('pl:${p.id}', p.name, subtitle: '${p.count} 首', art: p.art, icon: 'playlist', group: '你的播放清單'),
         ];
       case library:
+        // Like the phone's library page.
         return [
-          folder(liked, '已按讚的歌曲', icon: 'favorite', group: '快速播放'),
-          folder(recent, '最近播放', icon: 'recent', group: '快速播放'),
-          for (final s in SmartList.values) folder('smart:${s.name}', s.label, icon: 'smart', group: '智慧播放清單'),
-          for (final p in await db.playlists())
-            folder('pl:${p.id}', p.name, subtitle: '${p.count} 首', art: p.art, icon: 'playlist', group: '你的播放清單'),
+          songList(liked, '已按讚的歌曲', icon: 'favorite', group: '播放清單'),
+          for (final p in await db.playlists()) songList('pl:${p.id}', p.name, subtitle: '${p.count} 首', art: p.art, icon: 'playlist', group: '播放清單'),
+          for (final s in SmartList.values) songList('smart:${s.name}', s.label, icon: 'smart', group: '智慧播放清單'),
+          folder(albums, '專輯', icon: 'album', group: '瀏覽'),
+          folder(artists, '演出者', icon: 'artist', group: '瀏覽'),
         ];
       case albums:
         return [
-          for (final a in (await db.albums()).take(maxItems)) folder('album:${a.name}', a.name, subtitle: a.artist, art: a.art, icon: 'album'),
+          for (final a in (await db.albums()).take(maxItems)) songList('album:${a.name}', a.name, subtitle: a.artist, art: a.art, icon: 'album'),
         ];
       case artists:
         return [
           for (final a in (await db.artists()).take(maxItems))
-            folder('artist:${a.name}', a.name, subtitle: '${a.count} 首', art: a.art, icon: 'artist'),
+            folder('artist:${a.name}', a.name, subtitle: '${a.count} 首', art: a.art, circle: true, icon: 'artist', children: styleList),
         ];
       case podcasts:
         return [
-          for (final p in await db.podcasts())
-            folder('podcast:${p.feedUrl}', p.title, subtitle: p.author, art: p.image, icon: 'podcast', childStyle: styleList),
+          for (final p in await db.podcasts()) songList('podcast:${p.feedUrl}', p.title, subtitle: p.author, art: p.image, icon: 'podcast'),
         ];
     }
     final tracks = await tracksOf(parent);

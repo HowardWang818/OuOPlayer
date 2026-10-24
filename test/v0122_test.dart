@@ -13,7 +13,7 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 50));
     // Then the library is ready.
     car.browser = CarBrowser(await v0120.openDb());
-    expect((await early).map((m) => m.title), ['音樂庫', '專輯', '演出者', 'Podcast']);
+    expect((await early).map((m) => m.title), ['首頁', '最近播放', '音樂庫', 'Podcast']);
     await Future<void>.delayed(Duration.zero);
     expect(reloads, hasLength(1));
     car.changed();
@@ -28,7 +28,8 @@ void main() {
 
   test('local covers go through ArtProvider; online ones stay as they are', () {
     expect(CarBrowser.artUri('/data/user/0/com.ouo.ouoplayer/files/art/ab.jpg').toString(),
-        'content://com.ouo.ouoplayer.art/f/${Uri.encodeComponent('/data/user/0/com.ouo.ouoplayer/files/art/ab.jpg')}');
+        'content://com.ouo.ouoplayer.art/sq/${Uri.encodeComponent('/data/user/0/com.ouo.ouoplayer/files/art/ab.jpg')}');
+    expect(CarBrowser.artUri('/x/files/art/ab.jpg', circle: true).toString(), startsWith('content://com.ouo.ouoplayer.art/circle/'));
     expect(CarBrowser.artUri('https://img/600.jpg').toString(), 'https://img/600.jpg');
     expect(CarBrowser.artUri(null), isNull);
     expect(CarBrowser.rootExtras[CarBrowser.browsableHint], CarBrowser.styleGrid);
