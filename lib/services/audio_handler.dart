@@ -168,6 +168,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       if (!playing && _podcastTrack != null) _savePodcast();
     });
     player.positionStream.listen(_trackPodcastPosition);
+    _db.changes.listen((_) => _refreshLiked());
   }
 
   /// Called when the current index may have changed; acts only on a real track change.
@@ -186,6 +187,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     _applyTrackSettings(t);
     _applyPreviewLoop();
     _onPodcastTrack(t, i);
+    _refreshLiked();
     if (record && t.source != TrackSource.preview) _db.addHistory(t);
     _scheduleSave();
   }
@@ -269,6 +271,30 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     await player.seek(target);
   }
 
+  /// ♥ in the notification and on the lock screen.
+  static const favoriteAction = 'toggle_favorite';
+  bool _currentLiked = false;
+
+  /// Re-reads whether the current song is liked (track change, or a like
+  /// changed anywhere in the app) and redraws the notification if needed.
+  Future<void> _refreshLiked() async {
+    final t = currentTrack;
+    final liked = t != null && (await _db.favoriteIds()).contains(t.id);
+    if (liked == _currentLiked) return;
+    _currentLiked = liked;
+    _broadcastState(player.playbackEvent);
+  }
+
+  @override
+  Future<dynamic> customAction(String name, [Map<String, dynamic>? extras]) async {
+    if (name != favoriteAction) return super.customAction(name, extras);
+    final t = currentTrack;
+    if (t == null) return null;
+    await _db.setFavorite(t, !_currentLiked);
+    await _refreshLiked();
+    return null;
+  }
+
   void _broadcastState(PlaybackEvent event) {
     final playing = player.playing;
     playbackState.add(playbackState.value.copyWith(
@@ -276,6 +302,13 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         MediaControl.skipToPrevious,
         if (playing) MediaControl.pause else MediaControl.play,
         MediaControl.skipToNext,
+        // Expanded notification only (compact view keeps the first three).
+        if (currentTrack != null)
+          MediaControl.custom(
+            androidIcon: _currentLiked ? 'drawable/ic_action_favorite' : 'drawable/ic_action_favorite_border',
+            label: _currentLiked ? '從已按讚的歌曲移除' : '加到已按讚的歌曲',
+            name: favoriteAction,
+          ),
       ],
       systemActions: const {MediaAction.seek, MediaAction.seekForward, MediaAction.seekBackward},
       androidCompactActionIndices: const [0, 1, 2],

@@ -59,12 +59,14 @@ class LibraryScanner {
           }
         } catch (_) {}
       }
-      final known = await _db.trackIds();
-      // Re-read tracks stored with garbled tags by older versions.
-      final garbled = (await _db.tracks())
-          .where((t) => [t.title, t.artist, t.album].any((s) => fixTagText(s) != s))
-          .map((t) => t.id)
-          .toSet();
+      // One read of the library: what's known, and what was stored with
+      // garbled tags by older versions (re-read those).
+      final library = await _db.tracks();
+      final known = {for (final t in library) t.id};
+      final garbled = {
+        for (final t in library)
+          if ([t.title, t.artist, t.album].any((s) => fixTagText(s) != s)) t.id,
+      };
       final fresh = files.where((f) => !known.contains(f) || garbled.contains(f)).toList();
       final artDir = await _artDir();
       var done = 0;

@@ -18,6 +18,7 @@ import '../../services/file_trash.dart';
 import '../widgets/sleep_timer_sheet.dart';
 import 'devices_page.dart';
 import 'equalizer_page.dart';
+import 'storage_page.dart';
 import 'youtube_key_guide_page.dart';
 
 Future<bool> ensureStoragePermission() async {
@@ -271,6 +272,13 @@ class SettingsPage extends ConsumerWidget {
           onChanged: n.setDeletePermanently,
         ),
         ListTile(
+          leading: const Icon(Icons.storage_outlined),
+          title: const Text('儲存空間'),
+          subtitle: const Text('封面、歌詞、下載暫存檔佔用的空間，可以清除'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StoragePage())),
+        ),
+        ListTile(
           leading: const Icon(Icons.search),
           title: const Text('立即檢查已不存在的歌曲'),
           onTap: () => checkMissingFiles(context, ref, manual: true),
@@ -311,6 +319,14 @@ class SettingsPage extends ConsumerWidget {
           onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const YouTubeKeyGuidePage())),
         ),
         header('下載'),
+        SwitchListTile(
+          secondary: const Icon(Icons.system_update_alt),
+          title: const Text('自動更新 yt-dlp'),
+          subtitle: Text(
+              '每 7 天在背景檢查一次${s.ytLastUpdate == null ? '' : '（上次：${s.ytLastUpdate!.month}/${s.ytLastUpdate!.day}）'}。開啟「沒有 Wi-Fi 時下載前提醒」時只在 Wi-Fi 下更新'),
+          value: s.ytAutoUpdate,
+          onChanged: n.setYtAutoUpdate,
+        ),
         if (Platform.isAndroid)
           SwitchListTile(
             secondary: const Icon(Icons.wifi_off_outlined),
@@ -345,7 +361,7 @@ class SettingsPage extends ConsumerWidget {
           ),
         ],
         header('關於'),
-        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.10.2')),
+        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.11.0')),
       ]),
     );
   }

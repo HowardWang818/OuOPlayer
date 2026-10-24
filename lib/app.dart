@@ -11,6 +11,7 @@ import 'services/equalizer.dart';
 import 'services/network_check.dart';
 import 'services/player_widget.dart';
 import 'services/volume_normalizer.dart';
+import 'services/ytdlp_auto_update.dart';
 import 'theme/app_theme.dart';
 import 'ui/shell/app_shell.dart';
 import 'ui/widgets/dialogs.dart';
@@ -60,6 +61,10 @@ class _MissingFilesWatcherState extends ConsumerState<MissingFilesWatcher> {
     super.initState();
     _lifecycle = AppLifecycleListener(onResume: _check);
     Future.delayed(const Duration(seconds: 3), _check);
+    // After start-up settles, so it doesn't slow the first screens.
+    Future.delayed(const Duration(seconds: 20), () {
+      if (mounted) autoUpdateYtDlp(ref, (msg) => mounted ? toast(context, msg) : null);
+    });
   }
 
   void _check() {

@@ -70,6 +70,13 @@ final onlineSearchProvider = FutureProvider.family<List<ITunesSong>, String>(
   // Show network errors right away instead of retrying in the background.
   retry: (_, __) => null,
 );
+final podcastSearchProvider = FutureProvider.family<List<ITunesPodcast>, String>(
+  (ref, q) {
+    if (q.trim().isEmpty) return Future.value(const []);
+    return ref.watch(iTunesSearchProvider).searchPodcasts(q.trim());
+  },
+  retry: (_, __) => null,
+);
 final bluetoothProvider = Provider<BluetoothService>((ref) => BluetoothService());
 final downloadServiceProvider = Provider<DownloadService>((ref) {
   final svc = DownloadService(ref.watch(scannerProvider), ref.watch(dbProvider));
@@ -152,6 +159,10 @@ class AppSettings {
   /// Ask before downloading without Wi-Fi.
   final bool wifiWarning;
 
+  /// Update yt-dlp by itself once a week.
+  final bool ytAutoUpdate;
+  final DateTime? ytLastUpdate;
+
   /// Sort choices saved per list (「sort_」 + scope settings), see [sortProvider].
   final Map<String, String> sorts;
 
@@ -181,6 +192,8 @@ class AppSettings {
     this.lyricsScale = 1.0,
     this.lyricsKeepAwake = false,
     this.wifiWarning = true,
+    this.ytAutoUpdate = true,
+    this.ytLastUpdate,
     this.sorts = const {},
   });
 
@@ -210,6 +223,8 @@ class AppSettings {
     double? lyricsScale,
     bool? lyricsKeepAwake,
     bool? wifiWarning,
+    bool? ytAutoUpdate,
+    DateTime? ytLastUpdate,
   }) =>
       AppSettings(
         themeMode: themeMode ?? this.themeMode,
@@ -237,6 +252,8 @@ class AppSettings {
         lyricsScale: lyricsScale ?? this.lyricsScale,
         lyricsKeepAwake: lyricsKeepAwake ?? this.lyricsKeepAwake,
         wifiWarning: wifiWarning ?? this.wifiWarning,
+        ytAutoUpdate: ytAutoUpdate ?? this.ytAutoUpdate,
+        ytLastUpdate: ytLastUpdate ?? this.ytLastUpdate,
         sorts: sorts,
       );
 
@@ -270,6 +287,8 @@ class AppSettings {
       lyricsScale: double.tryParse(m['lyrics_scale'] ?? '') ?? 1.0,
       lyricsKeepAwake: m['lyrics_keep_awake'] == 'true',
       wifiWarning: m['wifi_warning'] != 'false',
+      ytAutoUpdate: m['yt_auto_update'] != 'false',
+      ytLastUpdate: DateTime.tryParse(m['yt_last_update'] ?? ''),
       sorts: {for (final e in m.entries) if (e.key.startsWith('sort_')) e.key.substring(5): e.value},
     );
   }
@@ -397,6 +416,16 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void setLyricsKeepAwake(bool v) {
     state = state.copyWith(lyricsKeepAwake: v);
     _db.setSetting('lyrics_keep_awake', '$v');
+  }
+
+  void setYtAutoUpdate(bool v) {
+    state = state.copyWith(ytAutoUpdate: v);
+    _db.setSetting('yt_auto_update', '$v');
+  }
+
+  void setYtLastUpdate(DateTime v) {
+    state = state.copyWith(ytLastUpdate: v);
+    _db.setSetting('yt_last_update', v.toIso8601String());
   }
 
   void setWifiWarning(bool v) {
@@ -622,12 +651,18 @@ class SearchState {
   final String text;
   final bool online;
 
+  /// The online tab looks for podcasts instead of songs.
+  final bool podcast;
+
   /// Online searches run on submit, so this can lag behind [text].
   final String onlineQuery;
-  const SearchState({this.text = '', this.online = false, this.onlineQuery = ''});
+  const SearchState({this.text = '', this.online = false, this.podcast = false, this.onlineQuery = ''});
 
-  SearchState copyWith({String? text, bool? online, String? onlineQuery}) =>
-      SearchState(text: text ?? this.text, online: online ?? this.online, onlineQuery: onlineQuery ?? this.onlineQuery);
+  SearchState copyWith({String? text, bool? online, bool? podcast, String? onlineQuery}) => SearchState(
+      text: text ?? this.text,
+      online: online ?? this.online,
+      podcast: podcast ?? this.podcast,
+      onlineQuery: onlineQuery ?? this.onlineQuery);
 }
 
 class SearchStateNotifier extends Notifier<SearchState> {
@@ -635,9 +670,9 @@ class SearchStateNotifier extends Notifier<SearchState> {
   SearchState build() => const SearchState();
 
   void setText(String v) => state = state.copyWith(text: v);
-  void setOnline(bool v) => state = state.copyWith(online: v);
+  void setOnline(bool v, {bool podcast = false}) => state = state.copyWith(online: v, podcast: v && podcast);
   void setOnlineQuery(String v) => state = state.copyWith(onlineQuery: v);
-  void clear() => state = SearchState(online: state.online);
+  void clear() => state = SearchState(online: state.online, podcast: state.podcast);
 }
 
 final searchStateProvider = NotifierProvider<SearchStateNotifier, SearchState>(SearchStateNotifier.new);
