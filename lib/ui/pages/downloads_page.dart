@@ -79,6 +79,7 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
       } else {
         setState(() => _toolStatus = '正在更新 yt-dlp…');
         final msg = await yt.update();
+        ref.read(settingsProvider.notifier).setYtLastUpdate(DateTime.now());
         setState(() => _toolStatus = msg);
       }
     } catch (e) {

@@ -1,3 +1,5 @@
+import 'dart:isolate';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -22,10 +24,10 @@ Future<void> checkMissingFiles(BuildContext context, WidgetRef ref, {bool manual
   final all = await db.tracks();
   final trashed = findTrashedTracks(all);
   final trashedIds = {for (final t in trashed) t.id};
-  final missing = [
-    ...trashed,
-    ...findMissingTracks(all, {...s.musicDirs, s.downloadDir}.toList()).where((t) => !trashedIds.contains(t.id)),
-  ];
+  // Checking every file can take a while in a big library: not on the UI thread.
+  final roots = {...s.musicDirs, s.downloadDir}.toList();
+  final gone = await _missingInBackground(all, roots);
+  final missing = [...trashed, ...gone.where((t) => !trashedIds.contains(t.id))];
   final fresh = manual ? missing : missing.where((t) => !_keptThisSession.contains(t.id)).toList();
   if (fresh.isEmpty) {
     if (manual && context.mounted) toast(context, '沒有已不存在的歌曲');
@@ -51,6 +53,11 @@ Future<void> checkMissingFiles(BuildContext context, WidgetRef ref, {bool manual
   await ref.read(scannerProvider).cleanArtCache();
   if (context.mounted) toast(context, '已從音樂庫移除 ${missing.length} 首');
 }
+
+/// Top-level so the isolate only gets [all] and [roots] (not the widget
+/// context a closure inside [checkMissingFiles] could drag along).
+Future<List<Track>> _missingInBackground(List<Track> all, List<String> roots) =>
+    Isolate.run(() => findMissingTracks(all, roots));
 
 Future<bool> _confirm(BuildContext context, List<Track> missing, {required int trashed}) async {
   final gone = missing.length - trashed;

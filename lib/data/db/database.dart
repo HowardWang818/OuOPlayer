@@ -51,7 +51,7 @@ class AppDatabase {
     return AppDatabase._(db);
   }
 
-  static const schemaVersion = 4;
+  static const schemaVersion = 5;
 
   /// Schema changes since version 1; existing data is kept.
   static Future<void> migrate(Database db, int from, int to) async {
@@ -73,6 +73,21 @@ class AppDatabase {
       await db.execute('INSERT INTO plays SELECT track_id, COUNT(*), MAX(played_at) FROM history GROUP BY track_id');
       await db.execute(
           'CREATE TABLE podcast_progress(uri TEXT PRIMARY KEY, position_ms INTEGER, duration_ms INTEGER, finished INTEGER, updated_at INTEGER)');
+    }
+    if (from < 5 && to >= 5) {
+      // v0.11.0: indexes for big libraries (sorting, smart playlists,
+      // playlists and likes lookups).
+      for (final sql in [
+        'CREATE INDEX IF NOT EXISTS idx_tracks_source ON tracks(source)',
+        'CREATE INDEX IF NOT EXISTS idx_tracks_added ON tracks(added_at)',
+        'CREATE INDEX IF NOT EXISTS idx_playlist_tracks_list ON playlist_tracks(playlist_id, position)',
+        'CREATE INDEX IF NOT EXISTS idx_playlist_tracks_track ON playlist_tracks(track_id)',
+        'CREATE INDEX IF NOT EXISTS idx_history_track ON history(track_id)',
+        'CREATE INDEX IF NOT EXISTS idx_history_played ON history(played_at)',
+        'CREATE INDEX IF NOT EXISTS idx_plays_count ON plays(count)',
+      ]) {
+        await db.execute(sql);
+      }
     }
   }
 

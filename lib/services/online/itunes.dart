@@ -61,6 +61,19 @@ class ITunesSong {
   String get ototoyUrl => 'https://ototoy.jp/find/?q=${Uri.encodeQueryComponent(query)}';
 }
 
+/// A show from Apple's podcast directory; [feedUrl] is its RSS feed.
+class ITunesPodcast {
+  const ITunesPodcast({required this.title, required this.author, required this.feedUrl, this.artwork, this.genre, this.episodes});
+  final String title;
+  final String author;
+  final String feedUrl;
+  final String? artwork;
+  final String? genre;
+  final int? episodes;
+
+  Podcast toPodcast() => Podcast(feedUrl, title, author, artwork);
+}
+
 class ITunesSearch {
   ITunesSearch({Dio? dio}) : _dio = dio ?? Dio(BaseOptions(connectTimeout: const Duration(seconds: 10), receiveTimeout: const Duration(seconds: 15)));
 
@@ -81,6 +94,33 @@ class ITunesSearch {
       options: Options(responseType: ResponseType.plain),
     );
     return parse(res.data ?? '');
+  }
+
+  /// Podcasts by name or host from Apple's directory (free, no key).
+  Future<List<ITunesPodcast>> searchPodcasts(String query, {int limit = 50}) async {
+    final res = await _dio.get<String>(
+      'https://itunes.apple.com/search',
+      queryParameters: {'term': query, 'media': 'podcast', 'entity': 'podcast', 'limit': limit, 'country': country},
+      options: Options(responseType: ResponseType.plain),
+    );
+    return parsePodcasts(res.data ?? '');
+  }
+
+  /// Shows without an RSS feed (Apple-only ones) can't be subscribed to.
+  static List<ITunesPodcast> parsePodcasts(String body) {
+    final results = (jsonDecode(body) as Map<String, dynamic>)['results'] as List? ?? const [];
+    return [
+      for (final r in results.cast<Map<String, dynamic>>())
+        if ((r['feedUrl'] as String?)?.startsWith('http') ?? false)
+          ITunesPodcast(
+            title: (r['collectionName'] ?? r['trackName'] ?? '') as String,
+            author: (r['artistName'] ?? '') as String,
+            feedUrl: r['feedUrl'] as String,
+            artwork: (r['artworkUrl600'] ?? r['artworkUrl100']) as String?,
+            genre: r['primaryGenreName'] as String?,
+            episodes: r['trackCount'] as int?,
+          ),
+    ];
   }
 
   static List<ITunesSong> parse(String body) {

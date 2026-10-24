@@ -8,6 +8,7 @@ import '../../services/download_service.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/art_image.dart';
 import '../widgets/dialogs.dart';
+import 'podcast_search_page.dart';
 
 Future<void> subscribePodcast(BuildContext context, WidgetRef ref) async {
   final url = await promptText(context, title: '訂閱 Podcast', hint: '貼上 RSS 網址', ok: '訂閱');
@@ -50,6 +51,17 @@ class PodcastList extends ConsumerWidget {
         title: const Text('以 RSS 網址訂閱 Podcast'),
         onTap: () => subscribePodcast(context, ref),
       ),
+      ListTile(
+        leading: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(4), color: Theme.of(context).colorScheme.surfaceContainerHigh),
+          child: const Icon(Icons.search),
+        ),
+        title: const Text('搜尋 Podcast'),
+        subtitle: const Text('依節目名稱或主持人找'),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PodcastSearchPage())),
+      ),
       for (final p in list)
         ListTile(
           leading: ArtImage(p.image, size: 56, icon: Icons.podcasts),
@@ -81,8 +93,23 @@ class PodcastEpisodesPage extends ConsumerWidget {
       return '剩 ${(left.inSeconds / 60).ceil()} 分鐘';
     }
 
+    final subscribed = (ref.watch(podcastsProvider).value ?? const <Podcast>[]).any((p) => p.feedUrl == podcast.feedUrl);
     return Scaffold(
       appBar: AppBar(title: Text(podcast.title), actions: [
+        // Opened from the search: listen first, subscribe if you like it.
+        if (!subscribed)
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: FilledButton.icon(
+              icon: const Icon(Icons.add),
+              label: const Text('訂閱'),
+              onPressed: () async {
+                final f = feed.value;
+                await ref.read(dbProvider).savePodcast(f?.podcast ?? podcast);
+                if (context.mounted) toast(context, '已訂閱「${f?.podcast.title ?? podcast.title}」');
+              },
+            ),
+          ),
         PopupMenuButton<String>(
           onSelected: (v) async {
             if (v == 'unsub') {
@@ -93,9 +120,9 @@ class PodcastEpisodesPage extends ConsumerWidget {
               ref.invalidate(podcastFeedProvider(podcast.feedUrl));
             }
           },
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'refresh', child: Text('重新整理')),
-            PopupMenuItem(value: 'unsub', child: Text('取消訂閱')),
+          itemBuilder: (_) => [
+            const PopupMenuItem(value: 'refresh', child: Text('重新整理')),
+            if (subscribed) const PopupMenuItem(value: 'unsub', child: Text('取消訂閱')),
           ],
         ),
       ]),

@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
+import 'podcast_search_page.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -27,8 +31,21 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
   SearchStateNotifier get _search => ref.read(searchStateProvider.notifier);
 
+  /// The library search follows typing after a short pause, not per key.
+  Timer? _debounce;
+  late String _libraryQuery = ref.read(searchStateProvider).text;
+
+  void _onTyped(String v) {
+    _search.setText(v.trim());
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 250), () {
+      if (mounted) setState(() => _libraryQuery = v.trim());
+    });
+  }
+
   @override
   void dispose() {
+    _debounce?.cancel();
     _ctrl.dispose();
     super.dispose();
   }
@@ -55,11 +72,15 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           child: TextField(
             controller: _ctrl,
             textInputAction: TextInputAction.search,
-            onChanged: (v) => _search.setText(v.trim()),
+            onChanged: _onTyped,
             onSubmitted: (_) => _submit(),
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.search),
-              hintText: online ? '搜尋歌曲（按搜尋鍵查詢）' : '想聽什麼？（或貼上音樂 / 串流網址）',
+              hintText: s.podcast
+                  ? '搜尋 Podcast 節目或主持人（按搜尋鍵查詢）'
+                  : online
+                      ? '搜尋歌曲（按搜尋鍵查詢）'
+                      : '想聽什麼？（或貼上音樂 / 串流網址）',
               suffixIcon: q.isEmpty
                   ? null
                   : IconButton(
@@ -75,16 +96,16 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Row(children: [
-            for (final (tabOnline, label) in [(false, '音樂庫'), (true, '網路')])
+            for (final (tabOnline, tabPodcast, label) in [(false, false, '音樂庫'), (true, false, '網路'), (true, true, 'Podcast')])
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: ChoiceChip(
                   label: Text(label),
-                  selected: online == tabOnline,
+                  selected: online == tabOnline && s.podcast == tabPodcast,
                   showCheckmark: false,
-                  labelStyle: TextStyle(color: online == tabOnline ? Colors.black : null),
+                  labelStyle: TextStyle(color: online == tabOnline && s.podcast == tabPodcast ? Colors.black : null),
                   onSelected: (_) {
-                    _search.setOnline(tabOnline);
+                    _search.setOnline(tabOnline, podcast: tabPodcast);
                     if (tabOnline && q.isNotEmpty && !isUrl) _search.setOnlineQuery(q);
                   },
                 ),
@@ -94,11 +115,13 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         Expanded(
           child: isUrl
               ? _UrlActions(url: q)
-              : online
+              : s.podcast
+                  ? PodcastSearchResults(query: onlineQuery, pending: q.isNotEmpty && q != onlineQuery, onSearch: _submit)
+                  : online
                   ? _OnlineResults(query: onlineQuery, pending: q.isNotEmpty && q != onlineQuery, onSearch: _submit)
                   : q.isEmpty
                       ? Center(child: Text('搜尋歌曲、演出者或專輯', style: TextStyle(color: muted)))
-                      : _LibraryResults(query: q),
+                      : _LibraryResults(query: _libraryQuery.isEmpty ? q : _libraryQuery),
         ),
       ]),
     );
