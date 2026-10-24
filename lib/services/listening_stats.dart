@@ -1,5 +1,6 @@
 import '../data/db/database.dart';
 import '../data/models/track.dart';
+import 'artists.dart';
 
 enum StatsPeriod {
   week('本週'),
@@ -124,14 +125,20 @@ class ListeningStats {
       for (final e in perTrack.entries)
         if (library[e.key] != null) TrackCount(library[e.key]!, e.value.$1, e.value.$2),
     ]..sort((a, b) => byPlays((a.plays, a.listened), (b.plays, b.listened)));
+    // Every credited artist gets the play (「YOASOBI, Ayase」 counts for both).
+    final dir = ArtistDirectory(library.values.map((t) => t.artist));
     final artists = <String, (int, Duration, String?)>{};
+    final names = <String, String>{};
     for (final t in tracks) {
-      final name = t.track.artist;
-      if (name == '未知演出者' || name == '網路串流') continue;
-      final (n, d, art) = artists[name] ?? (0, Duration.zero, null);
-      artists[name] = (n + t.plays, d + t.listened, art ?? t.track.art);
+      if (t.track.artist == '網路串流') continue;
+      for (final name in dir.namesOf(t.track.artist)) {
+        final k = dir.keyOf(name);
+        names[k] ??= name;
+        final (n, d, art) = artists[k] ?? (0, Duration.zero, null);
+        artists[k] = (n + t.plays, d + t.listened, art ?? t.track.art);
+      }
     }
-    final artistList = [for (final e in artists.entries) ArtistCount(e.key, e.value.$1, e.value.$2, e.value.$3)]
+    final artistList = [for (final e in artists.entries) ArtistCount(names[e.key]!, e.value.$1, e.value.$2, e.value.$3)]
       ..sort((a, b) => byPlays((a.plays, a.listened), (b.plays, b.listened)));
     return ListeningStats(
       music: music,

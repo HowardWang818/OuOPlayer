@@ -160,18 +160,25 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
         final sort = GroupSort.decode(ref.watch(sortProvider('artists')));
         final artists = sort.apply(ref.watch(artistsProvider).value ?? const <Artist>[],
             name: (a) => a.name, count: (a) => a.count, added: (a) => a.added);
-        body = ListView.builder(
-          itemCount: artists.length + 1,
-          itemBuilder: (_, i) => i == 0
-              ? _sortRow('${artists.length} 位演出者',
-                  GroupSortButton(sort: sort, onChanged: (v) => ref.read(sortProvider('artists').notifier).set(v.encode())))
-              : ListTile(
-                  leading: ArtImage(artists[i - 1].art, size: 56, circle: true, icon: Icons.person),
-                  title: Text(artists[i - 1].name),
-                  subtitle: Text('演出者 • ${artists[i - 1].count} 首', style: TextStyle(color: muted)),
-                  onTap: () => _push(CollectionPage.artist(artists[i - 1].name)),
-                ),
-        );
+        // Singers and bands first, then vocal synths (初音ミク, 重音テト…).
+        final people = artists.where((a) => !a.virtual).toList();
+        final synths = artists.where((a) => a.virtual).toList();
+        Widget tile(Artist a) => ListTile(
+              leading: ArtImage(a.art, size: 56, circle: true, icon: a.virtual ? Icons.graphic_eq : Icons.person),
+              title: Text(a.name),
+              subtitle: Text('${a.virtual ? '虛擬歌手' : '演出者'} • ${a.count} 首', style: TextStyle(color: muted)),
+              onTap: () => _push(CollectionPage.artist(a.name)),
+            );
+        Widget section(String t) => Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+              child: Text(t, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+            );
+        body = ListView(children: [
+          _sortRow('${people.length} 位演出者${synths.isEmpty ? '' : '、${synths.length} 位虛擬歌手'}',
+              GroupSortButton(sort: sort, onChanged: (v) => ref.read(sortProvider('artists').notifier).set(v.encode()))),
+          for (final a in people) tile(a),
+          if (synths.isNotEmpty) ...[section('虛擬歌手'), for (final a in synths) tile(a)],
+        ]);
       case _Filter.songs:
         final sort = TrackSort.decode(ref.watch(sortProvider('songs')), fallback: const TrackSort(TrackSortKey.title));
         final all = ref.watch(tracksProvider).value ?? const <Track>[];

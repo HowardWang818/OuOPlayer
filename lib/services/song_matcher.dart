@@ -2,6 +2,8 @@ import 'dart:math';
 
 import 'package:rapidfuzz/rapidfuzz.dart' as fuzz;
 
+import 'artists.dart';
+
 /// How sure [SongMatcher] is that two songs are the same.
 enum MatchLevel {
   /// Not the same song.
@@ -88,6 +90,10 @@ List<String> artistNames(String raw) {
       names.add(foldText(cjk));
       names.add(foldText(latin));
     }
+  }
+  // Built-in spellings: 「米津玄師」 also matches 「Kenshi Yonezu」.
+  for (final n in names.toList()) {
+    names.addAll(knownSpellingsFolded(n));
   }
   names.removeWhere((n) => n.isEmpty || n == foldText('未知演出者'));
   return names.toList();
