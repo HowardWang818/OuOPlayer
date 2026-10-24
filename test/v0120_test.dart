@@ -113,12 +113,21 @@ void main() {
 
       final root = await car.children(CarBrowser.root);
       // At most four tabs in Android Auto.
-      expect(root.map((m) => m.title), ['音樂庫', '專輯', '演出者', 'Podcast']);
+      expect(root.map((m) => m.title), ['首頁', '最近播放', '音樂庫', 'Podcast']);
+      // Tab icons are plain vectors the car tints.
+      expect(root.first.artUri.toString(), 'android.resource://com.ouo.ouoplayer/drawable/car_home');
       expect(root.every((m) => m.playable == false), isTrue);
 
       final lists = await car.children(CarBrowser.library);
-      expect(lists.map((m) => m.id), [CarBrowser.liked, CarBrowser.recent, for (final s in SmartList.values) 'smart:${s.name}', 'pl:$pl']);
-      expect(lists.map((m) => m.extras?[CarBrowser.groupTitle]).toSet(), {'快速播放', '智慧播放清單', '你的播放清單'});
+      expect(lists.map((m) => m.id),
+          [CarBrowser.liked, 'pl:$pl', for (final s in SmartList.values) 'smart:${s.name}', CarBrowser.albums, CarBrowser.artists]);
+      expect(lists.map((m) => m.extras?[CarBrowser.groupTitle]).toSet(), {'播放清單', '智慧播放清單', '瀏覽'});
+      // Song lists open as lists, the album and artist pages as grids.
+      expect(lists.first.extras?[CarBrowser.browsableHint], CarBrowser.styleList);
+      expect(lists.last.extras?[CarBrowser.browsableHint], CarBrowser.styleGrid);
+      final home = await car.children(CarBrowser.home);
+      expect(home.first.title, '已按讚的歌曲');
+      expect(home.any((m) => m.id == 'pl:$pl'), isTrue);
       // No cover of its own: an icon served by ArtProvider.
       expect(lists.first.artUri.toString(), 'content://com.ouo.ouoplayer.art/icon/favorite');
 

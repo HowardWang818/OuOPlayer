@@ -2,6 +2,7 @@
 <!-- audio_service looks notification icons up by name at runtime, so the
      release resource shrinker cannot see they are used. Every icon passed to
      it by name (notification icon, MediaControl.custom) must be listed here,
-     or the whole media notification fails to show. -->
+     or the whole media notification fails to show. Android Auto tab icons
+     (android.resource://…/drawable/car_*) are looked up by name too. -->
 <resources xmlns:tools="http://schemas.android.com/tools"
-    tools:keep="@drawable/ic_stat_music,@drawable/ic_action_favorite,@drawable/ic_action_favorite_border" />
+    tools:keep="@drawable/ic_stat_music,@drawable/ic_action_favorite,@drawable/ic_action_favorite_border,@drawable/car_*" />
