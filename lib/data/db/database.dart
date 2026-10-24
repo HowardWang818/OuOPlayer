@@ -159,6 +159,26 @@ class AppDatabase {
     _notify();
   }
 
+  /// Songs whose files moved (old path → new path): the song keeps its
+  /// playlists, like, play counts, listening log and download record.
+  Future<void> moveTrackPaths(Map<String, String> moved) async {
+    if (moved.isEmpty) return;
+    await db.transaction((txn) async {
+      for (final e in moved.entries) {
+        if (e.key == e.value) continue;
+        await txn.update('tracks', {'id': e.value, 'uri': e.value}, where: 'id = ?', whereArgs: [e.key]);
+        for (final table in ['playlist_tracks', 'history', 'listening_log']) {
+          await txn.update(table, {'track_id': e.value}, where: 'track_id = ?', whereArgs: [e.key]);
+        }
+        for (final table in ['favorites', 'plays']) {
+          await txn.update(table, {'track_id': e.value}, where: 'track_id = ?', whereArgs: [e.key], conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+        await txn.update('download_history', {'path': e.value}, where: 'path = ?', whereArgs: [e.key]);
+      }
+    });
+    _notify();
+  }
+
   Future<void> deleteTracks(Iterable<String> ids) async {
     final list = ids.toList();
     if (list.isEmpty) return;

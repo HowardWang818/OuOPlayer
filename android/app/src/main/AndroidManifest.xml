@@ -83,6 +83,18 @@
                 android:resource="@xml/widget_player_info" />
         </receiver>
 
+        <!-- 2x2 home screen widget -->
+        <receiver
+            android:name=".PlayerWidgetSmallProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_player_small_info" />
+        </receiver>
+
         <service
             android:name=".DownloadForegroundService"
             android:foregroundServiceType="dataSync"

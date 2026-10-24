@@ -321,7 +321,7 @@ Future<List<String>> removalLines(WidgetRef ref, List<Track> tracks) async {
 /// files to the trash — or deletes them for good if 永久刪除 is on — then
 /// removes the songs from the library, playlists, likes and the queue.
 /// Returns true if they were deleted.
-Future<bool> deleteTrackFiles(BuildContext context, WidgetRef ref, List<Track> tracks) async {
+Future<bool> deleteTrackFiles(BuildContext context, WidgetRef ref, List<Track> tracks, {String? title}) async {
   if (tracks.isEmpty) return false;
   final forever = ref.read(settingsProvider).deletePermanently;
   final where = await removalLines(ref, tracks);
@@ -330,7 +330,7 @@ Future<bool> deleteTrackFiles(BuildContext context, WidgetRef ref, List<Track> t
     context: context,
     useRootNavigator: true,
     builder: (ctx) => AlertDialog(
-      title: Text('${forever ? '永久刪除' : '刪除'}${tracks.length == 1 ? '檔案' : ' ${tracks.length} 個檔案'}？'),
+      title: Text(title ?? '${forever ? '永久刪除' : '刪除'}${tracks.length == 1 ? '檔案' : ' ${tracks.length} 個檔案'}？'),
       content: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           for (final t in tracks.take(5)) Text(p.basename(t.uri), style: const TextStyle(fontWeight: FontWeight.bold)),

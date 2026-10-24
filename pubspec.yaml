@@ -1,7 +1,7 @@
 name: ouoplayer
 description: "OuOPlayer - a Spotify-style music player for Android and Windows."
 publish_to: 'none'
-version: 0.15.2+37
+version: 0.17.0+39
 
 environment:
   sdk: ^3.6.0

@@ -39,6 +39,7 @@ class TrashPlugin(private val context: Context, messenger: BinaryMessenger) : Me
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         if (call.method == "overwrite") return overwrite(call, result)
+        if (call.method == "move") return move(call, result)
         // 媒體管理 (Android 12+): once allowed, trash / delete / write
         // requests go through without the system's confirmation dialog.
         if (call.method == "canManageMedia") {
@@ -70,6 +71,69 @@ class TrashPlugin(private val context: Context, messenger: BinaryMessenger) : Me
             return withUris(rest) { uris -> deleteForever(uris, result) }
         }
         withUris(paths) { uris -> trash(uris, result) }
+    }
+
+    /**
+     * Moves music files (資料夾 →「移到資料夾」/「重新命名」). Files this app
+     * may write are renamed directly; the others are moved through MediaStore
+     * (RELATIVE_PATH), after one system confirmation unless 媒體管理 is on.
+     */
+    private fun move(call: MethodCall, result: MethodChannel.Result) {
+        val moves = call.argument<List<Map<String, String>>>("moves") ?: return result.error("args", "moves missing", null)
+        val rest = moves.filter { m ->
+            val to = File(m["to"]!!)
+            to.parentFile?.mkdirs()
+            !(try { File(m["from"]!!).renameTo(to) } catch (_: Exception) { false })
+        }
+        if (rest.isEmpty()) return result.success(true)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return result.error("move", "無法移動檔案", null)
+        val root = android.os.Environment.getExternalStorageDirectory().absolutePath.trimEnd('/') + "/"
+        if (rest.any { !it["to"]!!.startsWith(root) }) return result.error("move", "只能在手機內部儲存空間裡移動", null)
+        withPathUris(rest.map { it["from"]!! }) { uris ->
+            val todo = rest.mapNotNull { m -> uris[m["from"]]?.let { it to m["to"]!! } }
+            if (todo.size < rest.size) return@withPathUris result.error("notFound", "系統找不到部分檔案", null)
+            fun values(to: String) = ContentValues().apply {
+                put(MediaStore.MediaColumns.RELATIVE_PATH, File(to).parent!!.removePrefix(root).trimEnd('/') + "/")
+                put(MediaStore.MediaColumns.DISPLAY_NAME, File(to).name)
+            }
+            val needGrant = todo.filter { (uri, to) ->
+                try {
+                    context.contentResolver.update(uri, values(to), null, null) == 0
+                } catch (_: SecurityException) {
+                    true
+                }
+            }
+            if (needGrant.isEmpty()) return@withPathUris result.success(true)
+            val act = activity ?: return@withPathUris result.error("noActivity", "無法顯示確認視窗", null)
+            try {
+                val request = MediaStore.createWriteRequest(context.contentResolver, needGrant.map { it.first })
+                pending?.success(false)
+                pending = result
+                afterGrant = {
+                    for ((uri, to) in needGrant) {
+                        if (context.contentResolver.update(uri, values(to), null, null) == 0) throw Exception("無法移動 ${File(to).name}")
+                    }
+                }
+                act.startIntentSenderForResult(request.intentSender, REQUEST_CODE, null, 0, 0, 0)
+            } catch (e: Exception) {
+                pending = null
+                afterGrant = null
+                result.error("move", e.message, null)
+            }
+        }
+    }
+
+    /** Like [withUris], keyed by path. */
+    private fun withPathUris(paths: List<String>, then: (Map<String, Uri>) -> Unit) {
+        val uris = mutableMapOf<String, Uri>()
+        var count = 0
+        MediaScannerConnection.scanFile(context, paths.toTypedArray(), null) { path, uri ->
+            val done = synchronized(uris) {
+                if (uri != null) uris[path] = uri
+                ++count == paths.size
+            }
+            if (done) main.post { then(uris) }
+        }
     }
 
     /** The scanner returns each file's MediaStore URI, indexing it first if needed. */

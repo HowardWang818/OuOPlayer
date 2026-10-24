@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../providers/auto_backup_provider.dart';
 import '../../providers/providers.dart';
 import '../../services/backup.dart';
 import 'dialogs.dart';
@@ -34,7 +35,12 @@ Future<void> exportBackup(BuildContext context, WidgetRef ref) async {
 Future<void> importBackup(BuildContext context, WidgetRef ref) async {
   final picked = await FilePicker.pickFiles(dialogTitle: '選擇 OuOPlayer 備份檔', type: FileType.any);
   final path = picked.firstOrNull?.path;
-  if (path == null) return;
+  if (path == null || !context.mounted) return;
+  await restoreFromFile(context, ref, path);
+}
+
+/// Restores the backup file at [path] (after a warning).
+Future<void> restoreFromFile(BuildContext context, WidgetRef ref, String path) async {
   final Map<String, Object?> data;
   try {
     data = (jsonDecode(await File(path).readAsString()) as Map).cast<String, Object?>();
@@ -57,6 +63,7 @@ Future<void> importBackup(BuildContext context, WidgetRef ref) async {
   try {
     final report = await restoreBackup(ref.read(dbProvider), ref.read(scannerProvider), data);
     await ref.read(settingsProvider.notifier).reload();
+    ref.invalidate(autoBackupProvider);
     if (!context.mounted) return;
     await showDialog(
       context: context,

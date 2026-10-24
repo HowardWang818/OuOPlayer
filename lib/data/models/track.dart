@@ -44,6 +44,10 @@ class Track {
 
   bool get isRemote => uri.startsWith('http://') || uri.startsWith('https://');
 
+  /// The same song after its file moved to [path] (local songs are keyed by path).
+  Track movedTo(String path) => Track(
+      id: path, uri: path, title: title, artist: artist, album: album, durationMs: durationMs, art: art, source: source, trackNo: trackNo, addedAt: addedAt);
+
   Duration? get duration => durationMs == null ? null : Duration(milliseconds: durationMs!);
 
   factory Track.fromUrl(String url, {String? title, String? artist, String? album, String? art, String source = TrackSource.url, int? durationMs}) {

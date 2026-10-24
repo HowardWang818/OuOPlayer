@@ -73,6 +73,15 @@ class HomePage extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
               child: Row(children: [
                 Expanded(child: Text(_greeting(), style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold))),
+                // Light / dark: the moon while dark, the sun while light.
+                Builder(builder: (context) {
+                  final dark = Theme.of(context).brightness == Brightness.dark;
+                  return IconButton(
+                    icon: Icon(dark ? Icons.dark_mode_outlined : Icons.light_mode_outlined),
+                    tooltip: dark ? '切換成淺色' : '切換成深色',
+                    onPressed: () => ref.read(settingsProvider.notifier).setTheme(dark ? ThemeMode.light : ThemeMode.dark),
+                  );
+                }),
                 IconButton(icon: const Icon(Icons.insights_outlined), tooltip: '收聽統計', onPressed: () => push(const StatsPage())),
                 IconButton(icon: const Icon(Icons.settings_outlined), tooltip: '設定', onPressed: () => push(const SettingsPage())),
               ]),
