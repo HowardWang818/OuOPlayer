@@ -30,11 +30,23 @@ android {
         versionName = flutter.versionName
     }
 
+    // Releases are signed with the same key since v0.1 (this PC's debug key),
+    // kept outside the repo so in-app updates keep installing over the old
+    // app. OUO_KEYSTORE can point elsewhere; release.ps1 refuses to build
+    // without it, so a lost key never quietly becomes a new one.
+    val ouoKey = file(System.getenv("OUO_KEYSTORE") ?: "D:/dev/ouoplayer-keys/ouoplayer.keystore")
+    signingConfigs {
+        create("ouo") {
+            storeFile = ouoKey
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (ouoKey.exists()) "ouo" else "debug")
         }
     }
 

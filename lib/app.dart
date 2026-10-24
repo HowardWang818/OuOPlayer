@@ -19,6 +19,7 @@ import 'theme/app_theme.dart';
 import 'ui/shell/app_shell.dart';
 import 'providers/auto_backup_provider.dart';
 import 'ui/widgets/dialogs.dart';
+import 'ui/widgets/update_dialog.dart';
 import 'ui/widgets/missing_files_dialog.dart';
 
 class OuoApp extends ConsumerWidget {
@@ -43,7 +44,7 @@ class OuoApp extends ConsumerWidget {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: mode,
-      home: const MissingFilesWatcher(child: AppShell()),
+      home: const UpdateWatcher(child: MissingFilesWatcher(child: AppShell())),
     );
   }
 }

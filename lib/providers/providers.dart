@@ -164,6 +164,9 @@ class AppSettings {
   /// Look artist photos up on Deezer.
   final bool artistImagesOnline;
 
+  /// Check the update server once a day when the app opens.
+  final bool autoUpdateCheck;
+
   /// Show the current synced lyric line as the artist in the car / notification.
   final bool lyricsInMetadata;
 
@@ -206,6 +209,7 @@ class AppSettings {
     this.recordPlays = true,
     this.lyricsInMetadata = false,
     this.artistImagesOnline = true,
+    this.autoUpdateCheck = true,
     this.ytAutoUpdate = true,
     this.ytLastUpdate,
     this.sorts = const {},
@@ -240,6 +244,7 @@ class AppSettings {
     bool? recordPlays,
     bool? lyricsInMetadata,
     bool? artistImagesOnline,
+    bool? autoUpdateCheck,
     bool? ytAutoUpdate,
     DateTime? ytLastUpdate,
   }) =>
@@ -272,6 +277,7 @@ class AppSettings {
         recordPlays: recordPlays ?? this.recordPlays,
         lyricsInMetadata: lyricsInMetadata ?? this.lyricsInMetadata,
         artistImagesOnline: artistImagesOnline ?? this.artistImagesOnline,
+        autoUpdateCheck: autoUpdateCheck ?? this.autoUpdateCheck,
         ytAutoUpdate: ytAutoUpdate ?? this.ytAutoUpdate,
         ytLastUpdate: ytLastUpdate ?? this.ytLastUpdate,
         sorts: sorts,
@@ -315,6 +321,7 @@ class AppSettings {
       recordPlays: m['record_plays'] != 'false',
       lyricsInMetadata: m['lyrics_in_metadata'] == 'true',
       artistImagesOnline: m['artist_images_online'] != 'false',
+      autoUpdateCheck: m['auto_update_check'] != 'false',
       ytAutoUpdate: m['yt_auto_update'] != 'false',
       ytLastUpdate: DateTime.tryParse(m['yt_last_update'] ?? ''),
       sorts: {for (final e in m.entries) if (e.key.startsWith('sort_')) e.key.substring(5): e.value},
@@ -452,6 +459,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
     ArtistRenames.set(names);
     await _db.setSetting('artist_renames', jsonEncode(names));
     _db.notifyChanged();
+  }
+
+  void setAutoUpdateCheck(bool v) {
+    state = state.copyWith(autoUpdateCheck: v);
+    _db.setSetting('auto_update_check', '$v');
   }
 
   void setArtistImagesOnline(bool v) {

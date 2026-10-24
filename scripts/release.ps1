@@ -39,6 +39,11 @@ foreach ($d in $targets) {
     }
 }
 
+# The signing key must be the one every installed copy was signed with, or
+# in-app updates stop installing (see android/app/build.gradle.kts).
+$keystore = if ($env:OUO_KEYSTORE) { $env:OUO_KEYSTORE } else { 'D:\dev\ouoplayer-keys\ouoplayer.keystore' }
+if (-not (Test-Path $keystore)) { throw "Signing key not found: $keystore - restore it from your backup before releasing." }
+
 Write-Host "== Building OuOPlayer $full ($(if ($Windows) { 'Android + Windows' } else { 'Android' }))" -ForegroundColor Cyan
 Push-Location $buildRoot
 try {

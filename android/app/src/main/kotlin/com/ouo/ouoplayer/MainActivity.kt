@@ -23,6 +23,7 @@ class MainActivity : AudioServiceActivity() {
         normalizer = NormalizerPlugin(messenger)
         trash = TrashPlugin(applicationContext, messenger).also { it.activity = this }
         widget = PlayerWidgetPlugin(applicationContext, messenger)
+        UpdatePlugin(applicationContext, messenger)
         // Download notification: progress from Dart; taps open the downloads page.
         downloads = DownloadNotifierPlugin(applicationContext, messenger).also {
             it.pendingAction = intent?.getStringExtra(DownloadForegroundService.EXTRA_OPEN)
