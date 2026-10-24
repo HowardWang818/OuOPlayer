@@ -56,7 +56,10 @@ if (-not $SkipR2) {
     # Versions already up there (newest last).
     $versionsFile = Join-Path $tmp 'versions.json'
     $versions = @()
-    & npx.cmd --yes wrangler@4 r2 object get "$bucket/versions.json" --file $versionsFile --remote 2>$null
+    # Missing on the first publish; that error is expected.
+    $ErrorActionPreference = 'Continue'
+    & npx.cmd --yes wrangler@4 r2 object get "$bucket/versions.json" --file $versionsFile --remote *> $null
+    $ErrorActionPreference = 'Stop'
     # (Windows PowerShell returns a JSON array as one object: unrolled with ForEach.)
     if ($LASTEXITCODE -eq 0 -and (Test-Path $versionsFile)) { $versions = @(Get-Content $versionsFile -Raw | ConvertFrom-Json | ForEach-Object { $_ }) }
     if ($versions -contains $version) { throw "$tag is already on the update server." }
