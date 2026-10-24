@@ -17,6 +17,7 @@ import 'services/volume_normalizer.dart';
 import 'services/ytdlp_auto_update.dart';
 import 'theme/app_theme.dart';
 import 'ui/shell/app_shell.dart';
+import 'providers/auto_backup_provider.dart';
 import 'ui/widgets/dialogs.dart';
 import 'ui/widgets/missing_files_dialog.dart';
 
@@ -34,6 +35,7 @@ class OuoApp extends ConsumerWidget {
     ref.watch(lyricsInMetadataProvider);
     ref.watch(playbackSettingsProvider);
     ref.watch(downloadNotificationProvider);
+    ref.watch(autoBackupProvider);
     return MaterialApp(
       navigatorKey: rootNavigatorKey,
       title: 'OuOPlayer',

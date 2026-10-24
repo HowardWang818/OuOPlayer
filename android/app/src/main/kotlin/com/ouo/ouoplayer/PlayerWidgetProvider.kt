@@ -36,6 +36,8 @@ class PlayerWidgetProvider : AppWidgetProvider() {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(ComponentName(context, PlayerWidgetProvider::class.java))
             if (ids.isNotEmpty()) manager.updateAppWidget(ids, views(context))
+            val small = manager.getAppWidgetIds(ComponentName(context, PlayerWidgetSmallProvider::class.java))
+            if (small.isNotEmpty()) manager.updateAppWidget(small, views(context, small = true))
         }
 
         /** Used until (or unless) the cover gives a colour. */
@@ -54,9 +56,10 @@ class PlayerWidgetProvider : AppWidgetProvider() {
             refresh(context)
         }
 
-        private fun views(context: Context): RemoteViews {
+        /** The 4x1 bar, or ([small]) the 2x2 square with the cover filling it. */
+        internal fun views(context: Context, small: Boolean = false): RemoteViews {
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            val v = RemoteViews(context.packageName, R.layout.widget_player)
+            val v = RemoteViews(context.packageName, if (small) R.layout.widget_player_small else R.layout.widget_player)
             v.setTextViewText(R.id.widget_title, prefs.getString("title", null) ?: "OuOPlayer")
             v.setTextViewText(R.id.widget_artist, prefs.getString("artist", null) ?: "沒有播放中的歌曲")
             v.setImageViewResource(
@@ -66,12 +69,15 @@ class PlayerWidgetProvider : AppWidgetProvider() {
             val bg = prefs.getInt("bg", DEFAULT_BG)
             val fg = prefs.getInt("fg", DEFAULT_FG)
             v.setInt(R.id.widget_bg, "setColorFilter", bg)
-            v.setTextColor(R.id.widget_title, fg)
-            v.setTextColor(R.id.widget_artist, (fg and 0x00FFFFFF) or 0xB3000000.toInt())
-            for (id in intArrayOf(R.id.widget_prev, R.id.widget_play, R.id.widget_next)) v.setInt(id, "setColorFilter", fg)
-            val art = prefs.getString("art", null)?.let { loadArt(it) }
+            // The 2x2 one has its text on a dark scrim over the cover: always white.
+            val text = if (small) DEFAULT_FG else fg
+            v.setTextColor(R.id.widget_title, text)
+            v.setTextColor(R.id.widget_artist, (text and 0x00FFFFFF) or 0xB3000000.toInt())
+            for (id in intArrayOf(R.id.widget_prev, R.id.widget_play, R.id.widget_next)) v.setInt(id, "setColorFilter", text)
+            val art = prefs.getString("art", null)?.let { loadArt(it, if (small) 400 else 192) }
                 ?: BitmapFactory.decodeResource(context.resources, R.mipmap.ic_launcher)
-            if (art != null) v.setImageViewBitmap(R.id.widget_art, rounded(art))
+            // 16dp corners on the 110dp square like its background; 8dp on the 56dp cover.
+            if (art != null) v.setImageViewBitmap(R.id.widget_art, rounded(art, if (small) 16f / 110f else 8f / 56f))
 
             val open = PendingIntent.getActivity(
                 context, 0, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
@@ -93,26 +99,26 @@ class PlayerWidgetProvider : AppWidgetProvider() {
             return PendingIntent.getBroadcast(context, code, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         }
 
-        /** Square-cropped with rounded corners (8dp on the 56dp cover). */
-        private fun rounded(src: Bitmap): Bitmap {
+        /** Square-cropped with rounded corners ([corner] of the side). */
+        private fun rounded(src: Bitmap, corner: Float): Bitmap {
             val size = minOf(src.width, src.height)
             val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
             val shader = BitmapShader(src, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
                 setLocalMatrix(Matrix().apply { setTranslate(-(src.width - size) / 2f, -(src.height - size) / 2f) })
             }
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.shader = shader }
-            val r = size * 8f / 56f
+            val r = size * corner
             Canvas(out).drawRoundRect(RectF(0f, 0f, size.toFloat(), size.toFloat()), r, r, paint)
             return out
         }
 
         /** Covers are local files (the art cache); scaled down to widget size. */
-        private fun loadArt(path: String) = try {
+        private fun loadArt(path: String, max: Int) = try {
             if (!File(path).exists()) null else {
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 BitmapFactory.decodeFile(path, bounds)
                 var sample = 1
-                while (bounds.outWidth / (sample * 2) >= 192) sample *= 2
+                while (bounds.outWidth / (sample * 2) >= max) sample *= 2
                 BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
             }
         } catch (_: Exception) {
@@ -122,6 +128,13 @@ class PlayerWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
         manager.updateAppWidget(ids, views(context))
+    }
+}
+
+/** The 2x2 widget: same song and buttons as [PlayerWidgetProvider]. */
+class PlayerWidgetSmallProvider : AppWidgetProvider() {
+    override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
+        manager.updateAppWidget(ids, PlayerWidgetProvider.views(context, small = true))
     }
 }
 

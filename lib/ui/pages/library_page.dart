@@ -16,6 +16,7 @@ import '../widgets/track_selection.dart';
 import '../widgets/track_tile.dart';
 import 'collection_page.dart';
 import 'missing_songs_page.dart';
+import 'folder_browser_page.dart';
 import 'folder_page.dart';
 import 'podcasts_page.dart';
 
@@ -92,6 +93,12 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
               subtitle: Text('${f.path == null ? '本機' : '資料夾'} • ${f.count} 首歌曲', style: TextStyle(color: muted)),
               onTap: () => _push(CollectionPage.folder(f.path, f.name)),
             ),
+          ListTile(
+            leading: folderIcon(context, const LibraryFolder('', '', 0), 56),
+            title: const Text('瀏覽資料夾'),
+            subtitle: Text('依資料夾找音樂資料夾和下載資料夾裡的歌', style: TextStyle(color: muted)),
+            onTap: () => _push(const FolderBrowserPage()),
+          ),
           for (final s in SmartList.values.where((s) => !hiddenSmart.contains(s.name)))
             ListTile(
               onLongPress: () => showModalBottomSheet(

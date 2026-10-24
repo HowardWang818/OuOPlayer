@@ -8,6 +8,7 @@ import '../pages/cover_fix_page.dart';
 import 'batch_edit_dialog.dart';
 import 'dialogs.dart';
 import 'export_sheet.dart';
+import 'folder_actions.dart';
 import 'track_tile.dart';
 
 /// Which rows of a track list are selected (by index, since a playlist can
@@ -199,6 +200,8 @@ class _SelectionBar extends ConsumerWidget {
                     }
                     await ref.read(dbProvider).deleteTracks(local.map((t) => t.id));
                     if (context.mounted) done('已隱藏 ${local.length} 首');
+                  case 'move':
+                    if (await moveTracksDialog(context, ref, local)) selection.clear();
                   case 'delete':
                     if (await deleteTrackFiles(context, ref, local)) selection.clear();
                 }
@@ -212,6 +215,7 @@ class _SelectionBar extends ConsumerWidget {
                 if (local.isNotEmpty) ...[
                   PopupMenuItem(value: 'edit', child: Text('編輯資訊（${local.length} 首）')),
                   PopupMenuItem(value: 'covers', child: Text('找正式封面（${local.length} 首）')),
+                  PopupMenuItem(value: 'move', child: Text('移到資料夾…（${local.length} 首）')),
                   PopupMenuItem(value: 'hide', child: Text('從音樂庫隱藏（${local.length} 首）')),
                 ],
                 if (local.isNotEmpty)

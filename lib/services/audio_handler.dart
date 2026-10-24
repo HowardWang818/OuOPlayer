@@ -555,6 +555,31 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     _scheduleSave();
   }
 
+  /// Songs whose files moved (資料夾 →「移到資料夾」): queue entries point at
+  /// the new paths. The one playing keeps its open file until it ends.
+  Future<void> relocate(Map<String, Track> moved) async {
+    if (moved.isEmpty) return;
+    final cur = player.currentIndex;
+    var changed = false;
+    for (var i = 0; i < _tracks.length; i++) {
+      final to = moved[_tracks[i].id];
+      if (to == null) continue;
+      final old = _tracks[i];
+      _tracks[i] = to;
+      for (var j = 0; j < _unshuffled.length; j++) {
+        if (identical(_unshuffled[j], old)) _unshuffled[j] = to;
+      }
+      if (i != cur) {
+        await player.removeAudioSourceAt(i);
+        await player.insertAudioSource(i, _source(to));
+      }
+      changed = true;
+    }
+    if (!changed) return;
+    queue.add(_tracks.map((t) => t.toMediaItem()).toList());
+    _scheduleSave();
+  }
+
   Future<void> removeTrack(String trackId) async {
     if (currentTrack?.id == trackId) {
       final others = _tracks.any((t) => t.id != trackId);
