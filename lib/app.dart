@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'data/models/track.dart';
 import 'providers/providers.dart';
 import 'services/download_notifier.dart';
 import 'services/equalizer.dart';
@@ -28,6 +29,7 @@ class OuoApp extends ConsumerWidget {
     ref.watch(volumeNormalizationProvider);
     ref.watch(equalizerProvider);
     ref.watch(playerWidgetProvider);
+    ref.watch(lyricsInMetadataProvider);
     ref.watch(playbackSettingsProvider);
     ref.watch(downloadNotificationProvider);
     return MaterialApp(
@@ -115,6 +117,25 @@ final downloadNotificationProvider = Provider<void>((ref) {
     if (call.method == 'action') await handle(call.arguments as String?);
   });
   channel.invokeMethod<String>('initialAction').then(handle).catchError((_) {});
+});
+
+/// 在車上和通知列顯示歌詞: follows the synced lyrics of the current song and
+/// hands the line being sung to the player (see showLyricLine).
+final lyricsInMetadataProvider = Provider<void>((ref) {
+  final handler = ref.read(audioHandlerProvider);
+  if (!ref.watch(settingsProvider.select((s) => s.lyricsInMetadata))) {
+    handler.showLyricLine(null);
+    return;
+  }
+  final track = ref.watch(currentTrackProvider);
+  if (track == null || track.source == TrackSource.podcast) return;
+  final lyrics = ref.watch(lyricsProvider(LyricsKey(track))).value;
+  if (lyrics == null || !lyrics.synced) {
+    handler.showLyricLine(null);
+    return;
+  }
+  final i = ref.watch(positionProvider.select((p) => lyrics.indexAt(p.value ?? Duration.zero)));
+  handler.showLyricLine(i < 0 ? null : lyrics.lines[i].text);
 });
 
 /// Pushes the 播放 settings (podcast speed, skip silence, queue end, seek step) into the player.

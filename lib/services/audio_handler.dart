@@ -193,6 +193,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     final tag = i < sequence.length ? sequence[i].tag : null;
     if (tag is! MediaItem || tag.id != t.uri) return;
     _currentListenedTrack = t;
+    _lyricLine = null;
     final item = t.toMediaItem();
     // Keep a duration that may already have arrived for this track.
     mediaItem.add(item.duration == null && player.duration != null ? item.copyWith(duration: player.duration) : item);
@@ -389,6 +390,21 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     if (liked.isNotEmpty) return playTracks(liked, shuffle: true);
     final all = await _db.tracks();
     if (all.isNotEmpty) await playTracks(all, shuffle: true);
+  }
+
+  /// 在車上和通知列顯示歌詞: the line being sung replaces the artist in what
+  /// the car, notification and lock screen show (the app itself keeps the
+  /// real artist, which travels in the item's extras).
+  String? _lyricLine;
+
+  void showLyricLine(String? line) {
+    final text = line == null || line.trim().isEmpty ? null : line.trim();
+    if (text == _lyricLine) return;
+    _lyricLine = text;
+    final t = currentTrack;
+    final item = mediaItem.value;
+    if (t == null || item == null || item.id != t.uri) return;
+    mediaItem.add(item.copyWith(artist: text == null ? t.artist : '♪ $text'));
   }
 
   /// ♥ in the notification and on the lock screen.

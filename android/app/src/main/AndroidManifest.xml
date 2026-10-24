@@ -89,6 +89,13 @@
             android:stopWithTask="false"
             android:exported="false" />
 
+        <!-- Covers and folder icons for Android Auto (read-only; covers only). -->
+        <provider
+            android:name=".ArtProvider"
+            android:authorities="com.ouo.ouoplayer.art"
+            android:exported="true"
+            tools:ignore="ExportedContentProvider" />
+
         <!-- Android Auto: OuOPlayer is a media app the car can browse. -->
         <meta-data
             android:name="com.google.android.gms.car.application"

@@ -159,6 +159,9 @@ class AppSettings {
   /// Ask before downloading without Wi-Fi.
   final bool wifiWarning;
 
+  /// Show the current synced lyric line as the artist in the car / notification.
+  final bool lyricsInMetadata;
+
   /// 記錄播放紀錄 (recently played, play counts, listening stats).
   final bool recordPlays;
 
@@ -196,6 +199,7 @@ class AppSettings {
     this.lyricsKeepAwake = false,
     this.wifiWarning = true,
     this.recordPlays = true,
+    this.lyricsInMetadata = false,
     this.ytAutoUpdate = true,
     this.ytLastUpdate,
     this.sorts = const {},
@@ -228,6 +232,7 @@ class AppSettings {
     bool? lyricsKeepAwake,
     bool? wifiWarning,
     bool? recordPlays,
+    bool? lyricsInMetadata,
     bool? ytAutoUpdate,
     DateTime? ytLastUpdate,
   }) =>
@@ -258,6 +263,7 @@ class AppSettings {
         lyricsKeepAwake: lyricsKeepAwake ?? this.lyricsKeepAwake,
         wifiWarning: wifiWarning ?? this.wifiWarning,
         recordPlays: recordPlays ?? this.recordPlays,
+        lyricsInMetadata: lyricsInMetadata ?? this.lyricsInMetadata,
         ytAutoUpdate: ytAutoUpdate ?? this.ytAutoUpdate,
         ytLastUpdate: ytLastUpdate ?? this.ytLastUpdate,
         sorts: sorts,
@@ -294,6 +300,7 @@ class AppSettings {
       lyricsKeepAwake: m['lyrics_keep_awake'] == 'true',
       wifiWarning: m['wifi_warning'] != 'false',
       recordPlays: m['record_plays'] != 'false',
+      lyricsInMetadata: m['lyrics_in_metadata'] == 'true',
       ytAutoUpdate: m['yt_auto_update'] != 'false',
       ytLastUpdate: DateTime.tryParse(m['yt_last_update'] ?? ''),
       sorts: {for (final e in m.entries) if (e.key.startsWith('sort_')) e.key.substring(5): e.value},
@@ -423,6 +430,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void setLyricsKeepAwake(bool v) {
     state = state.copyWith(lyricsKeepAwake: v);
     _db.setSetting('lyrics_keep_awake', '$v');
+  }
+
+  void setLyricsInMetadata(bool v) {
+    state = state.copyWith(lyricsInMetadata: v);
+    _db.setSetting('lyrics_in_metadata', '$v');
   }
 
   void setRecordPlays(bool v) {

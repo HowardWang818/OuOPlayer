@@ -19,7 +19,9 @@ class CarBrowser {
 
   static const root = AudioService.browsableRootId;
   static const recent = AudioService.recentRootId;
-  static const playlists = 'playlists';
+
+  /// The four tabs Android Auto shows (it shows at most four).
+  static const library = 'library';
   static const albums = 'albums';
   static const artists = 'artists';
   static const podcasts = 'podcasts';
@@ -28,36 +30,76 @@ class CarBrowser {
   /// Big lists are cut short; the car's screen can't show more anyway.
   static const maxItems = 200;
 
-  static MediaItem folder(String id, String title, {String? subtitle, String? art}) =>
-      MediaItem(id: id, title: title, artist: subtitle, playable: false, artUri: _art(art));
+  // Android Auto layout hints (androidx.media.utils.MediaConstants).
+  static const browsableHint = 'android.media.browse.CONTENT_STYLE_BROWSABLE_HINT';
+  static const playableHint = 'android.media.browse.CONTENT_STYLE_PLAYABLE_HINT';
+  static const groupTitle = 'android.media.browse.CONTENT_STYLE_GROUP_TITLE_HINT';
+  static const styleList = 1, styleGrid = 2;
 
-  static Uri? _art(String? art) {
-    if (art == null) return null;
-    return art.startsWith('http') ? Uri.tryParse(art) : Uri.file(art);
+  /// Given to AudioServiceConfig: grids for folders, lists for songs, search on.
+  static const rootExtras = <String, dynamic>{
+    'android.media.browse.CONTENT_STYLE_SUPPORTED': true,
+    browsableHint: styleGrid,
+    playableHint: styleList,
+    'android.media.browse.SEARCH_SUPPORTED': true,
+  };
+
+  static const _artAuthority = 'com.ouo.ouoplayer.art';
+
+  /// The car can't open the app's files: local covers go through
+  /// ArtProvider (which only serves the art cache and playlist covers).
+  static Uri? artUri(String? art) {
+    if (art == null || art.isEmpty) return null;
+    if (art.startsWith('http')) return Uri.tryParse(art);
+    return Uri.parse('content://$_artAuthority/f/${Uri.encodeComponent(art)}');
   }
+
+  static Uri icon(String name) => Uri.parse('content://$_artAuthority/icon/$name');
+
+  static MediaItem folder(String id, String title, {String? subtitle, String? art, String? icon, String? group, int? childStyle}) =>
+      MediaItem(
+        id: id,
+        title: title,
+        artist: subtitle,
+        playable: false,
+        artUri: artUri(art) ?? (icon == null ? null : CarBrowser.icon(icon)),
+        extras: {
+          if (group != null) groupTitle: group,
+          if (childStyle != null) browsableHint: childStyle,
+        },
+      );
 
   Future<List<MediaItem>> children(String parent) async {
     switch (parent) {
       case root:
         return [
-          folder(playlists, '播放清單'),
-          folder(liked, '已按讚的歌曲'),
-          folder(albums, '專輯'),
-          folder(artists, '演出者'),
-          folder(podcasts, 'Podcast'),
-          folder(recent, '最近播放'),
+          folder(library, '音樂庫', icon: 'library'),
+          folder(albums, '專輯', icon: 'album'),
+          folder(artists, '演出者', icon: 'artist'),
+          folder(podcasts, 'Podcast', icon: 'podcast'),
         ];
-      case playlists:
+      case library:
         return [
-          for (final s in SmartList.values) folder('smart:${s.name}', s.label, subtitle: '智慧播放清單'),
-          for (final p in await db.playlists()) folder('pl:${p.id}', p.name, subtitle: '${p.count} 首', art: p.art),
+          folder(liked, '已按讚的歌曲', icon: 'favorite', group: '快速播放'),
+          folder(recent, '最近播放', icon: 'recent', group: '快速播放'),
+          for (final s in SmartList.values) folder('smart:${s.name}', s.label, icon: 'smart', group: '智慧播放清單'),
+          for (final p in await db.playlists())
+            folder('pl:${p.id}', p.name, subtitle: '${p.count} 首', art: p.art, icon: 'playlist', group: '你的播放清單'),
         ];
       case albums:
-        return [for (final a in (await db.albums()).take(maxItems)) folder('album:${a.name}', a.name, subtitle: a.artist, art: a.art)];
+        return [
+          for (final a in (await db.albums()).take(maxItems)) folder('album:${a.name}', a.name, subtitle: a.artist, art: a.art, icon: 'album'),
+        ];
       case artists:
-        return [for (final a in (await db.artists()).take(maxItems)) folder('artist:${a.name}', a.name, subtitle: '${a.count} 首', art: a.art)];
+        return [
+          for (final a in (await db.artists()).take(maxItems))
+            folder('artist:${a.name}', a.name, subtitle: '${a.count} 首', art: a.art, icon: 'artist'),
+        ];
       case podcasts:
-        return [for (final p in await db.podcasts()) folder('podcast:${p.feedUrl}', p.title, subtitle: p.author, art: p.image)];
+        return [
+          for (final p in await db.podcasts())
+            folder('podcast:${p.feedUrl}', p.title, subtitle: p.author, art: p.image, icon: 'podcast', childStyle: styleList),
+        ];
     }
     final tracks = await tracksOf(parent);
     return [
@@ -68,7 +110,7 @@ class CarBrowser {
           artist: tracks[i].artist,
           album: tracks[i].album,
           duration: tracks[i].duration,
-          artUri: _art(tracks[i].art),
+          artUri: artUri(tracks[i].art),
           playable: true,
         ),
     ];

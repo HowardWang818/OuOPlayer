@@ -112,11 +112,15 @@ void main() {
       final car = CarBrowser(db, episodes: (url) async => [song('ep1', 'show', source: TrackSource.podcast)]);
 
       final root = await car.children(CarBrowser.root);
-      expect(root.map((m) => m.title), ['播放清單', '已按讚的歌曲', '專輯', '演出者', 'Podcast', '最近播放']);
+      // At most four tabs in Android Auto.
+      expect(root.map((m) => m.title), ['音樂庫', '專輯', '演出者', 'Podcast']);
       expect(root.every((m) => m.playable == false), isTrue);
 
-      final lists = await car.children(CarBrowser.playlists);
-      expect(lists.map((m) => m.id), [for (final s in SmartList.values) 'smart:${s.name}', 'pl:$pl']);
+      final lists = await car.children(CarBrowser.library);
+      expect(lists.map((m) => m.id), [CarBrowser.liked, CarBrowser.recent, for (final s in SmartList.values) 'smart:${s.name}', 'pl:$pl']);
+      expect(lists.map((m) => m.extras?[CarBrowser.groupTitle]).toSet(), {'快速播放', '智慧播放清單', '你的播放清單'});
+      // No cover of its own: an icon served by ArtProvider.
+      expect(lists.first.artUri.toString(), 'content://com.ouo.ouoplayer.art/icon/favorite');
 
       final songs = await car.children('pl:$pl');
       expect(songs.map((m) => (m.id, m.title, m.playable)), [('pl:$pl#0', 'c', true), ('pl:$pl#1', 'a', true)]);
