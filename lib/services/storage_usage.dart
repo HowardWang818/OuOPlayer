@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 /// Folders OuOPlayer fills by itself (never the user's music).
 enum CacheKind {
   art('封面快取', '歌曲封面的縮圖。只清除音樂庫已經用不到的。'),
+  artists('歌手圖片', '從 Deezer 下載的歌手照片。清除後會再上網下載，自己選的圖片會保留。'),
   lyrics('歌詞快取', '從 LRCLIB 查到的歌詞和「查不到」的紀錄。清除後會重新上網查詢，手動選過的歌詞也要重選。'),
   downloads('下載暫存檔', '下載中或下載失敗留下的暫存檔。下載進行中時不能清除。');
 
@@ -16,16 +17,18 @@ enum CacheKind {
 
 Future<Directory> cacheDir(CacheKind kind) async => switch (kind) {
       CacheKind.art => Directory(p.join((await getApplicationSupportDirectory()).path, 'art')),
+      CacheKind.artists => Directory(p.join((await getApplicationSupportDirectory()).path, 'art', 'artists')),
       CacheKind.lyrics => Directory(p.join((await getApplicationSupportDirectory()).path, 'lyrics')),
       CacheKind.downloads => Directory(p.join((await getTemporaryDirectory()).path, 'downloads')),
     };
 
-/// Total size of the files under [dir] in bytes (0 if it doesn't exist).
-Future<int> folderSize(Directory dir) async {
+/// Total size of the files under [dir] in bytes (0 if it doesn't exist);
+/// only its own files when not [recursive].
+Future<int> folderSize(Directory dir, {bool recursive = true}) async {
   if (!await dir.exists()) return 0;
   var total = 0;
   try {
-    await for (final e in dir.list(recursive: true, followLinks: false)) {
+    await for (final e in dir.list(recursive: recursive, followLinks: false)) {
       if (e is File) {
         try {
           total += await e.length();

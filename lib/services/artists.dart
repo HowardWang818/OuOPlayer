@@ -1,54 +1,5 @@
 import 'song_matcher.dart';
 
-/// Vocal synthesizers (VOCALOID, UTAU, CeVIO, Synthesizer V…): listed as
-/// artists, in their own section. Each line: the usual name first, then the
-/// other spellings.
-const virtualSingers = <List<String>>[
-  ['初音ミク', 'Hatsune Miku', 'Miku', '初音未來', '初音未来'],
-  ['鏡音リン', 'Kagamine Rin'],
-  ['鏡音レン', 'Kagamine Len'],
-  ['巡音ルカ', 'Megurine Luka'],
-  ['KAITO'],
-  ['MEIKO'],
-  ['GUMI', 'Megpoid'],
-  ['重音テト', 'Kasane Teto', 'Teto'],
-  ['可不', 'KAFU'],
-  ['星界', 'SEKAI'],
-  ['裏命', 'RIME'],
-  ['狐子', 'COKO'],
-  ['羽累', 'HARU'],
-  ['IA'],
-  ['ONE', 'オネ'],
-  ['flower', 'v flower', 'v4 flower'],
-  ['歌愛ユキ', 'Kaai Yuki'],
-  ['結月ゆかり', 'Yuzuki Yukari'],
-  ['紲星あかり', 'Kizuna Akari'],
-  ['音街ウナ', 'Otomachi Una'],
-  ['小春六花', 'Koharu Rikka'],
-  ['夏色花梨', 'Natsuki Karin'],
-  ['花隈千冬', 'Hanakuma Chifuyu'],
-  ['足立レイ', 'Adachi Rei'],
-  ['雪歌ユフ', 'Yukika Yufu'],
-  ['琴葉茜', 'Kotonoha Akane'],
-  ['琴葉葵', 'Kotonoha Aoi'],
-  ['東北きりたん', 'Tohoku Kiritan'],
-  ['東北ずん子', 'Tohoku Zunko'],
-  ['ずんだもん', 'Zundamon'],
-  ['四国めたん', 'Shikoku Metan'],
-  ['春日部つむぎ', 'Kasukabe Tsumugi'],
-  ['冥鳴ひまり', 'Meimei Himari'],
-  ['弦巻マキ', 'Tsurumaki Maki'],
-  ['知声', 'Chis-A'],
-  ['京町セイカ', 'Kyomachi Seika'],
-  ['洛天依', 'Luo Tianyi'],
-  ['言和', 'Yanhe'],
-  ['乐正绫', '樂正綾', 'Yuezheng Ling'],
-  ['乐正龙牙', 'Yuezheng Longya'],
-  ['心华', '心華', 'Xin Hua'],
-  ['徵羽摩柯', 'Zhiyu Moke'],
-  ['墨清弦', 'Mo Qingxian'],
-];
-
 /// The same person or band written several ways (scripts, romanisation,
 /// simplified / traditional Chinese). Members who also release on their own
 /// (Ayase in YOASOBI, ikura) stay separate.
@@ -91,7 +42,6 @@ const artistAliases = <List<String>>[
   ['花譜', 'KAF'],
   ['理芽', 'RIM'],
   ['ヰ世界情緒', 'Isekaijoucho'],
-  ['ハチ'], // 米津玄師's VOCALOID name: kept apart, as he credits it apart
   ['BTS', '방탄소년단', 'Bangtan Boys'],
   ['IU', '아이유'],
   ['BLACKPINK', '블랙핑크'],
@@ -99,13 +49,8 @@ const artistAliases = <List<String>>[
 
 /// Folded spelling → its group's usual name (built-in tables).
 final Map<String, String> _builtIn = {
-  for (final group in [...virtualSingers, ...artistAliases])
+  for (final group in artistAliases)
     for (final name in group) _key(name): group.first,
-};
-
-final Set<String> _virtualKeys = {
-  for (final group in virtualSingers)
-    for (final name in group) _key(name),
 };
 
 /// Spelling-free key: width, case, punctuation, and the order of Latin words
@@ -138,12 +83,63 @@ List<String> splitArtists(String raw) {
   return out;
 }
 
+/// Names the user changed in OuOPlayer (歌手頁 →「重新命名歌手」): the
+/// artist's usual name → the user's name. Kept in the settings table (so it
+/// is in backups); the song files are never touched.
+class ArtistRenames {
+  static Map<String, String> _names = const {};
+  static Map<String, String> _byKey = const {};
+  static Map<String, List<String>> _spellings = const {};
+
+  /// Original name → new name.
+  static Map<String, String> get all => _names;
+
+  static void set(Map<String, String> names) {
+    _names = Map.unmodifiable(names);
+    _byKey = {for (final e in names.entries) _key(e.key): e.value};
+    final groups = <String, Set<String>>{};
+    for (final e in names.entries) {
+      groups.putIfAbsent(foldText(e.value), () => {foldText(e.value)}).add(foldText(e.key));
+    }
+    _spellings = {
+      for (final g in groups.values)
+        for (final n in g) n: g.toList(),
+    };
+  }
+
+  static String? of(String usualName) => _byKey[_key(usualName)];
+
+  /// The table after renaming the artist shown as [from] to [to]: names that
+  /// already led to [from] follow it, and naming it back drops the entry.
+  /// Only the spelling may change too (「yoasobi」→「YOASOBI」).
+  static Map<String, String> renamed(Map<String, String> names, String from, String to) {
+    final out = <String, String>{};
+    var found = false;
+    for (final e in names.entries) {
+      if (_key(e.value) == _key(from)) {
+        found = true;
+        if (e.key.trim() != to.trim()) out[e.key] = to;
+      } else {
+        out[e.key] = e.value;
+      }
+    }
+    if (!found && from.trim() != to.trim()) out[from] = to;
+    return out;
+  }
+
+  /// The table without the names that lead to [shown] (「還原原本的名字」).
+  static Map<String, String> restored(Map<String, String> names, String shown) =>
+      {for (final e in names.entries) if (_key(e.value) != _key(shown)) e.key: e.value};
+
+  /// The original names behind [shown].
+  static List<String> originals(String shown) => [for (final e in _names.entries) if (_key(e.value) == _key(shown)) e.key];
+}
+
 /// One artist as the library shows it.
 class ArtistInfo {
-  ArtistInfo(this.key, this.name, {required this.virtual});
+  ArtistInfo(this.key, this.name);
   final String key;
   String name;
-  final bool virtual;
 }
 
 /// Turns credits into artists. Built-in spellings first, then pairs learnt
@@ -169,15 +165,29 @@ class ArtistDirectory {
 
   String? _canonical(String name) => _builtIn[_key(name)];
 
-  /// The usual name for any spelling.
-  String canonical(String name) => _builtIn[_key(name)] ?? _learnt[_key(name)] ?? name.trim();
+  /// The usual name for any spelling, or the user's own name for the artist.
+  String canonical(String name) {
+    final usual = _builtIn[_key(name)] ?? _learnt[_key(name)] ?? name.trim();
+    return ArtistRenames.of(usual) ?? usual;
+  }
 
   String keyOf(String name) => _key(canonical(name));
 
-  bool isVirtual(String name) => _virtualKeys.contains(_key(canonical(name)));
-
   /// The artists a song is credited to, as keys (for grouping).
   List<String> keysOf(String credit) => [for (final k in {for (final n in splitArtists(credit)) keyOf(n)}) k];
+
+  /// The artist a song is listed under: the first one credited
+  /// (「YOASOBI, Ayase」→ YOASOBI; 「DECO*27 feat. 初音ミク」→ DECO*27), in its
+  /// usual spelling. Null for 「未知演出者」.
+  String? primary(String credit) {
+    final names = splitArtists(credit);
+    return names.isEmpty ? null : canonical(names.first);
+  }
+
+  String? primaryKey(String credit) {
+    final p = primary(credit);
+    return p == null ? null : keyOf(p);
+  }
 
   /// The artists a song is credited to, as their usual names.
   List<String> namesOf(String credit) {
@@ -191,19 +201,25 @@ class ArtistDirectory {
 
 /// Folded spelling → every folded spelling of its group (for the matcher).
 final Map<String, List<String>> _spellings = {
-  for (final group in [...virtualSingers, ...artistAliases])
+  for (final group in artistAliases)
     for (final name in group) foldText(name): [for (final n in group) foldText(n)],
 };
 
 /// Like [knownSpellings], from an already folded name.
-List<String> knownSpellingsFolded(String folded) => _spellings[folded] ?? const [];
+List<String> knownSpellingsFolded(String folded) {
+  final user = ArtistRenames._spellings[folded];
+  if (user == null) return _spellings[folded] ?? const [];
+  return {...user, for (final n in user) ...?_spellings[n], ...?_spellings[folded]}.toList();
+}
 
 /// Every spelling of [name] the built-in tables know (folded), for matching.
 List<String> knownSpellings(String name) {
   final group = _builtIn[_key(name)];
-  if (group == null) return const [];
-  for (final g in [...virtualSingers, ...artistAliases]) {
-    if (g.first == group) return [for (final n in g) foldText(n)];
+  final out = <String>{...knownSpellingsFolded(foldText(name))};
+  if (group != null) {
+    for (final g in artistAliases) {
+      if (g.first == group) out.addAll([for (final n in g) foldText(n)]);
+    }
   }
-  return const [];
+  return out.toList();
 }

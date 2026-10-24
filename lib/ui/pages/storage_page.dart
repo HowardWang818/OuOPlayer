@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/providers.dart';
+import '../../services/artist_images.dart';
 import '../../services/storage_usage.dart';
 import '../widgets/dialogs.dart';
 
@@ -26,7 +27,8 @@ class _StoragePageState extends ConsumerState<StoragePage> {
 
   Future<void> _measure() async {
     for (final k in CacheKind.values) {
-      final size = await folderSize(await cacheDir(k));
+      // The cover cache holds the artist photos' folder: counted apart.
+      final size = await folderSize(await cacheDir(k), recursive: k != CacheKind.art);
       if (mounted) setState(() => _sizes[k] = size);
     }
   }
@@ -43,11 +45,14 @@ class _StoragePageState extends ConsumerState<StoragePage> {
       final before = _sizes[k] ?? 0;
       if (k == CacheKind.art) {
         await ref.read(scannerProvider).cleanArtCache();
+      } else if (k == CacheKind.artists) {
+        await ArtistImages.clear();
+        ref.invalidate(artistImageProvider);
       } else {
         await clearFolder(await cacheDir(k));
       }
       if (k == CacheKind.lyrics) ref.invalidate(lyricsProvider);
-      final after = await folderSize(await cacheDir(k));
+      final after = await folderSize(await cacheDir(k), recursive: k != CacheKind.art);
       if (!mounted) return;
       setState(() => _sizes[k] = after);
       toast(context, '已清除 ${formatBytes((before - after).clamp(0, before))}');
@@ -72,6 +77,7 @@ class _StoragePageState extends ConsumerState<StoragePage> {
           ListTile(
             leading: Icon(switch (k) {
               CacheKind.art => Icons.image_outlined,
+              CacheKind.artists => Icons.person_outline,
               CacheKind.lyrics => Icons.lyrics_outlined,
               CacheKind.downloads => Icons.downloading,
             }),

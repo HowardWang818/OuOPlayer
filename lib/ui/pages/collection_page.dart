@@ -5,9 +5,13 @@ import '../../data/db/database.dart';
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../theme/app_theme.dart';
+import '../../services/artist_images.dart';
+import '../../services/artists.dart';
 import '../widgets/art_image.dart';
+import '../widgets/artist_edit.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/export_sheet.dart';
+import '../widgets/image_viewer.dart';
 import '../widgets/sort_button.dart';
 import '../../services/network_check.dart';
 import '../../services/track_sort.dart';
@@ -60,7 +64,9 @@ class CollectionPage extends ConsumerWidget {
     final tracks = [for (final i in order) source[i]];
     final info = playlistId == null ? null : ref.watch(playlistInfoProvider(playlistId!)).value;
     // A custom playlist cover wins over the first song's cover.
-    final art = info?.cover ?? tracks.where((t) => t.art != null).firstOrNull?.art;
+    // An artist page shows the artist's photo when one was found.
+    final photo = kind == CollectionKind.artist ? ref.watch(artistImageProvider(name)).value : null;
+    final art = info?.cover ?? photo ?? tracks.where((t) => t.art != null).firstOrNull?.art;
     final color = ref.watch(artColorProvider(art)).value ?? AppColors.accent.withValues(alpha: 0.5);
     final theme = Theme.of(context);
     final handler = ref.read(audioHandlerProvider);
@@ -104,6 +110,23 @@ class CollectionPage extends ConsumerWidget {
           expandedHeight: 300,
           backgroundColor: Color.lerp(color, theme.scaffoldBackgroundColor, 0.3),
           actions: [
+            if (kind == CollectionKind.artist && name != '未知演出者')
+              PopupMenuButton<String>(
+                onSelected: (v) => switch (v) {
+                  'rename' => renameArtist(context, ref, name),
+                  'restore' => restoreArtistName(context, ref, name),
+                  'photo' => pickArtistPhoto(context, ref, name),
+                  'deezer' => pickDeezerPhoto(context, ref, name),
+                  _ => removeArtistPhoto(context, ref, name),
+                },
+                itemBuilder: (_) => [
+                  const PopupMenuItem(value: 'rename', child: Text('重新命名歌手')),
+                  if (ArtistRenames.originals(name).isNotEmpty) const PopupMenuItem(value: 'restore', child: Text('還原原本的名字')),
+                  const PopupMenuItem(value: 'photo', child: Text('從手機選圖片')),
+                  const PopupMenuItem(value: 'deezer', child: Text('從 Deezer 結果挑選')),
+                  if (ArtistImages.hasCustom(name)) const PopupMenuItem(value: 'removePhoto', child: Text('移除自訂圖片')),
+                ],
+              ),
             if (kind == CollectionKind.favorites)
               IconButton(
                 icon: const Icon(Icons.ios_share),
@@ -176,11 +199,14 @@ class CollectionPage extends ConsumerWidget {
                         ),
                         child: const Icon(Icons.favorite, size: 64, color: Colors.white),
                       )
-                    : ArtImage(art, size: 160, circle: kind == CollectionKind.artist, icon: switch (kind) {
-                        CollectionKind.artist => Icons.person,
-                        CollectionKind.folder => Icons.folder,
-                        _ => Icons.album,
-                      }),
+                    : ZoomableArt(
+                        art: art,
+                        child: ArtImage(art, size: 160, circle: kind == CollectionKind.artist, icon: switch (kind) {
+                          CollectionKind.artist => Icons.person,
+                          CollectionKind.folder => Icons.folder,
+                          _ => Icons.album,
+                        }),
+                      ),
                 const SizedBox(width: 20),
                 Expanded(
                   child: Column(mainAxisAlignment: MainAxisAlignment.end, crossAxisAlignment: CrossAxisAlignment.start, children: [
