@@ -9,6 +9,7 @@ import '../../services/file_trash.dart';
 import '../../theme/app_theme.dart';
 import '../pages/collection_page.dart';
 import '../pages/missing_songs_page.dart';
+import '../pages/pick_replacement_page.dart';
 import 'art_image.dart';
 import 'dialogs.dart';
 import 'edit_track_dialog.dart';
@@ -146,6 +147,15 @@ Future<void> showMissingSongMenu(BuildContext context, WidgetRef ref, Track trac
             subtitle: Text('${track.artist} • 手機上還沒有這首歌，有了之後會自動補上'),
           ),
           const Divider(),
+          ListTile(
+            leading: const Icon(Icons.library_music_outlined),
+            title: const Text('從音樂庫選擇這首歌'),
+            subtitle: const Text('手機上其實有，只是沒自動對上時用'),
+            onTap: () {
+              Navigator.pop(ctx);
+              Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => PickReplacementPage(missing: track)));
+            },
+          ),
           ListTile(
             leading: const Icon(Icons.link),
             title: const Text('取得 YouTube Music 連結'),

@@ -107,14 +107,10 @@ class PlayerBarScope extends InheritedWidget {
 
 void _toast(BuildContext context, String msg) => toast(context, msg);
 
-/// Short message. Shown at the top when the player bar is on screen (inside
-/// [PlayerBarScope] with a track loaded), otherwise as a normal bottom snackbar.
+/// Short message, always at the top of the screen with the same look on
+/// every page and dialog (a bottom snackbar only if there is no overlay).
 void toast(BuildContext context, String msg) {
-  final playerBarVisible =
-      PlayerBarScope.contains(context) && ProviderScope.containerOf(context, listen: false).read(currentTrackProvider) != null;
-  if (playerBarVisible) {
-    _TopToast.show(context, msg);
-  } else {
+  if (!_TopToast.show(context, msg)) {
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(msg)));
   }
 }
@@ -126,9 +122,10 @@ class _TopToast extends StatefulWidget {
 
   static OverlayEntry? _current;
 
-  static void show(BuildContext context, String msg) {
+  /// False when there is no overlay to show it on.
+  static bool show(BuildContext context, String msg) {
     final overlay = Overlay.maybeOf(context, rootOverlay: true);
-    if (overlay == null) return;
+    if (overlay == null) return false;
     _current?.remove();
     late final OverlayEntry entry;
     entry = OverlayEntry(
@@ -142,6 +139,7 @@ class _TopToast extends StatefulWidget {
     );
     _current = entry;
     overlay.insert(entry);
+    return true;
   }
 
   @override
