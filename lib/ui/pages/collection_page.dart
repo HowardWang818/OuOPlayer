@@ -77,7 +77,10 @@ class CollectionPage extends ConsumerWidget {
     final totalMs = tracks.fold<int>(0, (s, t) => s + (t.durationMs ?? 0));
     final subtitle = [
       if (kind == CollectionKind.album && tracks.isNotEmpty) tracks.first.artist,
-      '${tracks.length} 首歌曲',
+      () {
+        final missing = tracks.where((t) => t.source == TrackSource.missing).length;
+        return missing == 0 ? '${tracks.length} 首歌曲' : '${tracks.length - missing} 首歌曲（缺 $missing 首）';
+      }(),
       if (totalMs > 0) '約 ${(totalMs / 60000).round()} 分鐘',
     ].join(' • ');
 

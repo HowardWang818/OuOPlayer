@@ -8,6 +8,7 @@ import '../../providers/providers.dart';
 import '../../services/file_trash.dart';
 import '../../theme/app_theme.dart';
 import '../pages/collection_page.dart';
+import '../pages/missing_songs_page.dart';
 import 'art_image.dart';
 import 'dialogs.dart';
 import 'edit_track_dialog.dart';
@@ -50,6 +51,28 @@ class TrackTile extends ConsumerWidget {
     void select() {
       final keys = HardwareKeyboard.instance;
       selection!.toggle(selectIndex!, range: keys.isShiftPressed);
+    }
+
+    // Listed but not on the device: greyed, not playable.
+    if (track.source == TrackSource.missing) {
+      final tile = ListTile(
+        selected: selected,
+        selectedTileColor: AppColors.accent.withValues(alpha: 0.15),
+        onTap: selecting ? select : () => showMissingSongMenu(context, ref, track, onRemove: onRemove, removeLabel: removeLabel),
+        onLongPress: selection == null ? null : select,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        leading: Opacity(
+          opacity: 0.4,
+          child: showArt
+              ? const SizedBox(width: 48, height: 48, child: Icon(Icons.music_off_outlined))
+              : SizedBox(width: 32, child: Center(child: Text('${index != null ? index! + 1 : ''}'))),
+        ),
+        title: Text(track.title,
+            maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: cs.onSurface.withValues(alpha: 0.45))),
+        subtitle: Text('缺少 • ${track.artist}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.6))),
+        trailing: selecting ? null : Icon(Icons.cloud_off_outlined, color: cs.onSurfaceVariant.withValues(alpha: 0.6)),
+      );
+      return selection == null ? tile : GestureDetector(onSecondaryTap: select, child: tile);
     }
 
     final tile = ListTile(
@@ -108,6 +131,42 @@ class TrackTile extends ConsumerWidget {
     return selection == null ? tile : GestureDetector(onSecondaryTap: select, child: tile);
   }
 }
+
+/// A missing song's menu: find it on YouTube Music, or take it out of the list.
+Future<void> showMissingSongMenu(BuildContext context, WidgetRef ref, Track track, {VoidCallback? onRemove, String removeLabel = '移除'}) =>
+    showModalBottomSheet(
+      context: context,
+      useRootNavigator: true,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.music_off_outlined),
+            title: Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: Text('${track.artist} • 手機上還沒有這首歌，有了之後會自動補上'),
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.link),
+            title: const Text('取得 YouTube Music 連結'),
+            subtitle: const Text('在「缺少的歌曲」頁面查詢'),
+            onTap: () {
+              Navigator.pop(ctx);
+              Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => const MissingSongsPage()));
+            },
+          ),
+          if (onRemove != null)
+            ListTile(
+              leading: const Icon(Icons.remove_circle_outline),
+              title: Text(removeLabel),
+              onTap: () async {
+                Navigator.pop(ctx);
+                if (await confirmDelete(context, title: '$removeLabel？', message: '${track.title}（缺少的歌曲）')) onRemove();
+              },
+            ),
+        ]),
+      ),
+    );
 
 Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {VoidCallback? onRemove, String removeLabel = '移除'}) async {
   final handler = ref.read(audioHandlerProvider);

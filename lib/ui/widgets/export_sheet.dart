@@ -13,7 +13,8 @@ Future<void> showExportSheet(BuildContext context, String name, List<Track> trac
     toast(context, '沒有歌曲可以匯出');
     return;
   }
-  final export = PlaylistExport(name, tracks);
+  // Songs that aren't on the device have nothing to export.
+  final export = PlaylistExport(name, [for (final t in tracks) if (t.source != TrackSource.missing) t]);
   await showModalBottomSheet(
     context: context,
     useRootNavigator: true,

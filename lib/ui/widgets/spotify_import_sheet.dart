@@ -9,12 +9,18 @@ import 'package:path/path.dart' as p;
 
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
+import '../../services/missing_songs.dart';
+import '../../services/song_matcher.dart';
 import '../../services/spotify_import.dart';
+import '../pages/missing_songs_page.dart';
 import 'dialogs.dart';
 
 /// 匯入 Spotify 歌單: pick Spotify's export files (Playlist*.json,
 /// YourLibrary.json) or Exportify CSVs, preview what is in the library,
-/// choose what to import. Only songs already on the device are used.
+/// choose what to import. Songs on the device are used (「maybe」 matches
+/// only once the user confirms them); the others stay in the playlist as
+/// greyed placeholders that fill in when the song turns up. Nothing is
+/// downloaded.
 Future<void> importSpotify(BuildContext context, WidgetRef ref) async {
   final picked = await FilePicker.pickFiles(dialogTitle: '選擇 Spotify 匯出的檔案（可多選）', type: FileType.any);
   if (picked.isEmpty) return;
@@ -34,11 +40,12 @@ Future<void> importSpotify(BuildContext context, WidgetRef ref) async {
   }
   final db = ref.read(dbProvider);
   final matcher = SpotifyMatcher(await db.tracks());
-  final found = [for (final pl in playlists) [for (final s in pl.songs) matcher.find(s)]];
+  final matched = [for (final pl in playlists) [for (final s in pl.songs) matcher.match(s)]];
+  final found = [for (final row in matched) [for (final (t, level) in row) level == MatchLevel.sure ? t : null]];
   final existing = {for (final pl in await db.playlists()) pl.name: pl.id};
   if (!context.mounted) return;
 
-  final chosen = <int>{for (var i = 0; i < playlists.length; i++) if (found[i].any((t) => t != null)) i};
+  final chosen = <int>{for (var i = 0; i < playlists.length; i++) i};
   var likedToFavorites = true;
   var mergeExisting = false;
   final hasConflict = playlists.any((pl) => !pl.liked && existing.containsKey(pl.name));
@@ -51,7 +58,7 @@ Future<void> importSpotify(BuildContext context, WidgetRef ref) async {
         content: SizedBox(
           width: 460,
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('只會用你手機上已經有的歌，找不到的歌會列出來，不會自動下載。'),
+            const Text('會用你手機上已經有的歌；還沒有的歌會以灰色留在清單裡，之後下載或加入音樂庫時自動補上。不會自動下載。'),
             const SizedBox(height: 8),
             Flexible(
               child: ListView(shrinkWrap: true, children: [
@@ -101,15 +108,72 @@ Future<void> importSpotify(BuildContext context, WidgetRef ref) async {
   );
   if (go != true || !context.mounted) return;
 
+  // 「Maybe」 matches: used only for the ones the user ticks.
+  final maybes = <(int, int)>[
+    for (final i in chosen)
+      for (var j = 0; j < matched[i].length; j++)
+        if (matched[i][j].$2 == MatchLevel.maybe) (i, j),
+  ];
+  if (maybes.isNotEmpty) {
+    final accept = <(int, int)>{};
+    final ok = await showDialog<bool>(
+      context: context,
+      useRootNavigator: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: Text('有 ${maybes.length} 首可能是同一首歌'),
+          content: SizedBox(
+            width: 460,
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('勾選確定是同一首的；沒勾的會先以灰色留在清單裡。'),
+              Flexible(
+                child: ListView(shrinkWrap: true, children: [
+                  for (final m in maybes)
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: accept.contains(m),
+                      onChanged: (v) => setState(() => v == true ? accept.add(m) : accept.remove(m)),
+                      title: Text('Spotify：${playlists[m.$1].songs[m.$2].label}', maxLines: 2, overflow: TextOverflow.ellipsis),
+                      subtitle: Text('手機上：${matched[m.$1][m.$2].$1!.title} - ${matched[m.$1][m.$2].$1!.artist}',
+                          maxLines: 2, overflow: TextOverflow.ellipsis),
+                    ),
+                ]),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消匯入')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('繼續')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    for (final (i, j) in accept) {
+      found[i][j] = matched[i][j].$1;
+    }
+  }
+
   final allowDup = ref.read(settingsProvider).allowPlaylistDuplicates;
   final report = <String>[];
   final missing = <String>[];
+  var total = 0;
   for (final i in chosen.toList()..sort()) {
     final pl = playlists[i];
-    final tracks = found[i].whereType<Track>().toList();
+    // Spotify's order, with placeholders where the song isn't here yet.
+    final tracks = <Track>[];
     for (var j = 0; j < pl.songs.length; j++) {
-      if (found[i][j] == null) missing.add('${pl.name}：${pl.songs[j].label}');
+      final t = found[i][j];
+      if (t != null) {
+        tracks.add(t);
+      } else {
+        final song = pl.songs[j];
+        missing.add('${pl.name}：${song.label}');
+        tracks.add(await MissingSongs.create(db, song.title, song.artists.join(', '), album: song.album ?? '', durationMs: song.durationMs));
+      }
     }
+    final onDevice = found[i].whereType<Track>().length;
+    total += pl.songs.length;
     if (pl.liked && likedToFavorites) {
       final liked = await db.favoriteIds();
       var added = 0;
@@ -119,7 +183,7 @@ Future<void> importSpotify(BuildContext context, WidgetRef ref) async {
           added++;
         }
       }
-      report.add('已按讚的歌曲：新增 $added 首');
+      report.add('已按讚的歌曲：新增 $added 首（其中 ${pl.songs.length - onDevice} 首手機上還沒有）');
       continue;
     }
     int id;
@@ -130,7 +194,7 @@ Future<void> importSpotify(BuildContext context, WidgetRef ref) async {
     }
     // A fresh playlist keeps Spotify's order and repeats.
     final added = await db.addToPlaylist(id, tracks, allowDuplicates: !existing.containsKey(pl.name) || allowDup || !mergeExisting);
-    report.add('${pl.name}：$added / ${pl.songs.length} 首');
+    report.add('${pl.name}：手機上有 $onDevice / ${pl.songs.length} 首${added < tracks.length ? '（$added 首加入）' : ''}');
   }
   if (!context.mounted) return;
   await showDialog(
@@ -144,11 +208,12 @@ Future<void> importSpotify(BuildContext context, WidgetRef ref) async {
           for (final r in report) Text('• $r'),
           if (missing.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text('有 ${missing.length} 首在手機上找不到：'),
+            Text('有 ${missing.length} 首手機上還沒有，已用灰色留在清單裡，之後有了會自動補上：'),
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 220),
               child: ListView(shrinkWrap: true, children: [for (final m in missing) Text(m, style: const TextStyle(fontSize: 13))]),
             ),
+            if (suggestSoundiiz(missing.length, total)) const SoundiizTip(),
           ],
         ]),
       ),
@@ -157,9 +222,17 @@ Future<void> importSpotify(BuildContext context, WidgetRef ref) async {
           TextButton(
             onPressed: () async {
               await Clipboard.setData(ClipboardData(text: missing.join('\n')));
-              if (ctx.mounted) toast(ctx, '已複製找不到的歌曲清單');
+              if (ctx.mounted) toast(ctx, '已複製缺少的歌曲清單');
             },
-            child: const Text('複製找不到的歌'),
+            child: const Text('複製'),
+          ),
+        if (missing.isNotEmpty)
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => const MissingSongsPage()));
+            },
+            child: const Text('取得 YouTube Music 連結'),
           ),
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('好')),
       ],

@@ -9,6 +9,7 @@ import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import 'missing_files.dart';
+import 'missing_songs.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../data/db/database.dart';
@@ -74,7 +75,9 @@ class LibraryScanner {
       for (var i = 0; i < fresh.length; i += batchSize) {
         final chunk = fresh.sublist(i, (i + batchSize).clamp(0, fresh.length));
         final maps = await Isolate.run(() => _readBatch(chunk, artDir, TrackSource.local));
-        await _db.upsertTracks(maps.map(Track.fromMap).toList());
+        final added = maps.map(Track.fromMap).toList();
+        await _db.upsertTracks(added);
+        await MissingSongs.fill(_db, added);
         done += chunk.length;
         _progress.add(ScanProgress(done, fresh.length, true));
       }
@@ -135,6 +138,7 @@ class LibraryScanner {
     if (maps.isEmpty) return null;
     final t = Track.fromMap(maps.first);
     await _db.upsertTracks([t]);
+    await MissingSongs.fill(_db, [t]);
     return t;
   }
 }

@@ -7,7 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../data/models/track.dart';
-import '../download_match.dart';
+import '../song_matcher.dart';
 import '../library_scanner.dart';
 import 'lrc.dart';
 
@@ -165,13 +165,17 @@ class LyricsService {
         if (e.response?.statusCode != 404) rethrow;
       }
     }
-    final clean = cleanSongTitle(title);
+    // Upload titles (「YOASOBI「アイドル」Official Music Video」) and channel
+    // names (「YOASOBI - Topic」) cleaned the same way as everywhere else.
+    final clean = SongMatcher.searchTitle(title, artist);
+    final cleanArtist = artist.isEmpty ? '' : SongMatcher.searchArtist(artist);
     final found = <LrclibResult>[
       ...await search(title, artist),
-      if (clean != title && clean.isNotEmpty) ...await search(clean, artist),
+      if (clean != title || cleanArtist != artist) ...await search(clean, cleanArtist),
     ];
     if (found.isEmpty && artist.isNotEmpty) {
-      found.addAll((await search(clean.isEmpty ? title : clean, '')).where((r) => sameArtist(r.artist, artist)));
+      final me = SongKey(title, artist);
+      found.addAll((await search(clean, '')).where((r) => SongMatcher.sameArtist(SongKey(r.title, r.artist), me)));
     }
     return pickBest([if (exact != null && exact.hasLyrics) exact, ...found], durationMs: durationMs);
   }

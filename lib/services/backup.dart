@@ -8,6 +8,7 @@ import 'package:sqflite/sqflite.dart';
 import '../data/db/database.dart';
 import '../data/models/track.dart';
 import 'library_scanner.dart';
+import 'missing_songs.dart';
 import 'playlist_import.dart';
 
 /// Settings that never go into a backup: secrets and per-device state.
@@ -98,6 +99,12 @@ Future<RestoreReport> restoreBackup(AppDatabase app, LibraryScanner scanner, Map
     if (resolved.containsKey(key)) return resolved[key];
     String? id;
     final source = raw['source'] as String?;
+    if (source == TrackSource.missing) {
+      final t = await MissingSongs.create(app, raw['title'] as String? ?? '', raw['artist'] as String? ?? '',
+          album: raw['album'] as String? ?? '', durationMs: raw['duration_ms'] as int?);
+      resolved[key] = t.id;
+      return t.id;
+    }
     if (uri.startsWith('http://') || uri.startsWith('https://')) {
       // Online songs are stored as they were.
       await db.insert(

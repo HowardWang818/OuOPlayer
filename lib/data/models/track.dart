@@ -11,6 +11,10 @@ class TrackSource {
 
   /// 30-second store previews: never recorded in history or the saved queue.
   static const preview = 'preview';
+
+  /// A playlist song that isn't on the device (e.g. from a Spotify import):
+  /// shown greyed, never played, replaced when the song turns up.
+  static const missing = 'missing';
 }
 
 class Track {
@@ -139,7 +143,10 @@ class Playlist {
   /// Image the user picked; when null, [art] is the first song's cover.
   final String? cover;
   final int? folderId;
-  const Playlist(this.id, this.name, this.count, this.art, {this.cover, this.folderId});
+
+  /// Songs listed but not on the device (greyed placeholders), not in [count].
+  final int missing;
+  const Playlist(this.id, this.name, this.count, this.art, {this.cover, this.folderId, this.missing = 0});
 }
 
 /// A folder of playlists in the library (one level, no nesting).
