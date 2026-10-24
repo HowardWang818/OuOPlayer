@@ -11,6 +11,7 @@ import '../../services/online/youtube_link.dart';
 import '../../services/song_matcher.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/links.dart';
+import 'pick_replacement_page.dart';
 import 'youtube_key_guide_page.dart';
 
 /// Many songs missing: Soundiiz moves whole playlists to YouTube Music
@@ -229,7 +230,11 @@ class _MissingSongsPageState extends ConsumerState<MissingSongsPage> {
     final link = FoundLink.fromJson(ref.watch(sortProvider('ytlink_${t.id}')));
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     return ListTile(
-      leading: const Icon(Icons.music_off_outlined),
+      leading: IconButton(
+        tooltip: '從音樂庫選擇這首歌',
+        icon: const Icon(Icons.library_music_outlined),
+        onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PickReplacementPage(missing: t))),
+      ),
       title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(
         [
@@ -246,7 +251,9 @@ class _MissingSongsPageState extends ConsumerState<MissingSongsPage> {
               ? TextButton(onPressed: () async => await _ensureKey() ? _lookup(t) : null, child: const Text('取得連結'))
               : PopupMenuButton<String>(
                   onSelected: (v) async {
-                    if (v == 'copy') {
+                    if (v == 'pick') {
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => PickReplacementPage(missing: t)));
+                    } else if (v == 'copy') {
                       await Clipboard.setData(ClipboardData(text: link.url));
                       if (mounted) toast(context, '已複製連結');
                     } else if (v == 'open') {
@@ -256,6 +263,7 @@ class _MissingSongsPageState extends ConsumerState<MissingSongsPage> {
                     }
                   },
                   itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'pick', child: Text('從音樂庫選擇這首歌')),
                     PopupMenuItem(value: 'copy', child: Text('複製連結')),
                     PopupMenuItem(value: 'open', child: Text('在 YouTube Music 開啟')),
                     PopupMenuItem(value: 'again', child: Text('重新查詢')),

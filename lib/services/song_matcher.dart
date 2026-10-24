@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:rapidfuzz/rapidfuzz.dart' as fuzz;
+
 /// How sure [SongMatcher] is that two songs are the same.
 enum MatchLevel {
   /// Not the same song.
@@ -33,6 +35,21 @@ String foldText(String s) {
   }
   return b.toString().toLowerCase().replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), '');
 }
+
+/// Like [foldText] but keeps word breaks: 「Li Ronghao!」→「li ronghao」.
+String spacedText(String s) {
+  final b = StringBuffer();
+  for (final r in s.runes) {
+    var c = r;
+    if (c >= 0xFF01 && c <= 0xFF5E) c -= 0xFEE0;
+    if (c == 0x3000) c = 0x20;
+    b.writeCharCode(c);
+  }
+  return b.toString().toLowerCase().replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), ' ').trim();
+}
+
+/// Latin words of a name or title (for word-order-free comparisons).
+List<String> _words(String spaced) => spaced.split(' ').where((w) => w.isNotEmpty && !_isCjk(w)).toList();
 
 bool _isCjk(String s) => RegExp(r'[぀-ヿ㐀-鿿가-힯]').hasMatch(s);
 
@@ -79,9 +96,14 @@ List<String> artistNames(String raw) {
 /// The likely song titles hidden in an upload title (folded), best first:
 /// 「韋禮安 WeiBird《如果可以 Red Scarf》MV - 電影「月老」主題曲」→ 如果可以redscarf, …
 /// [artists] (folded) are removed when the title carries them.
-List<String> titleCandidates(String raw, {List<String> artists = const []}) {
+List<String> titleCandidates(String raw, {List<String> artists = const [], bool spaced = false}) {
   final out = <String>[];
   void add(String s) {
+    if (spaced) {
+      final t = spacedText(s.replaceAll(_noise, ' '));
+      if (t.isNotEmpty && !out.contains(t)) out.add(t);
+      return;
+    }
     var f = foldText(s.replaceAll(_noise, ' '));
     for (final a in artists) {
       if (a.isEmpty || f == a) continue;
@@ -140,8 +162,14 @@ double titleSimilarity(String a, String b) {
 class SongKey {
   SongKey(this.title, this.artist, {this.durationMs})
       : artists = artistNames(artist),
-        foldedTitle = foldText(title) {
+        foldedTitle = foldText(title),
+        titleWords = _words(spacedText(title)).toSet() {
     titles = titleCandidates(title, artists: artists);
+    spacedTitles = titleCandidates(title, spaced: true);
+    artistWordLists = [
+      for (final part in artist.split(RegExp(r'\s*(,|;|&|、|×|/|／|\bfeat\.?|\bft\.?)\s*', caseSensitive: false)))
+        if (_words(spacedText(part)).length >= 2) _words(spacedText(part)),
+    ];
   }
 
   final String title;
@@ -149,7 +177,14 @@ class SongKey {
   final int? durationMs;
   final List<String> artists;
   final String foldedTitle;
+  final Set<String> titleWords;
   late final List<String> titles;
+
+  /// The same candidates with word breaks kept (for word-order checks).
+  late final List<String> spacedTitles;
+
+  /// Multi-word Latin names, as words: 「Ronghao Li」→ [ronghao, li].
+  late final List<List<String>> artistWordLists;
 
   bool get artistKnown => artists.isNotEmpty;
 }
@@ -158,6 +193,10 @@ class SongKey {
 /// (Spotify, M3U), restoring a backup, skipping downloads that are already
 /// there, and filling in missing playlist songs.
 class SongMatcher {
+  /// v0.14.1's rapidfuzz checks (word order, Latin typos). Off only to
+  /// measure v0.14.0 in the matcher comparison test.
+  static bool wordOrderChecks = true;
+
   /// Same artist: one of the names equal, or one containing the other, or
   /// the artist named in the other song's title (「YOASOBI - 群青 / THE FIRST TAKE」).
   static bool sameArtist(SongKey a, SongKey b) {
@@ -172,6 +211,14 @@ class SongMatcher {
       for (final name in x.artists) {
         if (_longEnough(name) && other.foldedTitle.contains(name)) return true;
       }
+      // Names in either order: 「Ronghao Li」 = 「Li Ronghao」, in the artist
+      // or in the title (「李榮浩 Li Ronghao / 李白【歌詞】」 by a lyrics channel).
+      for (final words in wordOrderChecks ? x.artistWordLists : const <List<String>>[]) {
+        for (final other2 in other.artistWordLists) {
+          if (fuzz.tokenSortRatio(words.join(' '), other2.join(' ')) >= 95) return true;
+        }
+        if (words.every(other.titleWords.contains)) return true;
+      }
     }
     return false;
   }
@@ -182,6 +229,17 @@ class SongMatcher {
       for (final y in b.titles) {
         best = max(best, titleSimilarity(x, y));
         if (best == 1) break;
+      }
+    }
+    // Latin titles: rapidfuzz's word-order-free ratio catches 「Love Me
+    // Like You Do」 vs 「Like You Do, Love Me」 and small typos. Not for short
+    // titles (「Love」 vs 「Love Story」 must stay apart).
+    if (best < 1 && wordOrderChecks) {
+      for (final x in a.spacedTitles) {
+        for (final y in b.spacedTitles) {
+          if (_isCjk(x) || _isCjk(y) || min(x.length, y.length) < 8) continue;
+          best = max(best, fuzz.tokenSortRatio(x, y) / 100);
+        }
       }
     }
     if (best < 0.7) return MatchResult.none;

@@ -19,6 +19,11 @@ void main() {
       ('Propose', 'natori', 'propose', 'natori'),
       ('King Gnu - 白日', 'King Gnu', '白日', 'King Gnu'),
       ('Song - Remastered 2011', 'The Band', 'Song', 'The Band'),
+      // v0.14.1: names in another order; the artist only in the title.
+      ('李榮浩 Li Ronghao / 李白【歌詞】', 'HISMUSICS', '李白', 'Ronghao Li'),
+      ('李白', 'Li Ronghao', '李白', 'Ronghao Li'),
+      ('Love Me Like You Do (Official Video)', 'Ellie Goulding', 'Love Me Like You Do', 'Ellie Goulding'),
+      ('Bohemian Rhapsodyy', 'Queen', 'Bohemian Rhapsody', 'Queen'),
     ];
     for (final (t1, a1, t2, a2) in cases) {
       test('$t1 = $t2', () => expect(level(t1, a1, t2, a2), MatchLevel.sure));
@@ -33,6 +38,9 @@ void main() {
       ('愛', 'A', '愛してる', 'A'),
       ('群青', 'YOASOBI', '怪物', 'YOASOBI'),
       ('Lemon', '米津玄師', 'Lemon Tree', 'Fools Garden'),
+      ('李白', 'Ronghao Li', '李白', 'Li Bai Band'),
+      ('Someone Like You', 'Adele', 'Someone You Loved', 'Lewis Capaldi'),
+      ('Hello', 'Adele', 'Hello', 'Lionel Richie'),
     ];
     for (final (t1, a1, t2, a2) in cases) {
       test('$t1 ≠ $t2', () => expect(level(t1, a1, t2, a2), MatchLevel.no));

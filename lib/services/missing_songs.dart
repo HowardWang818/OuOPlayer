@@ -73,17 +73,7 @@ class MissingSongs {
       final names = <String>[];
       for (final m in matches) {
         used.add(m.id);
-        final rows = await app.db.rawQuery(
-            'SELECT DISTINCT p.name AS name FROM playlist_tracks pt JOIN playlists p ON p.id = pt.playlist_id WHERE pt.track_id = ?', [m.id]);
-        names.addAll(rows.map((r) => r['name'] as String));
-        await app.db.update('playlist_tracks', {'track_id': song.id}, where: 'track_id = ?', whereArgs: [m.id]);
-        final liked = await app.db.query('favorites', where: 'track_id = ?', whereArgs: [m.id]);
-        if (liked.isNotEmpty) {
-          await app.db.delete('favorites', where: 'track_id = ?', whereArgs: [m.id]);
-          await app.db.insert('favorites', {'track_id': song.id, 'added_at': liked.first['added_at']}, conflictAlgorithm: ConflictAlgorithm.ignore);
-          names.add('已按讚的歌曲');
-        }
-        await app.db.delete('tracks', where: 'id = ?', whereArgs: [m.id]);
+        names.addAll(await _swap(app, m.id, song));
       }
       if (matches.isNotEmpty) done.add(FilledSong(song, names.toSet().toList()));
     }
@@ -92,6 +82,45 @@ class MissingSongs {
       _filled.add(done);
     }
     return done;
+  }
+
+  /// Puts [song] wherever the placeholder [missingId] is (playlists, likes)
+  /// and drops the placeholder. Returns the list names it went into.
+  static Future<List<String>> _swap(AppDatabase app, String missingId, Track song) async {
+    final names = <String>[];
+    final rows = await app.db.rawQuery(
+        'SELECT DISTINCT p.name AS name FROM playlist_tracks pt JOIN playlists p ON p.id = pt.playlist_id WHERE pt.track_id = ?', [missingId]);
+    names.addAll(rows.map((r) => r['name'] as String));
+    await app.db.update('playlist_tracks', {'track_id': song.id}, where: 'track_id = ?', whereArgs: [missingId]);
+    final liked = await app.db.query('favorites', where: 'track_id = ?', whereArgs: [missingId]);
+    if (liked.isNotEmpty) {
+      await app.db.delete('favorites', where: 'track_id = ?', whereArgs: [missingId]);
+      await app.db.insert('favorites', {'track_id': song.id, 'added_at': liked.first['added_at']}, conflictAlgorithm: ConflictAlgorithm.ignore);
+      names.add('已按讚的歌曲');
+    }
+    await app.db.delete('tracks', where: 'id = ?', whereArgs: [missingId]);
+    return names;
+  }
+
+  /// 從音樂庫選擇這首歌: the user says which library song a placeholder is.
+  static Future<List<String>> replace(AppDatabase app, String missingId, Track song) async {
+    final names = await _swap(app, missingId, song);
+    app.notifyChanged();
+    return names;
+  }
+
+  /// Library songs ordered by how likely they are [missing] (best first).
+  static List<Track> rank(Track missing, Iterable<Track> library) {
+    final key = SongKey(missing.title, missing.artist, durationMs: missing.durationMs);
+    final scored = [
+      for (final t in library)
+        if (t.source != TrackSource.missing) (t, SongMatcher.compare(key, SongKey(t.title, t.artist, durationMs: t.durationMs))),
+    ];
+    scored.sort((a, b) {
+      final l = b.$2.level.index.compareTo(a.$2.level.index);
+      return l != 0 ? l : b.$2.score.compareTo(a.$2.score);
+    });
+    return [for (final (t, _) in scored) t];
   }
 
   /// Removes a placeholder from everywhere (after the user confirmed).
