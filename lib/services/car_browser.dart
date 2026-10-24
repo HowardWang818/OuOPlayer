@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:audio_service/audio_service.dart';
+import 'package:rxdart/rxdart.dart';
 
 import '../data/db/database.dart';
 import '../data/models/track.dart';
@@ -112,4 +115,44 @@ class CarBrowser {
 
   /// Voice / text search from the car.
   Future<List<MediaItem>> search(String query) => children('search:${query.trim()}');
+}
+
+/// What the car is served. Android Auto can start the app and ask for the
+/// root before the library is ready; answering with nothing would leave the
+/// car empty for good, so requests wait for [browser], and setting it (or a
+/// library change, see [changed]) makes the car reload what it has open.
+class CarLibrary {
+  CarLibrary({this.waitLimit = const Duration(seconds: 15)});
+  final Duration waitLimit;
+
+  CarBrowser? _browser;
+  final _ready = Completer<void>();
+
+  /// One stream per list the car has opened; an event reloads that list.
+  final _lists = <String, BehaviorSubject<Map<String, dynamic>>>{};
+
+  CarBrowser? get browser => _browser;
+  set browser(CarBrowser? b) {
+    _browser = b;
+    if (b != null && !_ready.isCompleted) _ready.complete();
+    changed();
+  }
+
+  void changed() {
+    for (final s in _lists.values) {
+      s.add(const {});
+    }
+  }
+
+  ValueStream<Map<String, dynamic>> subscribe(String parentMediaId) =>
+      _lists.putIfAbsent(parentMediaId, BehaviorSubject<Map<String, dynamic>>.new);
+
+  Future<List<MediaItem>> children(String parentMediaId) async {
+    try {
+      if (_browser == null) await _ready.future.timeout(waitLimit);
+      return await _browser?.children(parentMediaId) ?? const [];
+    } catch (_) {
+      return const [];
+    }
+  }
 }

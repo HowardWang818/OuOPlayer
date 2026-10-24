@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:rxdart/rxdart.dart' show ValueStream;
 
 import '../data/db/database.dart';
 import '../data/models/track.dart';
@@ -174,7 +175,12 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       _onPlayingForLog(playing);
     });
     player.positionStream.listen(_trackPodcastPosition);
-    _db.changes.listen((_) => _refreshLiked());
+    _db.changes.listen((_) {
+      _refreshLiked();
+      // Playlists, likes and new songs show up in the car too (batched).
+      _carRefresh?.cancel();
+      _carRefresh = Timer(const Duration(seconds: 2), _car.changed);
+    });
   }
 
   /// Called when the current index may have changed; acts only on a real track change.
@@ -347,16 +353,18 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   // ---- Android Auto / media browsers ----
   /// Set in main once the providers exist (podcast episodes need them).
-  CarBrowser? carBrowser;
+  /// Android Auto can start the app and ask for the root before that, so
+  /// [getChildren] waits for it, and setting it tells the car to reload.
+  CarBrowser? get carBrowser => _car.browser;
+  set carBrowser(CarBrowser? b) => _car.browser = b;
+  final _car = CarLibrary();
+  Timer? _carRefresh;
 
   @override
-  Future<List<MediaItem>> getChildren(String parentMediaId, [Map<String, dynamic>? options]) async {
-    try {
-      return await carBrowser?.children(parentMediaId) ?? const [];
-    } catch (_) {
-      return const [];
-    }
-  }
+  ValueStream<Map<String, dynamic>> subscribeToChildren(String parentMediaId) => _car.subscribe(parentMediaId);
+
+  @override
+  Future<List<MediaItem>> getChildren(String parentMediaId, [Map<String, dynamic>? options]) => _car.children(parentMediaId);
 
   @override
   Future<void> playFromMediaId(String mediaId, [Map<String, dynamic>? extras]) async {
