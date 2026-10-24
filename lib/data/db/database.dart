@@ -51,7 +51,7 @@ class AppDatabase {
     return AppDatabase._(db);
   }
 
-  static const schemaVersion = 5;
+  static const schemaVersion = 6;
 
   /// Schema changes since version 1; existing data is kept.
   static Future<void> migrate(Database db, int from, int to) async {
@@ -88,6 +88,17 @@ class AppDatabase {
       ]) {
         await db.execute(sql);
       }
+    }
+    if (from < 6 && to >= 6) {
+      // v0.12.0: every play with how long it was really listened to, for the
+      // statistics. The old history (last 1000 plays) comes along with the
+      // song's length as an estimate.
+      await db.execute('CREATE TABLE listening_log(id INTEGER PRIMARY KEY AUTOINCREMENT, track_id TEXT NOT NULL, '
+          'played_at INTEGER NOT NULL, listened_ms INTEGER NOT NULL DEFAULT 0, source TEXT, estimated INTEGER NOT NULL DEFAULT 0)');
+      await db.execute('CREATE INDEX idx_listening_played ON listening_log(played_at)');
+      await db.execute('INSERT INTO listening_log(track_id, played_at, listened_ms, source, estimated) '
+          'SELECT h.track_id, h.played_at, COALESCE(t.duration_ms, 0), t.source, 1 FROM history h LEFT JOIN tracks t ON t.id = h.track_id '
+          'WHERE h.track_id IS NOT NULL');
     }
   }
 
@@ -310,6 +321,34 @@ class AppDatabase {
   Future<Map<String, int>> playCounts() async {
     final rows = await db.query('plays', columns: ['track_id', 'count']);
     return {for (final r in rows) r['track_id'] as String: r['count'] as int};
+  }
+
+  // ---------- listening log ----------
+  /// Starts a log entry for a play; returns its id for [updateListening].
+  Future<int> startListening(Track t, DateTime at) => db.insert('listening_log', {
+        'track_id': t.id,
+        'played_at': at.millisecondsSinceEpoch,
+        'listened_ms': 0,
+        'source': t.source,
+      });
+
+  Future<void> updateListening(int id, Duration listened) =>
+      db.update('listening_log', {'listened_ms': listened.inMilliseconds}, where: 'id = ?', whereArgs: [id]);
+
+  /// Plays from [from] (inclusive) to [to] (exclusive), oldest first.
+  Future<List<ListeningEntry>> listening(DateTime from, DateTime to) async {
+    final rows = await db.query('listening_log',
+        where: 'played_at >= ? AND played_at < ?', whereArgs: [from.millisecondsSinceEpoch, to.millisecondsSinceEpoch], orderBy: 'played_at');
+    return [
+      for (final r in rows)
+        ListeningEntry(
+          trackId: r['track_id'] as String,
+          playedAt: DateTime.fromMillisecondsSinceEpoch(r['played_at'] as int),
+          listened: Duration(milliseconds: r['listened_ms'] as int),
+          source: r['source'] as String?,
+          estimated: r['estimated'] == 1,
+        ),
+    ];
   }
 
   // ---------- podcast progress ----------
@@ -583,4 +622,16 @@ enum SmartList {
   const SmartList(this.label, this.description);
   final String label;
   final String description;
+}
+
+/// One play in the listening log.
+class ListeningEntry {
+  const ListeningEntry({required this.trackId, required this.playedAt, required this.listened, this.source, this.estimated = false});
+  final String trackId;
+  final DateTime playedAt;
+  final Duration listened;
+  final String? source;
+
+  /// From the history before v0.12.0: the song's length, not measured.
+  final bool estimated;
 }

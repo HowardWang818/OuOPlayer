@@ -8,6 +8,7 @@ import '../widgets/cards.dart';
 import 'collection_page.dart';
 import 'podcasts_page.dart';
 import 'settings_page.dart';
+import 'stats_page.dart';
 
 class HomePage extends ConsumerWidget {
   const HomePage({super.key});
@@ -72,6 +73,7 @@ class HomePage extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
               child: Row(children: [
                 Expanded(child: Text(_greeting(), style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold))),
+                IconButton(icon: const Icon(Icons.insights_outlined), tooltip: '收聽統計', onPressed: () => push(const StatsPage())),
                 IconButton(icon: const Icon(Icons.settings_outlined), tooltip: '設定', onPressed: () => push(const SettingsPage())),
               ]),
             ),
