@@ -12,7 +12,7 @@ import 'missing_songs.dart';
 import 'playlist_import.dart';
 
 /// Settings that never go into a backup: secrets and per-device state.
-const _privateSettings = {'youtube_api_key', 'last_session', 'auto_backup_dir', 'auto_backup_last'};
+const _privateSettings = {'youtube_api_key', 'last_session', 'auto_backup_dir', 'auto_backup_last', 'update_last_check'};
 
 /// Builds a backup of everything the user made: playlists (with custom
 /// covers), folders, likes, play counts, podcast subscriptions and progress,
