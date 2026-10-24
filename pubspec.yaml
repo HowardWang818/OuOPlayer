@@ -1,7 +1,7 @@
 name: ouoplayer
 description: "OuOPlayer - a Spotify-style music player for Android and Windows."
 publish_to: 'none'
-version: 0.18.1+41
+version: 0.18.2+42
 
 environment:
   sdk: ^3.6.0
@@ -41,6 +41,24 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  # Makes the app icons from assets/icon (drawn by assets/icon/make_icon.py):
+  #   dart run flutter_launcher_icons
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: assets/icon/icon.png
+  min_sdk_android: 24
+  adaptive_icon_background: "#10151C"
+  adaptive_icon_foreground: assets/icon/foreground.png
+  # The drawing is already sized for the adaptive icon's safe zone.
+  adaptive_icon_foreground_inset: 0
+  adaptive_icon_monochrome: assets/icon/monochrome.png
+  windows:
+    generate: true
+    image_path: assets/icon/icon.png
+    icon_size: 256
