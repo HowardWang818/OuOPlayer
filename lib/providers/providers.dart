@@ -159,6 +159,9 @@ class AppSettings {
   /// Ask before downloading without Wi-Fi.
   final bool wifiWarning;
 
+  /// 記錄播放紀錄 (recently played, play counts, listening stats).
+  final bool recordPlays;
+
   /// Update yt-dlp by itself once a week.
   final bool ytAutoUpdate;
   final DateTime? ytLastUpdate;
@@ -192,6 +195,7 @@ class AppSettings {
     this.lyricsScale = 1.0,
     this.lyricsKeepAwake = false,
     this.wifiWarning = true,
+    this.recordPlays = true,
     this.ytAutoUpdate = true,
     this.ytLastUpdate,
     this.sorts = const {},
@@ -223,6 +227,7 @@ class AppSettings {
     double? lyricsScale,
     bool? lyricsKeepAwake,
     bool? wifiWarning,
+    bool? recordPlays,
     bool? ytAutoUpdate,
     DateTime? ytLastUpdate,
   }) =>
@@ -252,6 +257,7 @@ class AppSettings {
         lyricsScale: lyricsScale ?? this.lyricsScale,
         lyricsKeepAwake: lyricsKeepAwake ?? this.lyricsKeepAwake,
         wifiWarning: wifiWarning ?? this.wifiWarning,
+        recordPlays: recordPlays ?? this.recordPlays,
         ytAutoUpdate: ytAutoUpdate ?? this.ytAutoUpdate,
         ytLastUpdate: ytLastUpdate ?? this.ytLastUpdate,
         sorts: sorts,
@@ -287,6 +293,7 @@ class AppSettings {
       lyricsScale: double.tryParse(m['lyrics_scale'] ?? '') ?? 1.0,
       lyricsKeepAwake: m['lyrics_keep_awake'] == 'true',
       wifiWarning: m['wifi_warning'] != 'false',
+      recordPlays: m['record_plays'] != 'false',
       ytAutoUpdate: m['yt_auto_update'] != 'false',
       ytLastUpdate: DateTime.tryParse(m['yt_last_update'] ?? ''),
       sorts: {for (final e in m.entries) if (e.key.startsWith('sort_')) e.key.substring(5): e.value},
@@ -416,6 +423,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void setLyricsKeepAwake(bool v) {
     state = state.copyWith(lyricsKeepAwake: v);
     _db.setSetting('lyrics_keep_awake', '$v');
+  }
+
+  void setRecordPlays(bool v) {
+    state = state.copyWith(recordPlays: v);
+    _db.setSetting('record_plays', '$v');
   }
 
   void setYtAutoUpdate(bool v) {
