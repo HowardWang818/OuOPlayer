@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' show sqfliteFfiInit, databaseFactoryFfi;
 
+import '../../services/artists.dart';
 import '../models/track.dart';
 
 /// Thin sqflite wrapper. Every write emits on [changes] so providers can refresh.
@@ -192,12 +194,16 @@ class AppDatabase {
     final removed = all.where((t) => set.contains(t.id));
     final kept = all.where((t) => !set.contains(t.id));
     final keptAlbums = kept.map((t) => t.album).toSet();
-    final keptArtists = kept.map((t) => t.artist).toSet();
+    final dir = ArtistDirectory(all.map((t) => t.artist));
+    final keptArtists = {for (final t in kept) ...dir.keysOf(t.artist)};
     return RemovalImpact(
       playlists: playlists,
       favorites: favorites,
       emptyAlbums: removed.map((t) => t.album).toSet().where((a) => !keptAlbums.contains(a) && a != '未知專輯').toList(),
-      emptyArtists: removed.map((t) => t.artist).toSet().where((a) => !keptArtists.contains(a) && a != '未知演出者').toList(),
+      emptyArtists: [
+        for (final e in {for (final t in removed) for (final n in dir.namesOf(t.artist)) dir.keyOf(n): n}.entries)
+          if (!keptArtists.contains(e.key)) e.value,
+      ],
     );
   }
 
@@ -225,10 +231,35 @@ class AppDatabase {
     return rows.map((r) => Album(r['album'] as String? ?? '未知專輯', r['artist'] as String? ?? '', r['art'] as String?, r['c'] as int)).toList();
   }
 
+  /// One entry per artist, not per credit: 「YOASOBI」「YOASOBI, Ayase」 and
+  /// 「Ayase, YOASOBI」 make YOASOBI and Ayase, each with all their songs;
+  /// spellings are merged (see ArtistDirectory). Vocal synths are marked.
   Future<List<Artist>> artists() async {
-    final rows = await db.rawQuery('''SELECT artist, MAX(art) AS art, COUNT(*) AS c, MAX(added_at) AS a
-      FROM tracks WHERE source NOT IN ('url', 'podcast', 'preview', 'missing') GROUP BY artist ORDER BY artist COLLATE NOCASE''');
-    return rows.map((r) => Artist(r['artist'] as String? ?? '未知演出者', r['art'] as String?, r['c'] as int, (r['a'] as int?) ?? 0)).toList();
+    final rows = await db.rawQuery('''SELECT artist, art, added_at FROM tracks
+      WHERE source NOT IN ('url', 'podcast', 'preview', 'missing')''');
+    final dir = ArtistDirectory(rows.map((r) => r['artist'] as String? ?? ''));
+    final byKey = <String, (String, String?, int, int, bool)>{};
+    var unknown = 0;
+    String? unknownArt;
+    for (final r in rows) {
+      final credit = r['artist'] as String? ?? '';
+      final names = dir.namesOf(credit);
+      if (names.isEmpty) {
+        unknown++;
+        unknownArt ??= r['art'] as String?;
+        continue;
+      }
+      for (final name in names) {
+        final k = dir.keyOf(name);
+        final (n, art, count, added, virtual) = byKey[k] ?? (name, null, 0, 0, dir.isVirtual(name));
+        byKey[k] = (n, art ?? r['art'] as String?, count + 1, max(added, (r['added_at'] as int?) ?? 0), virtual);
+      }
+    }
+    final list = [
+      for (final v in byKey.values) Artist(v.$1, v.$2, v.$3, v.$4, v.$5),
+      if (unknown > 0) Artist('未知演出者', unknownArt, unknown),
+    ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return list;
   }
 
   /// Tracks stored under [folder] (path prefix match; avoids LIKE wildcards in paths).
@@ -259,10 +290,17 @@ class AppDatabase {
     return rows.map(Track.fromMap).toList();
   }
 
+  /// Every song crediting [artist] (any spelling, alone or with others).
   Future<List<Track>> artistTracks(String artist) async {
-    final rows = await db.query('tracks', where: 'artist = ?', whereArgs: [artist], orderBy: 'album, track_no, title');
-    return rows.map(Track.fromMap).toList();
+    final rows = await db.query('tracks',
+        where: "source NOT IN ('url', 'podcast', 'preview', 'missing')", orderBy: 'album COLLATE NOCASE, track_no, title COLLATE NOCASE');
+    final all = rows.map(Track.fromMap).toList();
+    final dir = ArtistDirectory(all.map((t) => t.artist));
+    if (artist == '未知演出者') return [for (final t in all) if (dir.namesOf(t.artist).isEmpty) t];
+    final key = dir.keyOf(artist);
+    return [for (final t in all) if (dir.keysOf(t.artist).contains(key)) t];
   }
+
 
   // ---------- favorites ----------
   Future<Set<String>> favoriteIds() async {

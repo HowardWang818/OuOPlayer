@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../services/file_trash.dart';
+import '../pages/cover_fix_page.dart';
+import 'batch_edit_dialog.dart';
 import 'dialogs.dart';
 import 'export_sheet.dart';
 import 'track_tile.dart';
@@ -177,6 +179,26 @@ class _SelectionBar extends ConsumerWidget {
                   case 'export':
                     await showExportSheet(context, '已選的 ${picked.length} 首', picked);
                     selection.clear();
+                  case 'edit':
+                    await showBatchEdit(context, ref, local);
+                    selection.clear();
+                  case 'covers':
+                    selection.clear();
+                    await Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => CoverFixPage(tracks: local)));
+                  case 'hide':
+                    final where = await removalLines(ref, local);
+                    if (!context.mounted) return;
+                    if (!await confirmDelete(context,
+                        title: '從音樂庫隱藏 ${local.length} 首？',
+                        message: '檔案不會被刪除，重新掃描後會再出現在音樂庫。會從以下地方移除：\n${where.map((l) => '• $l').join('\n')}',
+                        action: '隱藏')) {
+                      return;
+                    }
+                    for (final t in local) {
+                      await handler.removeTrack(t.id);
+                    }
+                    await ref.read(dbProvider).deleteTracks(local.map((t) => t.id));
+                    if (context.mounted) done('已隱藏 ${local.length} 首');
                   case 'delete':
                     if (await deleteTrackFiles(context, ref, local)) selection.clear();
                 }
@@ -187,6 +209,11 @@ class _SelectionBar extends ConsumerWidget {
                 const PopupMenuItem(value: 'like', child: Text('加到已按讚的歌曲')),
                 if (scope.onRemove != null) PopupMenuItem(value: 'remove', child: Text(scope.removeLabel ?? '從此播放清單移除')),
                 const PopupMenuItem(value: 'export', child: Text('複製／匯出資訊')),
+                if (local.isNotEmpty) ...[
+                  PopupMenuItem(value: 'edit', child: Text('編輯資訊（${local.length} 首）')),
+                  PopupMenuItem(value: 'covers', child: Text('找正式封面（${local.length} 首）')),
+                  PopupMenuItem(value: 'hide', child: Text('從音樂庫隱藏（${local.length} 首）')),
+                ],
                 if (local.isNotEmpty)
                   PopupMenuItem(
                     value: 'delete',

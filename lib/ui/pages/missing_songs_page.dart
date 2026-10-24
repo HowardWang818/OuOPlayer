@@ -112,6 +112,26 @@ class _MissingSongsPageState extends ConsumerState<MissingSongsPage> {
   final _busy = <String>{};
   bool _all = false;
 
+  /// 選取 mode: get links for, or remove, several songs at once.
+  Set<String>? _picked;
+
+  Future<void> _removePicked(List<Track> songs) async {
+    final ids = _picked ?? const {};
+    final chosen = songs.where((t) => ids.contains(t.id)).toList();
+    if (chosen.isEmpty) return;
+    if (!await confirmDelete(context,
+        title: '移除 ${chosen.length} 首缺少的歌曲？', message: '會從所有播放清單和已按讚的歌曲中移除這些灰色的歌。', action: '移除')) {
+      return;
+    }
+    final db = ref.read(dbProvider);
+    for (final t in chosen) {
+      await MissingSongs.remove(db, t.id);
+    }
+    if (!mounted) return;
+    setState(() => _picked = null);
+    toast(context, '已移除 ${chosen.length} 首');
+  }
+
   FoundLink? _link(String id) => FoundLink.fromJson(ref.read(sortProvider('ytlink_$id')));
 
   Future<bool> _ensureKey() async {
@@ -193,7 +213,21 @@ class _MissingSongsPageState extends ConsumerState<MissingSongsPage> {
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     final found = [for (final (t, _) in list) if (_link(t.id) != null) (t, _link(t.id)!)];
     return Scaffold(
-      appBar: AppBar(title: Text('缺少的歌曲（${list.length}）'), actions: [
+      appBar: AppBar(title: Text(_picked == null ? '缺少的歌曲（${list.length}）' : '已選 ${_picked!.length} 首'), actions: [
+        if (_picked != null) ...[
+          IconButton(
+            tooltip: '取得選取歌曲的連結',
+            icon: const Icon(Icons.link),
+            onPressed: _picked!.isEmpty || _all ? null : () => _lookupAll([for (final (t, _) in list) if (_picked!.contains(t.id)) t]),
+          ),
+          IconButton(
+            tooltip: '移除選取的歌曲',
+            icon: const Icon(Icons.remove_circle_outline),
+            onPressed: _picked!.isEmpty ? null : () => _removePicked([for (final (t, _) in list) t]),
+          ),
+          IconButton(tooltip: '取消選取', icon: const Icon(Icons.close), onPressed: () => setState(() => _picked = null)),
+        ] else if (list.isNotEmpty)
+          IconButton(tooltip: '選取', icon: const Icon(Icons.checklist), onPressed: () => setState(() => _picked = {})),
         if (found.isNotEmpty)
           IconButton(
             tooltip: '複製全部連結',
@@ -229,6 +263,15 @@ class _MissingSongsPageState extends ConsumerState<MissingSongsPage> {
   Widget _row(Track t, List<String> playlists) {
     final link = FoundLink.fromJson(ref.watch(sortProvider('ytlink_${t.id}')));
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final picked = _picked;
+    if (picked != null) {
+      return CheckboxListTile(
+        value: picked.contains(t.id),
+        onChanged: (v) => setState(() => v == true ? picked.add(t.id) : picked.remove(t.id)),
+        title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text('${t.artist} • ${playlists.join('、')}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted)),
+      );
+    }
     return ListTile(
       leading: IconButton(
         tooltip: '從音樂庫選擇這首歌',

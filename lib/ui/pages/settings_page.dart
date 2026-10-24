@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../data/db/database.dart';
 import '../../providers/providers.dart';
+import '../../services/cover_finder.dart';
 import '../../services/equalizer.dart';
 import '../../services/sleep_timer.dart';
 import '../widgets/dialogs.dart';
@@ -21,6 +22,7 @@ import '../widgets/sleep_timer_sheet.dart';
 import 'devices_page.dart';
 import 'equalizer_page.dart';
 import 'stats_page.dart';
+import 'cover_fix_page.dart';
 import 'storage_page.dart';
 import 'youtube_key_guide_page.dart';
 
@@ -299,6 +301,34 @@ class SettingsPage extends ConsumerWidget {
           onChanged: n.setDeletePermanently,
         ),
         ListTile(
+          leading: const Icon(Icons.image_search_outlined),
+          title: const Text('整理音樂庫的封面'),
+          subtitle: const Text('替沒有封面、或封面是影片截圖的歌，從 iTunes 找正式的正方形封面（會先預覽）'),
+          onTap: () async {
+            final all = await ref.read(dbProvider).tracks();
+            final want = all.where(CoverFinder.wantsCover).toList();
+            if (!context.mounted) return;
+            if (want.isEmpty) {
+              toast(context, '沒有需要找封面的歌曲');
+              return;
+            }
+            final ok = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: Text('替 ${want.length} 首找封面？'),
+                content: Text('iTunes 每分鐘大約只能查 20 次，大約需要 ${(want.length * 3 / 60).ceil()} 分鐘。找完會先讓你預覽，確認後才更換。'),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                  FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('開始')),
+                ],
+              ),
+            );
+            if (ok == true && context.mounted) {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => CoverFixPage(tracks: want)));
+            }
+          },
+        ),
+        ListTile(
           leading: const Icon(Icons.storage_outlined),
           title: const Text('儲存空間'),
           subtitle: const Text('封面、歌詞、下載暫存檔佔用的空間，可以清除'),
@@ -414,7 +444,7 @@ class SettingsPage extends ConsumerWidget {
           onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StatsPage())),
         ),
         header('關於'),
-        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.14.1')),
+        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.15.0')),
       ]),
     );
   }

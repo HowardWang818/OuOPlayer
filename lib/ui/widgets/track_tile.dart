@@ -8,6 +8,7 @@ import '../../providers/providers.dart';
 import '../../services/file_trash.dart';
 import '../../theme/app_theme.dart';
 import '../pages/collection_page.dart';
+import '../pages/cover_fix_page.dart';
 import '../pages/missing_songs_page.dart';
 import '../pages/pick_replacement_page.dart';
 import 'art_image.dart';
@@ -257,6 +258,16 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
             ),
           if (track.source == TrackSource.local || track.source == TrackSource.download)
             ListTile(
+              leading: const Icon(Icons.image_search_outlined),
+              title: const Text('找正式封面'),
+              subtitle: const Text('從 iTunes 找正方形的專輯封面'),
+              onTap: () {
+                Navigator.pop(ctx);
+                Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => CoverFixPage(tracks: [track])));
+              },
+            ),
+          if (track.source == TrackSource.local || track.source == TrackSource.download)
+            ListTile(
               leading: const Icon(Icons.edit_outlined),
               title: const Text('編輯資訊'),
               subtitle: const Text('歌名、歌手、專輯、封面'),
@@ -272,7 +283,7 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
               subtitle: const Text('不會刪除檔案；重新掃描後會再出現'),
               onTap: () async {
                 Navigator.pop(ctx);
-                final where = await _removalLines(ref, [track]);
+                final where = await removalLines(ref, [track]);
                 if (!context.mounted) return;
                 if (await confirmDelete(context,
                     title: '從音樂庫隱藏「${track.title}」？',
@@ -299,7 +310,7 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
 }
 
 /// Where removing [tracks] takes them out of (see [describeRemoval]).
-Future<List<String>> _removalLines(WidgetRef ref, List<Track> tracks) async {
+Future<List<String>> removalLines(WidgetRef ref, List<Track> tracks) async {
   final impact = await ref.read(dbProvider).removalImpact(tracks.map((t) => t.id).toList());
   final ids = {for (final t in tracks) t.id};
   final inQueue = ref.read(audioHandlerProvider).tracks.where((t) => ids.contains(t.id)).length;
@@ -313,7 +324,7 @@ Future<List<String>> _removalLines(WidgetRef ref, List<Track> tracks) async {
 Future<bool> deleteTrackFiles(BuildContext context, WidgetRef ref, List<Track> tracks) async {
   if (tracks.isEmpty) return false;
   final forever = ref.read(settingsProvider).deletePermanently;
-  final where = await _removalLines(ref, tracks);
+  final where = await removalLines(ref, tracks);
   if (!context.mounted) return false;
   final ok = await showDialog<bool>(
     context: context,
