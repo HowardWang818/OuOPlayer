@@ -60,6 +60,11 @@ Future<Map<String, Object?>> buildBackup(AppDatabase app) async {
     'plays': [
       for (final r in await db.query('plays')) {...ref(r['track_id'] as String), 'count': r['count'], 'last_played': r['last_played']},
     ],
+    // Older backups (before v0.12.0) have no listening log; that's fine.
+    'listening': [
+      for (final r in await db.query('listening_log', orderBy: 'played_at'))
+        {...ref(r['track_id'] as String), 'played_at': r['played_at'], 'listened_ms': r['listened_ms'], 'log_source': r['source'], 'estimated': r['estimated']},
+    ],
     'podcasts': await db.query('podcasts'),
     'podcast_progress': await db.query('podcast_progress'),
     'download_history': await db.query('download_history'),
@@ -138,6 +143,19 @@ Future<RestoreReport> restoreBackup(AppDatabase app, LibraryScanner scanner, Map
     final id = await resolve(f);
     if (id != null) favorites.add((id, (f as Map)['added_at']));
   }
+  final listening = <Map<String, Object?>>[];
+  for (final r in (backup['listening'] as List? ?? const []).cast<Map>()) {
+    // Podcast episodes aren't library songs: keep their ids as they were.
+    final id = r['log_source'] == TrackSource.podcast ? r['uri'] as String? : await resolve(r);
+    if (id == null) continue;
+    listening.add({
+      'track_id': id,
+      'played_at': r['played_at'],
+      'listened_ms': r['listened_ms'] ?? 0,
+      'source': r['log_source'],
+      'estimated': r['estimated'] ?? 0,
+    });
+  }
   final plays = <(String, Object?, Object?)>[];
   for (final r in (backup['plays'] as List? ?? const [])) {
     final id = await resolve(r);
@@ -147,6 +165,13 @@ Future<RestoreReport> restoreBackup(AppDatabase app, LibraryScanner scanner, Map
   await db.transaction((txn) async {
     for (final table in ['playlist_tracks', 'playlists', 'playlist_folders', 'favorites', 'plays', 'podcasts', 'podcast_progress']) {
       await txn.delete(table);
+    }
+    // Only replace the log when the backup has one (older backups don't).
+    if (backup.containsKey('listening')) {
+      await txn.delete('listening_log');
+      for (final r in listening) {
+        await txn.insert('listening_log', r);
+      }
     }
     final folderIds = <String, int>{};
     for (final f in (backup['folders'] as List? ?? const []).cast<Map>()) {

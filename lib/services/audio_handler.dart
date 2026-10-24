@@ -9,6 +9,7 @@ import 'package:just_audio/just_audio.dart';
 
 import '../data/db/database.dart';
 import '../data/models/track.dart';
+import 'car_browser.dart';
 
 /// Bridges just_audio to audio_service so playback shows up in the Android
 /// notification / lock screen, Bluetooth AVRCP and Windows SMTC.
@@ -166,6 +167,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     });
     player.playingStream.listen((playing) {
       if (!playing && _podcastTrack != null) _savePodcast();
+      _onPlayingForLog(playing);
     });
     player.positionStream.listen(_trackPodcastPosition);
     _db.changes.listen((_) => _refreshLiked());
@@ -188,7 +190,10 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     _applyPreviewLoop();
     _onPodcastTrack(t, i);
     _refreshLiked();
-    if (record && t.source != TrackSource.preview) _db.addHistory(t);
+    if (record && t.source != TrackSource.preview) {
+      _db.addHistory(t);
+      _startLog(t);
+    }
     _scheduleSave();
   }
 
@@ -269,6 +274,95 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     if (target < Duration.zero) target = Duration.zero;
     if (d != null && target > d) target = d;
     await player.seek(target);
+  }
+
+  // ---- Listening log: how long each play was really heard ----
+  int? _logId;
+  Duration _heard = Duration.zero;
+  DateTime? _playingSince;
+  Timer? _logTimer;
+
+  Duration get _heardNow =>
+      _heard + (_playingSince == null ? Duration.zero : DateTime.now().difference(_playingSince!));
+
+  /// Playback started or stopped: count only time actually playing.
+  void _onPlayingForLog(bool playing) {
+    if (playing) {
+      // A restored session isn't logged until it really plays.
+      final t = currentTrack;
+      if (_logId == null && !_logStarting && t != null && t.source != TrackSource.preview) {
+        _startLog(t);
+        return;
+      }
+      _playingSince ??= DateTime.now();
+    } else if (_playingSince != null) {
+      _heard = _heardNow;
+      _playingSince = null;
+      _flushLog();
+    }
+  }
+
+  void _flushLog() {
+    final id = _logId;
+    if (id != null) _db.updateListening(id, _heardNow).catchError((_) {});
+  }
+
+  /// A new song: close the previous entry and open one (previews aren't logged).
+  bool _logStarting = false;
+
+  Future<void> _startLog(Track t) async {
+    _flushLog();
+    _logTimer?.cancel();
+    _logId = null;
+    _heard = Duration.zero;
+    _playingSince = player.playing ? DateTime.now() : null;
+    if (t.source == TrackSource.preview) return;
+    _logStarting = true;
+    try {
+      _logId = await _db.startListening(t, DateTime.now());
+    } finally {
+      _logStarting = false;
+    }
+    // Also saved now and then, in case the app is closed while playing.
+    _logTimer = Timer.periodic(const Duration(seconds: 30), (_) => _flushLog());
+  }
+
+  // ---- Android Auto / media browsers ----
+  /// Set in main once the providers exist (podcast episodes need them).
+  CarBrowser? carBrowser;
+
+  @override
+  Future<List<MediaItem>> getChildren(String parentMediaId, [Map<String, dynamic>? options]) async {
+    try {
+      return await carBrowser?.children(parentMediaId) ?? const [];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  @override
+  Future<void> playFromMediaId(String mediaId, [Map<String, dynamic>? extras]) async {
+    final found = await carBrowser?.resolve(mediaId);
+    if (found != null) await playTracks(found.$1, index: found.$2);
+  }
+
+  @override
+  Future<List<MediaItem>> search(String query, [Map<String, dynamic>? extras]) async =>
+      await carBrowser?.search(query) ?? const [];
+
+  /// 「用 OuOPlayer 播放 …」: the matching songs; nothing said → liked songs,
+  /// or the whole library shuffled.
+  @override
+  Future<void> playFromSearch(String query, [Map<String, dynamic>? extras]) async {
+    final q = query.trim();
+    if (q.isNotEmpty) {
+      final found = await _db.search(q);
+      if (found.isNotEmpty) return playTracks(found);
+    }
+    final liked = await _db.favorites();
+    if (liked.isNotEmpty) return playTracks(liked, shuffle: true);
+    final all = await _db.tracks();
+    if (all.isNotEmpty) await playTracks(all, shuffle: true);
   }
 
   /// ♥ in the notification and on the lock screen.

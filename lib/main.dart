@@ -8,6 +8,7 @@ import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'app.dart';
 import 'data/db/database.dart';
 import 'providers/providers.dart';
+import 'services/car_browser.dart';
 import 'services/audio_handler.dart';
 import 'services/library_scanner.dart';
 
@@ -37,6 +38,9 @@ Future<void> main() async {
     audioHandlerProvider.overrideWithValue(handler),
     initialSettingsProvider.overrideWithValue(settings),
   ]);
+
+  // Android Auto browsing; podcast episodes come from their feeds.
+  handler.carBrowser = CarBrowser(db, episodes: (url) async => (await container.read(podcastServiceProvider).fetch(url)).episodes);
 
   // First launch on desktop: scan the default Music folder automatically.
   if (Platform.isWindows && (await db.trackIds()).isEmpty) {
