@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- audio_service looks the notification icon up by name at runtime, so the
-     release resource shrinker cannot see it is used. -->
+<!-- audio_service looks notification icons up by name at runtime, so the
+     release resource shrinker cannot see they are used. Every icon passed to
+     it by name (notification icon, MediaControl.custom) must be listed here,
+     or the whole media notification fails to show. -->
 <resources xmlns:tools="http://schemas.android.com/tools"
-    tools:keep="@drawable/ic_stat_music" />
+    tools:keep="@drawable/ic_stat_music,@drawable/ic_action_favorite,@drawable/ic_action_favorite_border" />
