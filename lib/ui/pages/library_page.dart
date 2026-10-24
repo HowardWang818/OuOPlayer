@@ -8,6 +8,7 @@ import '../../theme/app_theme.dart';
 import '../widgets/art_image.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/import_playlist.dart';
+import '../widgets/spotify_import_sheet.dart';
 import '../widgets/sort_button.dart';
 import '../../services/track_sort.dart';
 import '../widgets/track_selection.dart';
@@ -207,12 +208,14 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
             onSelected: (v) => switch (v) {
               'folder' => createPlaylistFolder(context, ref),
               'import' => importM3uPlaylist(context, ref),
+              'spotify' => importSpotify(context, ref),
               _ => _newPlaylist(),
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'playlist', child: ListTile(leading: Icon(Icons.queue_music), title: Text('建立播放清單'))),
               PopupMenuItem(value: 'folder', child: ListTile(leading: Icon(Icons.create_new_folder_outlined), title: Text('建立資料夾'))),
               PopupMenuItem(value: 'import', child: ListTile(leading: Icon(Icons.file_open_outlined), title: Text('匯入播放清單（M3U）'))),
+              PopupMenuItem(value: 'spotify', child: ListTile(leading: Icon(Icons.queue_music_outlined), title: Text('匯入 Spotify 歌單'))),
             ],
           ),
         ],
