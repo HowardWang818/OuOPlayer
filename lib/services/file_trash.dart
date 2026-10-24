@@ -54,4 +54,24 @@ Future<bool> deleteForever(List<String> paths) async {
   return true;
 }
 
+/// Whether 媒體管理 is allowed (Android 12+), so deleting files OuOPlayer
+/// didn't create no longer brings up the system's confirmation.
+Future<bool> canManageMedia() async {
+  if (!Platform.isAndroid) return false;
+  try {
+    return await const MethodChannel('ouo/trash').invokeMethod<bool>('canManageMedia') ?? false;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Opens the system page where 媒體管理 is allowed. False if not available.
+Future<bool> openManageMediaSettings() async {
+  try {
+    return await const MethodChannel('ouo/trash').invokeMethod<bool>('openManageMedia') ?? false;
+  } catch (_) {
+    return false;
+  }
+}
+
 String get trashName => Platform.isWindows ? '資源回收筒' : '垃圾桶';

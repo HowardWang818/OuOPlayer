@@ -323,6 +323,22 @@ class AppDatabase {
     return {for (final r in rows) r['track_id'] as String: r['count'] as int};
   }
 
+  // ---------- clearing play data ----------
+  /// Removes the chosen kinds of play data; songs, playlists and likes stay.
+  Future<void> clearPlayData(Set<PlayData> kinds) async {
+    await db.transaction((txn) async {
+      for (final k in kinds) {
+        await txn.delete(switch (k) {
+          PlayData.listening => 'listening_log',
+          PlayData.playCounts => 'plays',
+          PlayData.recent => 'history',
+          PlayData.podcastProgress => 'podcast_progress',
+        });
+      }
+    });
+    _notify();
+  }
+
   // ---------- listening log ----------
   /// Starts a log entry for a play; returns its id for [updateListening].
   Future<int> startListening(Track t, DateTime at) => db.insert('listening_log', {
@@ -634,4 +650,16 @@ class ListeningEntry {
 
   /// From the history before v0.12.0: the song's length, not measured.
   final bool estimated;
+}
+
+/// What 清除播放資料 can remove.
+enum PlayData {
+  listening('收聽統計紀錄', '統計頁和年度回顧的資料'),
+  playCounts('播放次數', '智慧播放清單「最常播放」「很久沒聽」「從沒播過」的依據'),
+  recent('最近播放', '首頁和車上的「最近播放」'),
+  podcastProgress('Podcast 收聽進度', '每一集聽到哪裡、是否已聽完');
+
+  const PlayData(this.label, this.description);
+  final String label;
+  final String description;
 }

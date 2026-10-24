@@ -12,6 +12,8 @@ import '../../services/equalizer.dart';
 import '../../services/sleep_timer.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/backup_actions.dart';
+import '../widgets/clear_play_data.dart';
+import '../widgets/manage_media_tile.dart';
 import '../widgets/missing_files_dialog.dart';
 import '../../services/missing_files.dart';
 import '../../services/file_trash.dart';
@@ -219,6 +221,22 @@ class SettingsPage extends ConsumerWidget {
           value: s.lyricsOnline,
           onChanged: n.setLyricsOnline,
         ),
+        header('隱私與播放紀錄'),
+        SwitchListTile(
+          secondary: const Icon(Icons.history),
+          title: const Text('記錄播放紀錄'),
+          subtitle: Text(s.recordPlays
+              ? '最近播放、播放次數（智慧播放清單）和收聽統計'
+              : '已關閉：不再記錄。以前的紀錄還在，可以用下面的按鈕清除。Podcast 收聽進度照常記錄'),
+          value: s.recordPlays,
+          onChanged: n.setRecordPlays,
+        ),
+        ListTile(
+          leading: const Icon(Icons.delete_sweep_outlined),
+          title: const Text('清除播放資料'),
+          subtitle: const Text('可以選擇清除收聽統計、播放次數、最近播放或 Podcast 進度'),
+          onTap: () => showClearPlayData(context, ref),
+        ),
         header('備份與還原'),
         ListTile(
           leading: const Icon(Icons.backup_outlined),
@@ -263,6 +281,7 @@ class SettingsPage extends ConsumerWidget {
           value: s.autoCleanMissing,
           onChanged: n.setAutoCleanMissing,
         ),
+        if (Platform.isAndroid) const ManageMediaTile(),
         SwitchListTile(
           secondary: const Icon(Icons.delete_forever_outlined),
           title: const Text('刪除檔案時直接永久刪除'),
@@ -388,7 +407,7 @@ class SettingsPage extends ConsumerWidget {
           onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StatsPage())),
         ),
         header('關於'),
-        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.12.0')),
+        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.12.1')),
       ]),
     );
   }

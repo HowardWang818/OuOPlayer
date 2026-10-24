@@ -39,6 +39,22 @@ class TrashPlugin(private val context: Context, messenger: BinaryMessenger) : Me
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         if (call.method == "overwrite") return overwrite(call, result)
+        // 媒體管理 (Android 12+): once allowed, trash / delete / write
+        // requests go through without the system's confirmation dialog.
+        if (call.method == "canManageMedia") {
+            return result.success(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && MediaStore.canManageMedia(context))
+        }
+        if (call.method == "openManageMedia") {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return result.success(false)
+            val intent = android.content.Intent(android.provider.Settings.ACTION_REQUEST_MANAGE_MEDIA, Uri.parse("package:${context.packageName}"))
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            return try {
+                context.startActivity(intent)
+                result.success(true)
+            } catch (e: Exception) {
+                result.error("settings", e.message, null)
+            }
+        }
         if (call.method != "trash" && call.method != "delete") return result.notImplemented()
         val forever = call.method == "delete"
         val paths = call.argument<List<String>>("paths") ?: return result.error("args", "paths missing", null)

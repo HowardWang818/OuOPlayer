@@ -50,6 +50,10 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   bool continueAfterQueue = true;
   int seekSeconds = 15;
 
+  /// 記錄播放紀錄: off → no recently played, play counts or listening log
+  /// (podcast resume points are still kept).
+  bool recordPlays = true;
+
   /// 播放／暫停淡入淡出 length (0 = off). Track changes never fade.
   int fadeMs = 500;
   int _fadeRun = 0;
@@ -190,9 +194,11 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     _applyPreviewLoop();
     _onPodcastTrack(t, i);
     _refreshLiked();
-    if (record && t.source != TrackSource.preview) {
+    if (record && recordPlays && t.source != TrackSource.preview) {
       _db.addHistory(t);
       _startLog(t);
+    } else {
+      _stopLog();
     }
     _scheduleSave();
   }
@@ -214,8 +220,11 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     required bool continueAfterQueue,
     required int seekSeconds,
     int fadeMs = 500,
+    bool recordPlays = true,
   }) {
     this.fadeMs = fadeMs;
+    if (!recordPlays && this.recordPlays) _stopLog();
+    this.recordPlays = recordPlays;
     this.podcastSpeed = podcastSpeed;
     this.podcastSkipSilence = podcastSkipSilence;
     this.continueAfterQueue = continueAfterQueue;
@@ -290,7 +299,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     if (playing) {
       // A restored session isn't logged until it really plays.
       final t = currentTrack;
-      if (_logId == null && !_logStarting && t != null && t.source != TrackSource.preview) {
+      if (recordPlays && _logId == null && !_logStarting && t != null && t.source != TrackSource.preview) {
         _startLog(t);
         return;
       }
@@ -309,6 +318,15 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   /// A new song: close the previous entry and open one (previews aren't logged).
   bool _logStarting = false;
+
+  /// Closes the current entry and logs nothing until the next song.
+  void _stopLog() {
+    _flushLog();
+    _logTimer?.cancel();
+    _logId = null;
+    _heard = Duration.zero;
+    _playingSince = null;
+  }
 
   Future<void> _startLog(Track t) async {
     _flushLog();

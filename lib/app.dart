@@ -126,6 +126,7 @@ final playbackSettingsProvider = Provider<void>((ref) {
         continueAfterQueue: s.continueAfterQueue,
         seekSeconds: s.seekSeconds,
         fadeMs: s.fadeMs,
+        recordPlays: s.recordPlays,
       );
 });
 
