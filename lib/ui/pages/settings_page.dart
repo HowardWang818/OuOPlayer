@@ -269,6 +269,13 @@ class SettingsPage extends ConsumerWidget {
           ),
         ),
         SwitchListTile(
+          secondary: const Icon(Icons.person_search_outlined),
+          title: const Text('自動上網找歌手圖片'),
+          subtitle: const Text('從 Deezer 下載歌手照片（免費，只會送出歌手名字），存在手機上'),
+          value: s.artistImagesOnline,
+          onChanged: n.setArtistImagesOnline,
+        ),
+        SwitchListTile(
           secondary: const Icon(Icons.subtitles_outlined),
           title: const Text('在車上和通知列顯示歌詞'),
           subtitle: const Text('有同步歌詞時，Android Auto、通知列和鎖定畫面的歌手那一行會換成正在唱的歌詞。開車時請注意安全'),
@@ -444,7 +451,7 @@ class SettingsPage extends ConsumerWidget {
           onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StatsPage())),
         ),
         header('關於'),
-        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.15.0')),
+        const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.15.2')),
       ]),
     );
   }

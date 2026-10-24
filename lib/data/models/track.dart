@@ -131,10 +131,7 @@ class Artist {
 
   /// When their newest song was added (ms since epoch).
   final int added;
-
-  /// A vocal synth (初音ミク, 重音テト…), shown in its own section.
-  final bool virtual;
-  const Artist(this.name, this.art, this.count, [this.added = 0, this.virtual = false]);
+  const Artist(this.name, this.art, this.count, [this.added = 0]);
 }
 
 class Playlist {

@@ -11,6 +11,8 @@ import 'package:path_provider/path_provider.dart';
 
 import '../data/db/database.dart';
 import '../data/models/track.dart';
+import '../services/artist_images.dart';
+import '../services/artists.dart';
 import '../services/audio_handler.dart';
 import '../services/bluetooth/bluetooth_service.dart';
 import '../services/download_service.dart';
@@ -159,6 +161,9 @@ class AppSettings {
   /// Ask before downloading without Wi-Fi.
   final bool wifiWarning;
 
+  /// Look artist photos up on Deezer.
+  final bool artistImagesOnline;
+
   /// Show the current synced lyric line as the artist in the car / notification.
   final bool lyricsInMetadata;
 
@@ -200,6 +205,7 @@ class AppSettings {
     this.wifiWarning = true,
     this.recordPlays = true,
     this.lyricsInMetadata = false,
+    this.artistImagesOnline = true,
     this.ytAutoUpdate = true,
     this.ytLastUpdate,
     this.sorts = const {},
@@ -233,6 +239,7 @@ class AppSettings {
     bool? wifiWarning,
     bool? recordPlays,
     bool? lyricsInMetadata,
+    bool? artistImagesOnline,
     bool? ytAutoUpdate,
     DateTime? ytLastUpdate,
   }) =>
@@ -264,6 +271,7 @@ class AppSettings {
         wifiWarning: wifiWarning ?? this.wifiWarning,
         recordPlays: recordPlays ?? this.recordPlays,
         lyricsInMetadata: lyricsInMetadata ?? this.lyricsInMetadata,
+        artistImagesOnline: artistImagesOnline ?? this.artistImagesOnline,
         ytAutoUpdate: ytAutoUpdate ?? this.ytAutoUpdate,
         ytLastUpdate: ytLastUpdate ?? this.ytLastUpdate,
         sorts: sorts,
@@ -272,6 +280,11 @@ class AppSettings {
   static Future<AppSettings> load(AppDatabase db) async {
     final m = await db.allSettings();
     final defaults = await _defaultDirs();
+    try {
+      ArtistRenames.set((jsonDecode(m['artist_renames'] ?? '{}') as Map).cast<String, String>());
+    } catch (_) {
+      ArtistRenames.set(const {});
+    }
     return AppSettings(
       themeMode: ThemeMode.values.firstWhere((t) => t.name == m['theme'], orElse: () => ThemeMode.dark),
       musicDirs: m['music_dirs'] != null ? (jsonDecode(m['music_dirs']!) as List).cast<String>() : defaults.music,
@@ -301,6 +314,7 @@ class AppSettings {
       wifiWarning: m['wifi_warning'] != 'false',
       recordPlays: m['record_plays'] != 'false',
       lyricsInMetadata: m['lyrics_in_metadata'] == 'true',
+      artistImagesOnline: m['artist_images_online'] != 'false',
       ytAutoUpdate: m['yt_auto_update'] != 'false',
       ytLastUpdate: DateTime.tryParse(m['yt_last_update'] ?? ''),
       sorts: {for (final e in m.entries) if (e.key.startsWith('sort_')) e.key.substring(5): e.value},
@@ -432,6 +446,19 @@ class SettingsNotifier extends Notifier<AppSettings> {
     _db.setSetting('lyrics_keep_awake', '$v');
   }
 
+  /// The user's own artist names (歌手頁 →「重新命名歌手」); every artist
+  /// list refreshes.
+  Future<void> setArtistRenames(Map<String, String> names) async {
+    ArtistRenames.set(names);
+    await _db.setSetting('artist_renames', jsonEncode(names));
+    _db.notifyChanged();
+  }
+
+  void setArtistImagesOnline(bool v) {
+    state = state.copyWith(artistImagesOnline: v);
+    _db.setSetting('artist_images_online', '$v');
+  }
+
   void setLyricsInMetadata(bool v) {
     state = state.copyWith(lyricsInMetadata: v);
     _db.setSetting('lyrics_in_metadata', '$v');
@@ -541,6 +568,14 @@ final recentAlbumsProvider = FutureProvider<List<Album>>((ref) {
   ref.watch(dbRevisionProvider);
   return ref.watch(dbProvider).recentAlbums();
 });
+final artistImagesProvider = Provider<ArtistImages>((ref) => ArtistImages());
+
+/// An artist's photo (Deezer), cached on the device; null if none.
+final artistImageProvider = FutureProvider.family<String?, String>((ref, name) {
+  final online = ref.watch(settingsProvider.select((s) => s.artistImagesOnline));
+  return ref.read(artistImagesProvider).image(name, online: online);
+}, retry: (_, __) => null);
+
 final artistsProvider = FutureProvider<List<Artist>>((ref) {
   ref.watch(dbRevisionProvider);
   return ref.watch(dbProvider).artists();

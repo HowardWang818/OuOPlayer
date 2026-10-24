@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ouoplayer/data/models/track.dart';
+import 'package:ouoplayer/services/artist_images.dart';
 import 'package:ouoplayer/services/artists.dart';
 import 'package:ouoplayer/services/cover_finder.dart';
 import 'package:ouoplayer/services/online/itunes.dart';
@@ -36,24 +37,29 @@ void main() {
       expect(dir.keyOf('Some Band'), dir.keyOf('某某樂團'));
     });
 
-    test('vocal synths and their spellings', () {
+    test('a song is listed under its first artist', () {
       final dir = ArtistDirectory(const []);
-      expect(dir.isVirtual('初音ミク'), isTrue);
-      expect(dir.isVirtual('Hatsune Miku'), isTrue);
-      expect(dir.keyOf('Kasane Teto'), dir.keyOf('重音テト'));
-      expect(dir.keyOf('KAFU'), dir.keyOf('可不'));
-      expect(dir.keyOf('Megpoid'), dir.keyOf('GUMI'));
-      expect(dir.isVirtual('DECO*27'), isFalse);
-      expect(dir.isVirtual('YOASOBI'), isFalse);
+      expect(dir.primary('YOASOBI, Ayase'), 'YOASOBI');
+      expect(dir.primary('DECO*27 feat. 初音ミク'), 'DECO*27');
+      expect(dir.primary('Li Ronghao, Someone'), '李榮浩');
+      expect(dir.primary('未知演出者'), isNull);
     });
 
-    test('the matcher knows the built-in spellings', () {
+    test('the matcher knows the built-in spellings and still sees every artist', () {
       expect(SongMatcher.compare(SongKey('Lemon', 'Kenshi Yonezu'), SongKey('Lemon', '米津玄師')).level, MatchLevel.sure);
-      expect(SongMatcher.compare(SongKey('ヴァンパイア', 'DECO*27 feat. 初音ミク'), SongKey('ヴァンパイア', 'Hatsune Miku')).level, MatchLevel.sure);
+      expect(SongMatcher.compare(SongKey('夜に駆ける', 'YOASOBI, Ayase'), SongKey('夜に駆ける', 'Ayase')).level, MatchLevel.sure);
+    });
+
+    test('Deezer photo only for the artist with that very name', () {
+      expect(ArtistImages.pick('YOASOBI', [('YOASOBI Covers', 'https://x/1.jpg'), ('YOASOBI', 'https://x/2.jpg')]), 'https://x/2.jpg');
+      expect(ArtistImages.pick('米津玄師', [('Kenshi Yonezu', 'https://x/3.jpg')]), 'https://x/3.jpg');
+      expect(ArtistImages.pick('Li Ronghao', [('Ronghao Li', 'https://x/4.jpg')]), 'https://x/4.jpg');
+      expect(ArtistImages.pick('natori', [('9Lana', 'https://x/5.jpg')]), isNull);
+      expect(ArtistImages.pick('Ado', [('Ado', 'https://e-cdns-images.dzcdn.net/images/artist//500x500.jpg')]), isNull);
     });
   });
 
-  test('the artists list has one entry per artist with all their songs', () async {
+  test('the artists list has one entry per first-credited artist', () async {
     final db = await v0120.openDb();
     for (final t in [
       song('1', '群青', 'YOASOBI'),
@@ -70,19 +76,19 @@ void main() {
     final artists = await db.artists();
     final byName = {for (final a in artists) a.name: a};
     expect(byName['YOASOBI']!.count, 2);
-    expect(byName['Ayase']!.count, 2);
-    expect(byName['初音ミク']!.virtual, isTrue);
-    expect(byName['重音テト']!.virtual, isTrue);
-    expect(byName['DECO*27']!.virtual, isFalse);
+    expect(byName['Ayase']!.count, 1);
+    expect(byName['DECO*27']!.count, 1);
+    expect(byName.containsKey('初音ミク'), isFalse);
+    expect(byName.containsKey('柊キライ'), isFalse);
     expect(byName['李榮浩']!.count, 2);
     expect(byName['未知演出者']!.count, 1);
     expect(artists.where((a) => a.name.contains(',')), isEmpty);
-    expect((await db.artistTracks('Ayase')).map((t) => t.id).toSet(), {'2', '3'});
-    expect((await db.artistTracks('Hatsune Miku')).single.id, '4');
+    expect((await db.artistTracks('Ayase')).map((t) => t.id), ['3']);
+    expect((await db.artistTracks('YOASOBI')).map((t) => t.id).toSet(), {'1', '2'});
     expect((await db.artistTracks('Ronghao Li')).map((t) => t.id).toSet(), {'6', '7'});
 
-    // Removing Ayase's solo song leaves Ayase (still on 夜に駆ける).
-    expect((await db.removalImpact(['3'])).emptyArtists, ['柊キライ']);
+    // Ayase's only song gone: Ayase goes too (夜に駆ける is listed under YOASOBI).
+    expect((await db.removalImpact(['3'])).emptyArtists, ['Ayase']);
   });
 
   test('covers: only a confirmed song gives its cover', () {

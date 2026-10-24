@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'artist_images.dart';
+
 import 'package:audio_service/audio_service.dart';
 import 'package:rxdart/rxdart.dart';
 
@@ -126,7 +128,8 @@ class CarBrowser {
       case artists:
         return [
           for (final a in (await db.artists()).take(maxItems))
-            folder('artist:${a.name}', a.name, subtitle: '${a.count} 首', art: a.art, circle: true, icon: 'artist', children: styleList),
+            folder('artist:${a.name}', a.name,
+                subtitle: '${a.count} 首', art: ArtistImages.cached(a.name) ?? a.art, circle: true, icon: 'artist', children: styleList),
         ];
       case podcasts:
         return [

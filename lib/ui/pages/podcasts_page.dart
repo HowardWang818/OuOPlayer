@@ -7,6 +7,7 @@ import '../../services/network_check.dart';
 import '../../services/download_service.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/art_image.dart';
+import '../widgets/image_viewer.dart';
 import '../widgets/dialogs.dart';
 import 'podcast_search_page.dart';
 
@@ -133,7 +134,7 @@ class PodcastEpisodesPage extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.all(16),
             child: Row(children: [
-              ArtImage(f.podcast.image, size: 120, radius: 8, icon: Icons.podcasts),
+              ZoomableArt(art: f.podcast.image, child: ArtImage(f.podcast.image, size: 120, radius: 8, icon: Icons.podcasts)),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

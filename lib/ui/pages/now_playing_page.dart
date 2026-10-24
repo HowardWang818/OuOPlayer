@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../widgets/art_image.dart';
+import '../widgets/image_viewer.dart';
 import '../widgets/lyrics_view.dart';
 import '../widgets/output_device_chip.dart';
 import '../widgets/player_controls.dart';
@@ -28,7 +29,7 @@ class NowPlayingPage extends ConsumerWidget {
       return Center(
         child: Container(
           decoration: BoxDecoration(boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 30, offset: const Offset(0, 12))]),
-          child: ArtImage(track?.art, size: size, radius: 8),
+          child: ZoomableArt(art: track?.art, child: ArtImage(track?.art, size: size, radius: 8)),
         ),
       );
     });

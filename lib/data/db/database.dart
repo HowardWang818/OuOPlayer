@@ -195,13 +195,13 @@ class AppDatabase {
     final kept = all.where((t) => !set.contains(t.id));
     final keptAlbums = kept.map((t) => t.album).toSet();
     final dir = ArtistDirectory(all.map((t) => t.artist));
-    final keptArtists = {for (final t in kept) ...dir.keysOf(t.artist)};
+    final keptArtists = {for (final t in kept) dir.primaryKey(t.artist)};
     return RemovalImpact(
       playlists: playlists,
       favorites: favorites,
       emptyAlbums: removed.map((t) => t.album).toSet().where((a) => !keptAlbums.contains(a) && a != '未知專輯').toList(),
       emptyArtists: [
-        for (final e in {for (final t in removed) for (final n in dir.namesOf(t.artist)) dir.keyOf(n): n}.entries)
+        for (final e in {for (final t in removed) if (dir.primary(t.artist) != null) dir.keyOf(dir.primary(t.artist)!): dir.primary(t.artist)!}.entries)
           if (!keptArtists.contains(e.key)) e.value,
       ],
     );
@@ -231,36 +231,22 @@ class AppDatabase {
     return rows.map((r) => Album(r['album'] as String? ?? '未知專輯', r['artist'] as String? ?? '', r['art'] as String?, r['c'] as int)).toList();
   }
 
-  /// One entry per artist, not per credit: 「YOASOBI」「YOASOBI, Ayase」 and
-  /// 「Ayase, YOASOBI」 make YOASOBI and Ayase, each with all their songs;
-  /// spellings are merged (see ArtistDirectory). Vocal synths are marked.
+  /// One entry per artist, by the first artist credited: 「YOASOBI, Ayase」
+  /// counts for YOASOBI only; spellings are merged (see ArtistDirectory).
   Future<List<Artist>> artists() async {
     final rows = await db.rawQuery('''SELECT artist, art, added_at FROM tracks
       WHERE source NOT IN ('url', 'podcast', 'preview', 'missing')''');
     final dir = ArtistDirectory(rows.map((r) => r['artist'] as String? ?? ''));
-    final byKey = <String, (String, String?, int, int, bool)>{};
-    var unknown = 0;
-    String? unknownArt;
+    final byKey = <String, (String, String?, int, int)>{};
     for (final r in rows) {
-      final credit = r['artist'] as String? ?? '';
-      final names = dir.namesOf(credit);
-      if (names.isEmpty) {
-        unknown++;
-        unknownArt ??= r['art'] as String?;
-        continue;
-      }
-      for (final name in names) {
-        final k = dir.keyOf(name);
-        final (n, art, count, added, virtual) = byKey[k] ?? (name, null, 0, 0, dir.isVirtual(name));
-        byKey[k] = (n, art ?? r['art'] as String?, count + 1, max(added, (r['added_at'] as int?) ?? 0), virtual);
-      }
+      final name = dir.primary(r['artist'] as String? ?? '') ?? '未知演出者';
+      final k = name == '未知演出者' ? '' : dir.keyOf(name);
+      final (n, art, count, added) = byKey[k] ?? (name, null, 0, 0);
+      byKey[k] = (n, art ?? r['art'] as String?, count + 1, max(added, (r['added_at'] as int?) ?? 0));
     }
-    final list = [
-      for (final v in byKey.values) Artist(v.$1, v.$2, v.$3, v.$4, v.$5),
-      if (unknown > 0) Artist('未知演出者', unknownArt, unknown),
-    ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    return list;
+    return [for (final v in byKey.values) Artist(v.$1, v.$2, v.$3, v.$4)]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   }
+
 
   /// Tracks stored under [folder] (path prefix match; avoids LIKE wildcards in paths).
   Future<List<Track>> folderTracks(String folder) async {
@@ -290,15 +276,15 @@ class AppDatabase {
     return rows.map(Track.fromMap).toList();
   }
 
-  /// Every song crediting [artist] (any spelling, alone or with others).
+  /// The songs listed under [artist]: those crediting it first (any spelling).
   Future<List<Track>> artistTracks(String artist) async {
     final rows = await db.query('tracks',
         where: "source NOT IN ('url', 'podcast', 'preview', 'missing')", orderBy: 'album COLLATE NOCASE, track_no, title COLLATE NOCASE');
     final all = rows.map(Track.fromMap).toList();
     final dir = ArtistDirectory(all.map((t) => t.artist));
-    if (artist == '未知演出者') return [for (final t in all) if (dir.namesOf(t.artist).isEmpty) t];
+    if (artist == '未知演出者') return [for (final t in all) if (dir.primary(t.artist) == null) t];
     final key = dir.keyOf(artist);
-    return [for (final t in all) if (dir.keysOf(t.artist).contains(key)) t];
+    return [for (final t in all) if (dir.primaryKey(t.artist) == key) t];
   }
 
 
