@@ -14,6 +14,7 @@ import '../../services/track_sort.dart';
 import '../widgets/track_selection.dart';
 import '../widgets/track_tile.dart';
 import 'collection_page.dart';
+import 'missing_songs_page.dart';
 import 'folder_page.dart';
 import 'podcasts_page.dart';
 
@@ -209,6 +210,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
               'folder' => createPlaylistFolder(context, ref),
               'import' => importM3uPlaylist(context, ref),
               'spotify' => importSpotify(context, ref),
+              'missing' => _push(const MissingSongsPage()),
               _ => _newPlaylist(),
             },
             itemBuilder: (_) => const [
@@ -216,6 +218,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
               PopupMenuItem(value: 'folder', child: ListTile(leading: Icon(Icons.create_new_folder_outlined), title: Text('建立資料夾'))),
               PopupMenuItem(value: 'import', child: ListTile(leading: Icon(Icons.file_open_outlined), title: Text('匯入播放清單（M3U）'))),
               PopupMenuItem(value: 'spotify', child: ListTile(leading: Icon(Icons.queue_music_outlined), title: Text('匯入 Spotify 歌單'))),
+              PopupMenuItem(value: 'missing', child: ListTile(leading: Icon(Icons.music_off_outlined), title: Text('缺少的歌曲'))),
             ],
           ),
         ],

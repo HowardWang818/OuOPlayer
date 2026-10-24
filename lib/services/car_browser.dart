@@ -133,7 +133,7 @@ class CarBrowser {
           for (final p in await db.podcasts()) songList('podcast:${p.feedUrl}', p.title, subtitle: p.author, art: p.image, icon: 'podcast'),
         ];
     }
-    final tracks = await tracksOf(parent);
+    final tracks = [for (final t in await tracksOf(parent)) if (t.source != TrackSource.missing) t];
     return [
       for (var i = 0; i < tracks.length && i < maxItems; i++)
         MediaItem(

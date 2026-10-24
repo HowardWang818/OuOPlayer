@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
+import '../../services/missing_songs.dart';
 import '../../services/playlist_import.dart';
 import '../pages/collection_page.dart';
 import 'dialogs.dart';
@@ -44,8 +45,16 @@ Future<void> importM3uPlaylist(BuildContext context, WidgetRef ref) async {
       found.add(Track.fromUrl(e.location, title: e.title, artist: e.artist, durationMs: e.durationSec == null ? null : e.durationSec! * 1000));
       continue;
     }
-    final t = matcher.find(e.location, title: e.title, artist: e.artist);
-    t == null ? missing.add(e.label) : found.add(t);
+    final t = matcher.find(e.location, title: e.title, artist: e.artist, durationMs: e.durationSec == null ? null : e.durationSec! * 1000);
+    if (t != null) {
+      found.add(t);
+    } else {
+      missing.add(e.label);
+      // Only songs the file names can be filled in later.
+      if (e.title != null) {
+        found.add(await MissingSongs.create(db, e.title!, e.artist ?? '', durationMs: e.durationSec == null ? null : e.durationSec! * 1000));
+      }
+    }
   }
   final name = (m3u.name?.isNotEmpty ?? false) ? m3u.name! : p.basenameWithoutExtension(path);
   if (found.isEmpty) {
@@ -56,7 +65,7 @@ Future<void> importM3uPlaylist(BuildContext context, WidgetRef ref) async {
   // Keep the file's order and repeats.
   await db.addToPlaylist(id, found, allowDuplicates: true);
   if (!context.mounted) return;
-  await _report(context, name, found.length, missing);
+  await _report(context, name, found.where((t) => t.source != TrackSource.missing).length, missing);
   if (context.mounted) Navigator.of(context).push(MaterialPageRoute(builder: (_) => CollectionPage.playlist(id, name)));
 }
 
@@ -71,7 +80,7 @@ Future<void> _report(BuildContext context, String name, int added, List<String> 
             Text(added == 0 ? '音樂庫裡找不到清單中的歌曲，請先把歌曲加入音樂庫再匯入。' : '加入了 $added 首。'),
             if (missing.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Text('有 ${missing.length} 首在音樂庫裡找不到：'),
+              Text('有 ${missing.length} 首在音樂庫裡找不到（有歌名的已用灰色留在清單裡，之後有了會自動補上）：'),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 220),
                 child: ListView(shrinkWrap: true, children: [for (final m in missing) Text('• $m')]),

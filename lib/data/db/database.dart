@@ -128,14 +128,14 @@ class AppDatabase {
   }
 
   Future<List<Track>> tracks({String orderBy = 'title COLLATE NOCASE'}) async {
-    final rows = await db.query('tracks', where: "source NOT IN ('url', 'podcast', 'preview')", orderBy: orderBy);
+    final rows = await db.query('tracks', where: "source NOT IN ('url', 'podcast', 'preview', 'missing')", orderBy: orderBy);
     return rows.map(Track.fromMap).toList();
   }
 
   /// Random library songs (not streams/podcasts), skipping [exclude].
   Future<List<Track>> randomTracks(int count, {Set<String> exclude = const {}}) async {
     final rows = await db.query('tracks',
-        where: "source NOT IN ('url', 'podcast', 'preview')", orderBy: 'RANDOM()', limit: count + exclude.length);
+        where: "source NOT IN ('url', 'podcast', 'preview', 'missing')", orderBy: 'RANDOM()', limit: count + exclude.length);
     return rows.map(Track.fromMap).where((t) => !exclude.contains(t.id) && t.fileExists).take(count).toList();
   }
 
@@ -204,7 +204,7 @@ class AppDatabase {
   Future<List<Track>> search(String q) async {
     final like = '%$q%';
     final rows = await db.query('tracks',
-        where: "source NOT IN ('url', 'podcast', 'preview') AND (title LIKE ? OR artist LIKE ? OR album LIKE ?)",
+        where: "source NOT IN ('url', 'podcast', 'preview', 'missing') AND (title LIKE ? OR artist LIKE ? OR album LIKE ?)",
         whereArgs: [like, like, like],
         orderBy: 'title COLLATE NOCASE',
         limit: 200);
@@ -213,7 +213,7 @@ class AppDatabase {
 
   Future<List<Album>> albums() async {
     final rows = await db.rawQuery('''SELECT album, MAX(artist) AS artist, MAX(art) AS art, COUNT(*) AS c, MAX(added_at) AS a
-      FROM tracks WHERE source NOT IN ('url', 'podcast', 'preview') GROUP BY album ORDER BY album COLLATE NOCASE''');
+      FROM tracks WHERE source NOT IN ('url', 'podcast', 'preview', 'missing') GROUP BY album ORDER BY album COLLATE NOCASE''');
     return rows
         .map((r) => Album(r['album'] as String? ?? '未知專輯', r['artist'] as String? ?? '', r['art'] as String?, r['c'] as int, (r['a'] as int?) ?? 0))
         .toList();
@@ -221,13 +221,13 @@ class AppDatabase {
 
   Future<List<Album>> recentAlbums({int limit = 12}) async {
     final rows = await db.rawQuery('''SELECT album, MAX(artist) AS artist, MAX(art) AS art, COUNT(*) AS c, MAX(added_at) AS a
-      FROM tracks WHERE source NOT IN ('url', 'podcast', 'preview') GROUP BY album ORDER BY a DESC LIMIT ?''', [limit]);
+      FROM tracks WHERE source NOT IN ('url', 'podcast', 'preview', 'missing') GROUP BY album ORDER BY a DESC LIMIT ?''', [limit]);
     return rows.map((r) => Album(r['album'] as String? ?? '未知專輯', r['artist'] as String? ?? '', r['art'] as String?, r['c'] as int)).toList();
   }
 
   Future<List<Artist>> artists() async {
     final rows = await db.rawQuery('''SELECT artist, MAX(art) AS art, COUNT(*) AS c, MAX(added_at) AS a
-      FROM tracks WHERE source NOT IN ('url', 'podcast', 'preview') GROUP BY artist ORDER BY artist COLLATE NOCASE''');
+      FROM tracks WHERE source NOT IN ('url', 'podcast', 'preview', 'missing') GROUP BY artist ORDER BY artist COLLATE NOCASE''');
     return rows.map((r) => Artist(r['artist'] as String? ?? '未知演出者', r['art'] as String?, r['c'] as int, (r['a'] as int?) ?? 0)).toList();
   }
 
@@ -235,7 +235,7 @@ class AppDatabase {
   Future<List<Track>> folderTracks(String folder) async {
     final prefix = _folderPrefix(folder);
     final rows = await db.query('tracks',
-        where: "source NOT IN ('url', 'podcast', 'preview') AND substr(uri, 1, ?) = ?",
+        where: "source NOT IN ('url', 'podcast', 'preview', 'missing') AND substr(uri, 1, ?) = ?",
         whereArgs: [prefix.length, prefix],
         orderBy: 'title COLLATE NOCASE');
     return rows.map(Track.fromMap).toList();
@@ -244,7 +244,7 @@ class AppDatabase {
   Future<int> folderTrackCount(String folder) async {
     final prefix = _folderPrefix(folder);
     final r = await db.rawQuery(
-        "SELECT COUNT(*) AS c FROM tracks WHERE source NOT IN ('url', 'podcast', 'preview') AND substr(uri, 1, ?) = ?",
+        "SELECT COUNT(*) AS c FROM tracks WHERE source NOT IN ('url', 'podcast', 'preview', 'missing') AND substr(uri, 1, ?) = ?",
         [prefix.length, prefix]);
     return r.first['c'] as int;
   }
@@ -298,7 +298,7 @@ class AppDatabase {
   }
 
   // ---------- smart playlists ----------
-  static const _music = "t.source NOT IN ('url', 'podcast', 'preview')";
+  static const _music = "t.source NOT IN ('url', 'podcast', 'preview', 'missing')";
 
   Future<List<Track>> smartTracks(SmartList kind, {int limit = 100}) async {
     final monthAgo = DateTime.now().subtract(const Duration(days: 30)).millisecondsSinceEpoch;
@@ -413,9 +413,13 @@ class AppDatabase {
   /// All playlists, or only those in [folder] / outside any folder ([topLevel]).
   Future<List<Playlist>> playlists({int? folder, bool topLevel = false}) async {
     final where = folder != null ? 'WHERE p.folder_id = ?' : (topLevel ? 'WHERE p.folder_id IS NULL' : '');
-    final rows = await db.rawQuery('''SELECT p.id, p.name, p.cover, p.folder_id, COUNT(pt.track_id) AS c,
+    // Placeholders for songs not on the device count apart (「缺 N 首」).
+    final rows = await db.rawQuery('''SELECT p.id, p.name, p.cover, p.folder_id,
+      COUNT(CASE WHEN t0.source IS NULL OR t0.source != 'missing' THEN pt.track_id END) AS c,
+      COUNT(CASE WHEN t0.source = 'missing' THEN 1 END) AS m,
       (SELECT t.art FROM playlist_tracks x JOIN tracks t ON t.id = x.track_id WHERE x.playlist_id = p.id AND t.art IS NOT NULL ORDER BY x.position LIMIT 1) AS art
-      FROM playlists p LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id $where GROUP BY p.id ORDER BY p.created_at DESC''',
+      FROM playlists p LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id LEFT JOIN tracks t0 ON t0.id = pt.track_id
+      $where GROUP BY p.id ORDER BY p.created_at DESC''',
         [if (folder != null) folder]);
     return rows
         .map((r) => Playlist(
@@ -425,6 +429,7 @@ class AppDatabase {
               (r['cover'] as String?) ?? r['art'] as String?,
               cover: r['cover'] as String?,
               folderId: r['folder_id'] as int?,
+              missing: (r['m'] as int?) ?? 0,
             ))
         .toList();
   }

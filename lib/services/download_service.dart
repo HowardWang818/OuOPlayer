@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import '../data/db/database.dart';
 import '../data/models/track.dart';
 import 'download_match.dart';
+import 'song_matcher.dart';
 import 'library_scanner.dart';
 import 'ytdlp/ytdlp_downloader.dart';
 
@@ -294,7 +295,7 @@ class DownloadService {
       // both, naming the new one 「title - artist」.
       final mine = await _scanner.readArtist(path);
       final theirs = await _artistOf(target);
-      if (mine != null && theirs != null && !sameArtist(mine, theirs)) {
+      if (mine != null && theirs != null && !SongMatcher.sameArtist(SongKey('', mine), SongKey('', theirs))) {
         final safe = mine.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
         target = p.join(outDir, '${p.basenameWithoutExtension(path)} - $safe${p.extension(path)}');
         t.addLog('同名但歌手不同（$theirs），存成：${p.basename(target)}');
@@ -414,6 +415,7 @@ class DownloadService {
       t.addLog('已建立播放清單「${t.playlistName}」');
     }
     final existing = await ExistingFiles.scan(outDir);
+    final library = SongIndex(await _db.tracks(), (Track t) => SongKey(t.title, t.artist, durationMs: t.durationMs));
     var skipped = 0;
     for (final entry in list) {
       final child = DownloadTask(
@@ -425,7 +427,7 @@ class DownloadService {
       )
         ..parent = t
         ..index = entry.index;
-      final have = await _alreadyDownloaded(entry, existing);
+      final have = await _alreadyDownloaded(entry, existing, library);
       if (have != null) {
         // Already there: no download, just put it in the playlist in order.
         child
@@ -444,18 +446,20 @@ class DownloadService {
     t.addLog('共 ${list.length} 首：已存在 $skipped 首，下載 ${list.length - skipped} 首（同時 $maxParallel 首）');
   }
 
-  /// A file for this song that is already in the download folder: from the
-  /// download history (same source URL) or, for songs downloaded before that
-  /// existed, a file with the song's title AND artist. If the artist can't
+  /// A file for this song that is already there: from the download history
+  /// (same source URL), else a library song SongMatcher is sure about, else
+  /// a file named after the song with the same artist. If the artist can't
   /// be confirmed the song is downloaded (two artists' songs can share a
   /// title, e.g. natori's and 9Lana's 「propose」).
-  Future<String?> _alreadyDownloaded(PlaylistEntry entry, ExistingFiles existing) async {
+  Future<String?> _alreadyDownloaded(PlaylistEntry entry, ExistingFiles existing, SongIndex<Track> library) async {
     final known = await _db.downloadedPath(sourceKey(entry.url));
     if (known != null && File(known).existsSync()) return known;
     final artist = entry.artist;
     if (artist == null) return null;
+    final (match, result) = library.find(SongKey(entry.title, artist));
+    if (match != null && result.level == MatchLevel.sure && !match.isRemote && File(match.uri).existsSync()) return match.uri;
     for (final path in existing.candidates(entry.title, artist)) {
-      if (sameArtist(await _artistOf(path) ?? '', artist)) return path;
+      if (SongMatcher.sameArtist(SongKey(entry.title, await _artistOf(path) ?? ''), SongKey(entry.title, artist))) return path;
     }
     return null;
   }

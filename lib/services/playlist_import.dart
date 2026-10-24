@@ -1,7 +1,7 @@
 import 'package:path/path.dart' as p;
 
 import '../data/models/track.dart';
-import 'download_match.dart';
+import 'song_matcher.dart';
 
 /// One entry of an M3U playlist.
 class M3uEntry {
@@ -64,24 +64,28 @@ class M3uPlaylist {
 }
 
 /// Finds the library song for an entry: same path, else same file name,
-/// else same title and artist (as #EXTINF wrote them).
+/// else the song SongMatcher is sure about (title and artist as #EXTINF
+/// or the backup wrote them).
 class LibraryMatcher {
-  LibraryMatcher(Iterable<Track> library) {
+  LibraryMatcher(Iterable<Track> library)
+      : _songs = SongIndex(library.where((t) => t.source != TrackSource.missing), (Track t) => SongKey(t.title, t.artist, durationMs: t.durationMs)) {
     for (final t in library) {
+      if (t.source == TrackSource.missing) continue;
       _byPath[_key(t.uri)] = t;
       _byName.putIfAbsent(p.basename(t.uri).toLowerCase(), () => t);
-      _bySong.putIfAbsent('${normalizeName(t.title)}|${normalizeName(t.artist)}', () => t);
     }
   }
 
   final _byPath = <String, Track>{};
   final _byName = <String, Track>{};
-  final _bySong = <String, Track>{};
+  final SongIndex<Track> _songs;
 
   static String _key(String path) => p.normalize(path).replaceAll('\\', '/').toLowerCase();
 
-  Track? find(String location, {String? title, String? artist}) =>
-      _byPath[_key(location)] ??
-      _byName[p.basename(location.replaceAll('\\', '/')).toLowerCase()] ??
-      (title == null ? null : _bySong['${normalizeName(title)}|${normalizeName(artist ?? '')}']);
+  Track? find(String location, {String? title, String? artist, int? durationMs}) {
+    final byFile = _byPath[_key(location)] ?? _byName[p.basename(location.replaceAll('\\', '/')).toLowerCase()];
+    if (byFile != null || title == null) return byFile;
+    final (t, r) = _songs.find(SongKey(title, artist ?? '', durationMs: durationMs));
+    return r.level == MatchLevel.sure ? t : null;
+  }
 }

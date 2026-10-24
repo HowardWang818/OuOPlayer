@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:path/path.dart' as p;
 
 import '../data/models/track.dart';
-import 'download_match.dart';
+import 'song_matcher.dart';
 
 /// One song in a Spotify export.
 class SpotifySong {
@@ -139,33 +139,22 @@ String bareTitle(String title) => title
     .replaceAll(RegExp(r'\s(feat\.?|ft\.)\s.*$', caseSensitive: false), '')
     .trim();
 
-/// Finds Spotify songs in the library: same title (also without 「(…)」 /
-/// 「- Remastered」 notes) and at least one matching artist; with several
-/// candidates the closest length wins. Never the same title by another artist.
+/// Finds Spotify songs in the library with SongMatcher: [find] gives the
+/// songs it is sure about; [match] also tells 「maybe」 ones apart, which the
+/// import asks the user about. Never the same title by another artist.
 class SpotifyMatcher {
-  SpotifyMatcher(Iterable<Track> library) {
-    for (final t in library) {
-      for (final key in {normalizeName(t.title), normalizeName(bareTitle(t.title))}) {
-        if (key.isNotEmpty) _byTitle.putIfAbsent(key, () => []).add(t);
-      }
-    }
+  SpotifyMatcher(Iterable<Track> library)
+      : _index = SongIndex(library.where((t) => t.source != TrackSource.missing), (Track t) => SongKey(t.title, t.artist, durationMs: t.durationMs));
+
+  final SongIndex<Track> _index;
+
+  (Track?, MatchLevel) match(SpotifySong s) {
+    final (t, r) = _index.find(SongKey(s.title, s.artists.join(', '), durationMs: s.durationMs));
+    return (t, r.level);
   }
 
-  final _byTitle = <String, List<Track>>{};
-
   Track? find(SpotifySong s) {
-    final keys = {normalizeName(s.title), normalizeName(bareTitle(s.title))}..removeWhere((k) => k.isEmpty);
-    final seen = <String>{};
-    final candidates = [
-      for (final k in keys)
-        for (final t in _byTitle[k] ?? const <Track>[])
-          if (seen.add(t.id) && (s.artists.isEmpty || s.artists.any((a) => sameArtist(a, t.artist)))) t,
-    ];
-    if (candidates.isEmpty) return null;
-    final d = s.durationMs;
-    if (d != null && candidates.length > 1) {
-      candidates.sort((a, b) => ((a.durationMs ?? 1 << 30) - d).abs().compareTo(((b.durationMs ?? 1 << 30) - d).abs()));
-    }
-    return candidates.first;
+    final (t, level) = match(s);
+    return level == MatchLevel.sure ? t : null;
   }
 }

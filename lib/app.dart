@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'data/models/track.dart';
 import 'providers/providers.dart';
 import 'services/download_notifier.dart';
 import 'services/equalizer.dart';
+import 'services/missing_songs.dart';
 import 'services/network_check.dart';
 import 'services/player_widget.dart';
 import 'services/volume_normalizer.dart';
@@ -62,6 +64,12 @@ class _MissingFilesWatcherState extends ConsumerState<MissingFilesWatcher> {
   void initState() {
     super.initState();
     _lifecycle = AppLifecycleListener(onResume: _check);
+    _filled = MissingSongs.filled.listen((songs) {
+      if (!mounted || songs.isEmpty) return;
+      final f = songs.first;
+      final where = f.playlists.isEmpty ? '' : '「${f.playlists.join('」「')}」裡的';
+      toast(context, songs.length == 1 ? '已補上$where缺少的歌曲：${f.track.title}' : '已補上 ${songs.length} 首缺少的歌曲');
+    });
     Future.delayed(const Duration(seconds: 3), _check);
     // After start-up settles, so it doesn't slow the first screens.
     Future.delayed(const Duration(seconds: 20), () {
@@ -77,9 +85,12 @@ class _MissingFilesWatcherState extends ConsumerState<MissingFilesWatcher> {
     checkMissingFiles(context, ref);
   }
 
+  StreamSubscription<List<FilledSong>>? _filled;
+
   @override
   void dispose() {
     _lifecycle.dispose();
+    _filled?.cancel();
     super.dispose();
   }
 
