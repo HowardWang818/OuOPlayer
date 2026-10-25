@@ -53,6 +53,9 @@ class _LyricsBatchPageState extends ConsumerState<LyricsBatchPage> {
   bool _stop = false, _finished = false;
   String? _current, _error;
 
+  /// Songs being tried again after LRCLIB was busy.
+  int _retrying = 0;
+
   @override
   void initState() {
     super.initState();
@@ -61,9 +64,11 @@ class _LyricsBatchPageState extends ConsumerState<LyricsBatchPage> {
 
   Future<void> _run() async {
     final lyrics = ref.read(lyricsServiceProvider);
+    // Songs LRCLIB was too busy for get one more try at the end; only a
+    // real "no lyrics" puts a song on the not-found list.
+    final later = <Track>[];
     var failures = 0;
-    for (final t in widget.tracks) {
-      if (_stop || !mounted) break;
+    Future<bool> one(Track t, {required bool lastTry}) async {
       setState(() => _current = t.title);
       try {
         if (await lyrics.hasLyrics(t)) {
@@ -72,19 +77,40 @@ class _LyricsBatchPageState extends ConsumerState<LyricsBatchPage> {
           final ok = await lyrics.fetchOnline(t);
           ok ? _found++ : _missing.add(t);
           failures = 0;
-          await Future.delayed(const Duration(seconds: 1));
+          await Future.delayed(const Duration(milliseconds: 1500));
         }
       } on DioException catch (e) {
-        _missing.add(t);
+        if (!LyricsService.isTemporary(e)) {
+          _missing.add(t);
+        } else if (lastTry) {
+          _missing.add(t);
+        } else {
+          later.add(t);
+        }
         // Offline or LRCLIB down: stop instead of failing every song.
         if (LyricsService.isTemporary(e) && ++failures >= 3) {
           _error = '連不上 LRCLIB，已暫停。請檢查網路後再試一次';
-          break;
+          return false;
         }
+        await Future.delayed(const Duration(seconds: 5));
       } catch (_) {
         _missing.add(t);
       }
+      return true;
+    }
+
+    for (final t in widget.tracks) {
+      if (_stop || !mounted) break;
+      if (!await one(t, lastTry: false)) break;
       if (mounted) setState(() => _done++);
+    }
+    if (later.isNotEmpty && !_stop && _error == null && mounted) {
+      setState(() => _retrying = later.length);
+      await Future.delayed(const Duration(seconds: 20));
+      for (final t in later) {
+        if (_stop || !mounted) break;
+        if (!await one(t, lastTry: true)) break;
+      }
     }
     ref.invalidate(lyricsProvider);
     if (mounted) setState(() => _finished = true);
@@ -105,7 +131,14 @@ class _LyricsBatchPageState extends ConsumerState<LyricsBatchPage> {
         body: ListView(padding: const EdgeInsets.all(16), children: [
           LinearProgressIndicator(value: total == 0 ? 1 : _done / total),
           const SizedBox(height: 12),
-          Text(running ? (_stop ? '停止中…' : '$_done / $total：${_current ?? ''}') : '完成：$_done / $total',
+          Text(
+              running
+                  ? (_stop
+                      ? '停止中…'
+                      : _done >= total && _retrying > 0
+                          ? 'LRCLIB 剛剛太忙，重試 $_retrying 首：${_current ?? ''}'
+                          : '$_done / $total：${_current ?? ''}')
+                  : '完成：$_done / $total',
               style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           Text('找到 $_found 首 • 本來就有 $_had 首 • 找不到 ${_missing.length} 首', style: TextStyle(color: muted)),
@@ -133,7 +166,15 @@ class _LyricsBatchPageState extends ConsumerState<LyricsBatchPage> {
                 title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
                 subtitle: Text(t.artist, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted)),
                 trailing: const Icon(Icons.search),
-                onTap: () => showLyricsSearch(context, ref, t),
+                onTap: () async {
+                  // Found by hand: off the list.
+                  if (await showLyricsSearch(context, ref, t) && mounted) {
+                    setState(() {
+                      _missing.remove(t);
+                      _found++;
+                    });
+                  }
+                },
               ),
           ],
         ]),

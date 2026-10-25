@@ -113,7 +113,7 @@ class _AboutSettingsPageState extends ConsumerState<AboutSettingsPage> {
     final s = ref.watch(settingsProvider);
     final n = ref.read(settingsProvider.notifier);
     return SettingsSectionPage(title: '關於與更新', children: [
-      const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.19.0')),
+      const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.19.1')),
       if (AppIcon.supported) ...[
         const ListTile(leading: Icon(Icons.palette_outlined), title: Text('App 圖示'), subtitle: Text('桌面和 App 清單上的圖示')),
         Padding(
