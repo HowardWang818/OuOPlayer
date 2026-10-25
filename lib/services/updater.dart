@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../config/demo.dart';
 import '../config/update_config.dart';
 
 /// One APK of a release (per ABI).
@@ -68,7 +69,7 @@ class Updater {
   final Dio _dio;
   static const _channel = MethodChannel('ouo/update');
 
-  static bool get supported => Platform.isAndroid;
+  static bool get supported => Platform.isAndroid && !isDemo;
 
   /// This app's version name and build number (pubspec's number after +).
   static Future<({String name, int build})> current() async {

@@ -45,10 +45,18 @@ class LyricsSettingsPage extends ConsumerWidget {
           value: s.lyricsKeepAwake,
           onChanged: n.setLyricsKeepAwake,
         ),
+      if (Platform.isAndroid)
+        SwitchListTile(
+          secondary: const Icon(Icons.directions_car_outlined),
+          title: const Text('在 Android Auto 顯示歌詞'),
+          subtitle: const Text('有同步歌詞時，車上歌手那一行會換成正在唱的歌詞。開車時請注意安全'),
+          value: s.lyricsInCar,
+          onChanged: n.setLyricsInCar,
+        ),
       SwitchListTile(
         secondary: const Icon(Icons.subtitles_outlined),
-        title: const Text('在車上和通知列顯示歌詞'),
-        subtitle: const Text('有同步歌詞時，Android Auto、通知列和鎖定畫面的歌手那一行會換成正在唱的歌詞。開車時請注意安全'),
+        title: const Text('在通知列和鎖定畫面顯示歌詞'),
+        subtitle: const Text('有同步歌詞時，歌手那一行會換成正在唱的歌詞'),
         value: s.lyricsInMetadata,
         onChanged: n.setLyricsInMetadata,
       ),

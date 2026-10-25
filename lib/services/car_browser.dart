@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import '../config/demo.dart';
+
 import 'artist_images.dart';
 
 import 'package:audio_service/audio_service.dart';
@@ -49,7 +51,7 @@ class CarBrowser {
     'android.media.browse.SEARCH_SUPPORTED': true,
   };
 
-  static const _artAuthority = 'com.ouo.ouoplayer.art';
+  static const _artAuthority = '$appPackage.art';
 
   /// The car can't open the app's files: local covers go through
   /// ArtProvider (which only serves the art cache and playlist covers),
@@ -64,7 +66,7 @@ class CarBrowser {
   static Uri icon(String name) => Uri.parse('content://$_artAuthority/icon/$name');
 
   /// A tab icon: a plain vector the car tints itself.
-  static Uri tabIcon(String drawable) => Uri.parse('android.resource://com.ouo.ouoplayer/drawable/$drawable');
+  static Uri tabIcon(String drawable) => Uri.parse('android.resource://$appPackage/drawable/$drawable');
 
   /// A browsable entry. [children]: how its own content is laid out.
   static MediaItem folder(String id, String title,

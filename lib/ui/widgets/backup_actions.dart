@@ -50,18 +50,19 @@ Future<void> restoreFromFile(BuildContext context, WidgetRef ref, String path) a
     return;
   }
   if (!context.mounted) return;
-  final lists = (data['playlists'] as List? ?? const []).length;
-  final likes = (data['favorites'] as List? ?? const []).length;
+  final parts = await _chooseParts(context, data);
+  if (parts == null || parts.isEmpty || !context.mounted) return;
   final when = (data['exported_at'] as String? ?? '').replaceFirst('T', ' ').split('.').first;
   if (!await confirmDelete(context,
       title: '用備份取代目前的資料？',
-      message: '備份時間：$when\n內容：$lists 個播放清單、$likes 首按讚的歌曲、播放次數、Podcast 訂閱和設定。\n\n'
-          '目前的播放清單、資料夾、已按讚的歌曲、播放次數、Podcast 訂閱和設定會被取代，無法復原（可以先備份目前的資料）。音樂檔案不會被動到。',
+      message: '備份時間：$when\n\n以下會被取代，無法復原（可以先備份目前的資料）：\n'
+          '${[for (final p in RestorePart.values) if (parts.contains(p)) '• ${p.label}'].join('\n')}\n\n'
+          '沒有勾選的部分不會改變。音樂檔案不會被動到。',
       action: '還原')) {
     return;
   }
   try {
-    final report = await restoreBackup(ref.read(dbProvider), ref.read(scannerProvider), data);
+    final report = await restoreBackup(ref.read(dbProvider), ref.read(scannerProvider), data, parts: parts);
     await ref.read(settingsProvider.notifier).reload();
     ref.invalidate(autoBackupProvider);
     if (!context.mounted) return;
@@ -73,7 +74,9 @@ Future<void> restoreFromFile(BuildContext context, WidgetRef ref, String path) a
         content: SizedBox(
           width: 420,
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('還原了 ${report.playlists} 個播放清單（共 ${report.songs} 首）。部分設定在重新開啟 App 後生效。'),
+            Text(parts.contains(RestorePart.playlists)
+                ? '還原了 ${report.playlists} 個播放清單（共 ${report.songs} 首）。${parts.contains(RestorePart.settings) ? '部分設定在重新開啟 App 後生效。' : ''}'
+                : '還原完成。${parts.contains(RestorePart.settings) ? '部分設定在重新開啟 App 後生效。' : ''}'),
             if (report.missing.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text('有 ${report.missing.length} 首在這台裝置的音樂庫裡找不到，已略過：'),
@@ -90,4 +93,43 @@ Future<void> restoreFromFile(BuildContext context, WidgetRef ref, String path) a
   } catch (e) {
     if (context.mounted) toast(context, '還原失敗：$e');
   }
+}
+
+/// Which parts of the backup to restore (all ticked to start with), with
+/// what the backup holds for each.
+Future<Set<RestorePart>?> _chooseParts(BuildContext context, Map<String, Object?> data) {
+  int n(String key) => (data[key] as List? ?? const []).length;
+  final what = {
+    RestorePart.settings: '${(data['settings'] as Map? ?? const {}).length} 項',
+    RestorePart.playlists: '${n('playlists')} 個播放清單、${n('folders')} 個資料夾',
+    RestorePart.likes: '${n('favorites')} 首',
+    RestorePart.history: '${n('plays')} 首的播放次數',
+    RestorePart.podcasts: '${n('podcasts')} 個節目',
+  };
+  final picked = {...RestorePart.values};
+  return showDialog<Set<RestorePart>>(
+    context: context,
+    useRootNavigator: true,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) => AlertDialog(
+        title: const Text('要還原哪些？'),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            for (final p in RestorePart.values)
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: picked.contains(p),
+                title: Text(p.label),
+                subtitle: Text(what[p]!),
+                onChanged: (v) => setState(() => v == true ? picked.add(p) : picked.remove(p)),
+              ),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(onPressed: picked.isEmpty ? null : () => Navigator.pop(ctx, {...picked}), child: const Text('下一步')),
+        ],
+      ),
+    ),
+  );
 }

@@ -12,8 +12,9 @@ import io.flutter.plugin.common.MethodChannel
  * dark and the light icon (two activity-aliases of MainActivity, one enabled).
  */
 class IconPlugin(private val context: Context, messenger: BinaryMessenger) : MethodChannel.MethodCallHandler {
-    private val dark = ComponentName(context, "${context.packageName}.DarkIcon")
-    private val light = ComponentName(context, "${context.packageName}.LightIcon")
+    // The aliases are named after the code's package, which a demo build's app id doesn't change.
+    private val dark = ComponentName(context, "${MainActivity::class.java.`package`!!.name}.DarkIcon")
+    private val light = ComponentName(context, "${MainActivity::class.java.`package`!!.name}.LightIcon")
 
     init {
         MethodChannel(messenger, "ouo/icon").setMethodCallHandler(this)
