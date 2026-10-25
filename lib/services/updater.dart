@@ -93,10 +93,13 @@ class Updater {
     return UpdateInfo.fromJson(res.data ?? const {});
   }
 
+  /// The phone's ABIs, best first.
+  static Future<List<String>> abis() async => (await _channel.invokeListMethod<String>('abis')) ?? const ['arm64-v8a'];
+
   /// The APK for this phone, downloaded into the cache and checked against
   /// its SHA-256. Older downloads are removed.
   Future<File> download(UpdateInfo info, {void Function(int got, int total)? onProgress, CancelToken? cancel}) async {
-    final abis = (await _channel.invokeListMethod<String>('abis')) ?? const ['arm64-v8a'];
+    final abis = await Updater.abis();
     final apk = info.apkFor(abis);
     if (apk == null) throw '這一版沒有適合這支手機的 APK（${abis.join(', ')}）';
     final dir = Directory(p.join((await getTemporaryDirectory()).path, 'updates'));

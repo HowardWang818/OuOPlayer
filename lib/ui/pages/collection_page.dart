@@ -18,6 +18,7 @@ import '../../services/track_sort.dart';
 import '../widgets/track_selection.dart';
 import '../widgets/track_tile.dart';
 import 'folder_page.dart';
+import 'lyrics_batch_page.dart';
 import 'pick_songs_page.dart';
 
 enum CollectionKind { album, artist, playlist, favorites, allSongs, folder, smart }
@@ -156,6 +157,8 @@ class CollectionPage extends ConsumerWidget {
                     await movePlaylistToFolder(context, ref, info);
                   } else if (v == 'export') {
                     await showExportSheet(context, info?.name ?? name, tracks);
+                  } else if (v == 'lyrics') {
+                    await findLyrics(context, tracks, title: info?.name ?? name);
                   } else if (v == 'dedupe') {
                     final extra = tracks.length - withoutDuplicates(tracks).length;
                     if (extra == 0) {
@@ -177,6 +180,7 @@ class CollectionPage extends ConsumerWidget {
                   if (info?.cover != null) const PopupMenuItem(value: 'resetCover', child: Text('移除自訂封面')),
                   const PopupMenuItem(value: 'folder', child: Text('移到資料夾')),
                   const PopupMenuItem(value: 'export', child: Text('複製／匯出歌單')),
+                  const PopupMenuItem(value: 'lyrics', child: Text('找歌詞')),
                   const PopupMenuItem(value: 'dedupe', child: Text('移除重複的歌曲')),
                   const PopupMenuItem(value: 'delete', child: Text('刪除播放清單')),
                 ],

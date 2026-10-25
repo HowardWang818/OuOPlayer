@@ -90,6 +90,9 @@ class DownloadTask {
 class DownloadService {
   DownloadService(this._scanner, this._db) : ytdlp = YtDlpBackend.create();
 
+  /// A new song from a download is in the library (e.g. to look its lyrics up).
+  void Function(Track)? onImported;
+
   final LibraryScanner _scanner;
   final AppDatabase _db;
   final YtDlpBackend? ytdlp;
@@ -317,7 +320,10 @@ class DownloadService {
         await File(path).delete();
       }
     }
-    track ??= await _scanner.importFile(target, source: TrackSource.download);
+    if (track == null) {
+      track = await _scanner.importFile(target, source: TrackSource.download);
+      if (track != null) onImported?.call(track);
+    }
     t.files.add(target);
     // One source → one file; whole-playlist runs can't tell which is which.
     if (t.kind == DownloadKind.ytdlp && !t.playlist) await _db.recordDownload(sourceKey(t.url), target);

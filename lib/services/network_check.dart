@@ -16,7 +16,8 @@ Future<bool> onMobileData() async {
 
 /// Before a download: on mobile data, asks whether to go on ([warn] is the
 /// 非 Wi-Fi 提醒 setting). Returns true to download.
-Future<bool> okToDownload(BuildContext? context, {required bool warn}) async {
+/// [size]: how much will be downloaded (「約 62 MB」), when known.
+Future<bool> okToDownload(BuildContext? context, {required bool warn, String? size}) async {
   if (!warn || !await onMobileData()) return true;
   if (context == null || !context.mounted) return true;
   final ok = await showDialog<bool>(
@@ -24,7 +25,7 @@ Future<bool> okToDownload(BuildContext? context, {required bool warn}) async {
     useRootNavigator: true,
     builder: (ctx) => AlertDialog(
       title: const Text('目前沒有連上 Wi-Fi'),
-      content: const Text('會使用行動數據下載，要繼續嗎？\n（可以在 設定 → 下載 關掉這個提示）'),
+      content: Text('會使用行動數據下載${size == null ? '' : '（$size）'}，要繼續嗎？\n（可以在 設定 → 下載與線上 關掉這個提示）'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
         FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('繼續下載')),

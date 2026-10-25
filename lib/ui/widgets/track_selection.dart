@@ -5,6 +5,7 @@ import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../services/file_trash.dart';
 import '../pages/cover_fix_page.dart';
+import '../pages/lyrics_batch_page.dart';
 import 'batch_edit_dialog.dart';
 import 'dialogs.dart';
 import 'export_sheet.dart';
@@ -200,6 +201,10 @@ class _SelectionBar extends ConsumerWidget {
                     }
                     await ref.read(dbProvider).deleteTracks(local.map((t) => t.id));
                     if (context.mounted) done('已隱藏 ${local.length} 首');
+                  case 'lyrics':
+                    final picked = [...local];
+                    selection.clear();
+                    await findLyrics(context, picked, title: '已選的 ${picked.length} 首');
                   case 'move':
                     if (await moveTracksDialog(context, ref, local)) selection.clear();
                   case 'delete':
@@ -216,6 +221,7 @@ class _SelectionBar extends ConsumerWidget {
                   PopupMenuItem(value: 'edit', child: Text('編輯資訊（${local.length} 首）')),
                   PopupMenuItem(value: 'covers', child: Text('找正式封面（${local.length} 首）')),
                   PopupMenuItem(value: 'move', child: Text('移到資料夾…（${local.length} 首）')),
+                  PopupMenuItem(value: 'lyrics', child: Text('找歌詞（${local.length} 首）')),
                   PopupMenuItem(value: 'hide', child: Text('從音樂庫隱藏（${local.length} 首）')),
                 ],
                 if (local.isNotEmpty)

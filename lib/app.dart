@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'data/models/track.dart';
 import 'providers/providers.dart';
+import 'services/app_icon.dart';
 import 'services/download_notifier.dart';
 import 'services/equalizer.dart';
 import 'services/missing_songs.dart';
@@ -36,6 +37,7 @@ class OuoApp extends ConsumerWidget {
     ref.watch(lyricsInMetadataProvider);
     ref.watch(playbackSettingsProvider);
     ref.watch(downloadNotificationProvider);
+    ref.watch(iconFollowThemeProvider);
     ref.watch(autoBackupProvider);
     return MaterialApp(
       navigatorKey: rootNavigatorKey,
@@ -131,6 +133,27 @@ final downloadNotificationProvider = Provider<void>((ref) {
     if (call.method == 'action') await handle(call.arguments as String?);
   });
   channel.invokeMethod<String>('initialAction').then(handle).catchError((_) {});
+});
+
+/// App 圖示 → 跟隨主題: when OuOPlayer is left, the home screen icon is
+/// switched to match the theme (light theme → light icon). Not right away, so
+/// switching it never interrupts the app.
+final iconFollowThemeProvider = Provider<void>((ref) {
+  if (!AppIcon.supported || !ref.watch(settingsProvider.select((s) => s.iconFollowTheme))) return;
+  Future<void> sync() async {
+    final mode = ref.read(settingsProvider).themeMode;
+    final light = switch (mode) {
+      ThemeMode.light => true,
+      ThemeMode.dark => false,
+      ThemeMode.system => WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.light,
+    };
+    try {
+      if (await AppIcon.isLight() != light) await AppIcon.setLight(light);
+    } catch (_) {}
+  }
+
+  final listener = AppLifecycleListener(onHide: sync);
+  ref.onDispose(listener.dispose);
 });
 
 /// Whether Android Auto is showing the phone (CarConnectionPlugin.kt).
