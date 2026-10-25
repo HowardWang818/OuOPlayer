@@ -6,6 +6,7 @@ import '../../providers/providers.dart';
 import '../../services/listening_stats.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/art_image.dart';
+import '../widgets/artist_avatar.dart';
 import '../widgets/dialogs.dart';
 import 'collection_page.dart';
 import 'year_review_page.dart';
@@ -145,7 +146,7 @@ class StatsPage extends ConsumerWidget {
         header('最常聽的歌手'),
         for (final a in s.topArtists)
           ListTile(
-            leading: ArtImage(a.art, size: 48, circle: true, icon: Icons.person),
+            leading: ArtistAvatar(Artist(a.name, a.art, 0), size: 48),
             title: Text(a.name),
             subtitle: Text('${a.plays} 次 • ${formatListening(a.listened)}'),
             onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => CollectionPage.artist(a.name))),

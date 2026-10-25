@@ -12,6 +12,34 @@ import '../../services/lyrics/lyrics_service.dart';
 import '../../theme/app_theme.dart';
 import 'dialogs.dart';
 
+/// Text colours for lyrics on whatever is behind them (the player's cover
+/// gradient can be dark in the light theme and light in the dark one).
+class LyricsInk extends InheritedWidget {
+  const LyricsInk({super.key, required this.strong, required this.soft, required super.child});
+
+  /// White on a dark background, near-black on a light one.
+  factory LyricsInk.on(Color background, {Key? key, required Widget child}) {
+    final dark = ThemeData.estimateBrightnessForColor(background) == Brightness.dark;
+    return LyricsInk(
+      key: key,
+      strong: dark ? Colors.white : const Color(0xFF111111),
+      soft: dark ? Colors.white.withValues(alpha: 0.55) : Colors.black.withValues(alpha: 0.5),
+      child: child,
+    );
+  }
+
+  /// The line being sung, plain lyrics.
+  final Color strong;
+
+  /// The other lines and the small print.
+  final Color soft;
+
+  static LyricsInk? maybeOf(BuildContext context) => context.dependOnInheritedWidgetOfExactType<LyricsInk>();
+
+  @override
+  bool updateShouldNotify(LyricsInk old) => old.strong != strong || old.soft != soft;
+}
+
 /// Lyrics of the current song: synced ones follow playback (current line
 /// lit, tap a line to jump there), plain ones just scroll.
 class LyricsView extends ConsumerStatefulWidget {
@@ -51,7 +79,7 @@ class _LyricsBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final track = ref.watch(currentTrackProvider);
     if (track == null) return const SizedBox.shrink();
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final muted = LyricsInk.maybeOf(context)?.soft ?? Theme.of(context).colorScheme.onSurfaceVariant;
     final lyrics = ref.watch(lyricsProvider(LyricsKey(track)));
     return lyrics.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -90,9 +118,9 @@ class _Empty extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) => Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.lyrics_outlined, size: 48),
+          Icon(Icons.lyrics_outlined, size: 48, color: LyricsInk.maybeOf(context)?.strong),
           const SizedBox(height: 12),
-          Text(message, textAlign: TextAlign.center),
+          Text(message, textAlign: TextAlign.center, style: TextStyle(color: LyricsInk.maybeOf(context)?.strong)),
           const SizedBox(height: 12),
           Wrap(spacing: 8, children: [
             if (retry)
@@ -124,7 +152,7 @@ class _PlainLyrics extends StatelessWidget {
             for (final l in lyrics.lines)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text(l.text, style: TextStyle(fontSize: 18 * scale, height: 1.4)),
+                child: Text(l.text, style: TextStyle(fontSize: 18 * scale, height: 1.4, color: LyricsInk.maybeOf(context)?.strong)),
               ),
           ],
         );
@@ -162,7 +190,11 @@ class _SyncedLyricsState extends ConsumerState<_SyncedLyrics> {
     final scale = ref.watch(settingsProvider.select((s) => s.lyricsScale));
     final current = widget.lyrics.indexAt(pos);
     _follow(current);
-    final muted = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45);
+    final ink = LyricsInk.maybeOf(context);
+    final muted = ink?.soft ?? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45);
+    // The line being sung: brightest (or darkest) and a little bigger, not the
+    // accent colour, which disappears on blue covers.
+    final lit = ink?.strong ?? AppColors.accent;
     final player = ref.read(audioHandlerProvider);
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(vertical: 120),
@@ -177,10 +209,10 @@ class _SyncedLyricsState extends ConsumerState<_SyncedLyrics> {
               child: AnimatedDefaultTextStyle(
                 duration: const Duration(milliseconds: 200),
                 style: TextStyle(
-                  fontSize: 22 * scale,
+                  fontSize: (i == current ? 24 : 22) * scale,
                   height: 1.3,
-                  fontWeight: FontWeight.bold,
-                  color: i == current ? AppColors.accent : muted,
+                  fontWeight: i == current ? FontWeight.w800 : FontWeight.bold,
+                  color: i == current ? lit : muted,
                 ),
                 child: Text(widget.lyrics.lines[i].text.isEmpty ? '♪' : widget.lyrics.lines[i].text),
               ),
@@ -255,7 +287,7 @@ Future<bool> showLyricsSearch(BuildContext context, WidgetRef ref, Track track) 
                       ListTile(
                         title: Text(r.title, maxLines: 1, overflow: TextOverflow.ellipsis),
                         subtitle: Text(
-                          [r.artist, if (r.album.isNotEmpty) r.album, if (r.durationSec != null) '${r.durationSec! ~/ 60}:${(r.durationSec! % 60).toString().padLeft(2, '0')}', (r.synced ?? '').isNotEmpty ? '同步' : '純文字']
+                          [r.artist, if (r.album.isNotEmpty) r.album, if (r.durationSec != null) '${r.durationSec! ~/ 60}:${(r.durationSec! % 60).toString().padLeft(2, '0')}', (r.synced ?? '').isNotEmpty ? '同步' : '純文字', r.scriptLabel]
                               .join(' • '),
                           maxLines: 2,
                         ),

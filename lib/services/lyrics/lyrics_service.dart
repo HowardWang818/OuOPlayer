@@ -36,7 +36,38 @@ class LrclibResult {
   }
 
   Lyrics toLyrics() => Lyrics.parse((synced ?? '').trim().isNotEmpty ? synced! : plain ?? '', source: 'LRCLIB');
+
+  String get text => (synced ?? '').trim().isNotEmpty ? synced! : plain ?? '';
+
+  /// Share of CJK / kana / hangul among the letters (see [scriptShare]).
+  double get nativeShare => scriptShare(text);
+
+  /// 「日文」「中文」「韓文」「羅馬拼音／英文」 or 「混合」, for the manual search list.
+  String get scriptLabel {
+    final share = nativeShare;
+    if (share < 0.15) return '羅馬拼音／英文';
+    if (share < 0.6) return '混合';
+    if (RegExp(r'[\u3040-\u30ff]').hasMatch(text)) return '日文';
+    if (RegExp(r'[\uac00-\ud7af]').hasMatch(text)) return '韓文';
+    return '中文';
+  }
 }
+
+final _nativeChar = RegExp(r'[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]');
+final _latinChar = RegExp(r'[A-Za-z]');
+
+/// How much of [text] is written in CJK, kana or hangul (0–1) rather than
+/// Latin letters; LRC timestamps and punctuation don't count. Romaji lyrics
+/// of a Japanese song are near 0, the original near 1.
+double scriptShare(String text) {
+  final body = text.replaceAll(RegExp(r'\[[^\]]*\]'), '');
+  final native = _nativeChar.allMatches(body).length;
+  final latin = _latinChar.allMatches(body).length;
+  return native + latin == 0 ? 0 : native / (native + latin);
+}
+
+/// Whether a song's title or artist is written in CJK / kana / hangul.
+bool hasNativeScript(Track t) => _nativeChar.hasMatch(t.title) || _nativeChar.hasMatch(t.artist);
 
 /// Finds lyrics, in order: the file's own tags, a same-name .lrc next to it,
 /// the local cache, then LRCLIB (lrclib.net, free, no key) if allowed.
@@ -135,7 +166,13 @@ class LyricsService {
     final cache = await _cacheFile(t);
     if (!cache.existsSync()) return false;
     try {
-      return (jsonDecode(await cache.readAsString()) as Map)['lrc'] is String;
+      final j = jsonDecode(await cache.readAsString()) as Map;
+      final lrc = j['lrc'];
+      if (lrc is! String) return false;
+      // Romaji picked automatically for a Japanese / Chinese title: try again
+      // for the original. Lyrics the user chose by hand are kept.
+      if (j['manual'] != true && hasNativeScript(t) && scriptShare(lrc) < 0.15) return false;
+      return true;
     } catch (_) {
       return false;
     }
@@ -184,8 +221,8 @@ class LyricsService {
     return [for (final j in res.data ?? const []) LrclibResult.fromJson(j)].whereType<LrclibResult>().where((r) => r.hasLyrics).toList();
   }
 
-  /// Remembers the user's pick for this song.
-  Future<void> choose(Track t, LrclibResult r) async => _save(await _cacheFile(t), r);
+  /// Remembers the user's pick for this song (never replaced by a batch).
+  Future<void> choose(Track t, LrclibResult r) async => _save(await _cacheFile(t), r, manual: true);
 
   /// Forgets a cached result (e.g. to search again after a wrong match).
   Future<void> forget(Track t) async {
@@ -238,7 +275,7 @@ class LyricsService {
           if (LrclibResult.fromJson(j) case final r? when r.hasLyrics && acceptLoose(r, title: clean, artist: artist, durationMs: durationMs)) r,
       ]);
     }
-    return pickBest([if (exact != null && exact.hasLyrics) exact, ...found], durationMs: durationMs);
+    return pickBest([if (exact != null && exact.hasLyrics) exact, ...found], durationMs: durationMs, preferNative: hasNativeScript(t));
   }
 
   /// A search hit counts when the title is the same after cleaning, and the
@@ -251,14 +288,21 @@ class LyricsService {
     return durationMs != null && r.durationSec != null && (r.durationSec! * 1000 - durationMs).abs() <= 3000;
   }
 
-  /// Synced lyrics first, then the closest length.
-  static LrclibResult? pickBest(List<LrclibResult> results, {int? durationMs}) {
+  /// The original script first (not romaji / pinyin versions of a Japanese or
+  /// Chinese song), then synced lyrics, then the closest length. The script
+  /// counts when the song's own name is CJK ([preferNative]) or when both an
+  /// original and a romanised version were found.
+  static LrclibResult? pickBest(List<LrclibResult> results, {int? durationMs, bool preferNative = false}) {
     final usable = results.where((r) => r.hasLyrics).toList();
     if (usable.isEmpty) return null;
+    final shares = {for (final r in usable) r: r.nativeShare};
+    final script = preferNative || (shares.values.any((s) => s >= 0.6) && shares.values.any((s) => s < 0.15));
     int score(LrclibResult r) {
+      final s = shares[r]!;
+      final romanised = !script ? 0 : s < 0.15 ? 1 << 32 : s < 0.6 ? 1 << 31 : 0;
       final synced = (r.synced ?? '').trim().isNotEmpty ? 0 : 1 << 30;
       final off = durationMs == null || r.durationSec == null ? 0 : (r.durationSec! * 1000 - durationMs).abs();
-      return synced + off;
+      return romanised + synced + off;
     }
 
     usable.sort((a, b) => score(a).compareTo(score(b)));
@@ -280,9 +324,10 @@ class LyricsService {
     return File(p.join(dir.path, '$key.json'));
   }
 
-  Future<void> _save(File f, LrclibResult? r) async {
+  Future<void> _save(File f, LrclibResult? r, {bool manual = false}) async {
     final lrc = r == null ? null : ((r.synced ?? '').trim().isNotEmpty ? r.synced : r.plain);
-    await f.writeAsString(jsonEncode(
-        lrc == null ? {'none': true, 'at': DateTime.now().millisecondsSinceEpoch} : {'lrc': lrc, 'source': 'LRCLIB'}));
+    await f.writeAsString(jsonEncode(lrc == null
+        ? {'none': true, 'at': DateTime.now().millisecondsSinceEpoch}
+        : {'lrc': lrc, 'source': 'LRCLIB', if (manual) 'manual': true}));
   }
 }
