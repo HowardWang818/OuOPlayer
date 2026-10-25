@@ -124,6 +124,57 @@ class LyricsService {
     return r.toLyrics();
   }
 
+  /// Whether [t] already has lyrics on the phone: in the file, a .lrc next
+  /// to it, or found on LRCLIB before.
+  Future<bool> hasLyrics(Track t) async {
+    if (!t.isRemote) {
+      final tagged = await _scanner.readLyrics(t.uri);
+      if (tagged != null && !Lyrics.parse(tagged, source: '').isEmpty) return true;
+      if (File('${p.withoutExtension(t.uri)}.lrc').existsSync()) return true;
+    }
+    final cache = await _cacheFile(t);
+    if (!cache.existsSync()) return false;
+    try {
+      return (jsonDecode(await cache.readAsString()) as Map)['lrc'] is String;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 找歌詞 (batch, or after a download): asks LRCLIB now, even if it had
+  /// nothing a short while ago, and saves what it finds. True if found.
+  Future<bool> fetchOnline(Track t) async {
+    final cache = await _cacheFile(t);
+    final r = await _lookup(t);
+    if (r == null || !r.hasLyrics) {
+      await _save(cache, null);
+      return false;
+    }
+    await _save(cache, r);
+    return true;
+  }
+
+  Future<void> _queue = Future.value();
+
+  /// Looks lyrics up in the background for songs that have none, one at a
+  /// time with a pause between them (new downloads). Errors are ignored:
+  /// playing the song asks again later.
+  void fetchLater(Track t) {
+    if (t.isRemote || t.source == TrackSource.podcast) return;
+    _queue = _queue.then((_) async {
+      try {
+        if (!await hasLyrics(t)) {
+          await fetchOnline(t);
+          onFetched?.call(t);
+          await Future.delayed(const Duration(seconds: 1));
+        }
+      } catch (_) {}
+    });
+  }
+
+  /// Called after [fetchLater] looked a song up (so lyrics shown refresh).
+  void Function(Track)? onFetched;
+
   /// LRCLIB search for the manual 「手動搜尋」 dialog.
   Future<List<LrclibResult>> search(String title, String artist) async {
     final res = await _get<List<dynamic>>('search', {

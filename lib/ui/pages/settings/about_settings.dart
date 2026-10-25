@@ -16,6 +16,9 @@ class AboutSettingsPage extends ConsumerStatefulWidget {
   ConsumerState<AboutSettingsPage> createState() => _AboutSettingsPageState();
 }
 
+const _dark = 'assets/icon/app_icon_dark.png';
+const _lightAsset = 'assets/icon/app_icon_light.png';
+
 class _AboutSettingsPageState extends ConsumerState<AboutSettingsPage> {
   bool _checking = false;
   bool? _light;
@@ -31,7 +34,11 @@ class _AboutSettingsPageState extends ConsumerState<AboutSettingsPage> {
   }
 
   Future<void> _setIcon(bool light) async {
-    if (light == _light) return;
+    if (light == _light && !ref.read(settingsProvider).iconFollowTheme) return;
+    if (light == _light) {
+      ref.read(settingsProvider.notifier).setIconFollowTheme(false);
+      return;
+    }
     final ok = await showDialog<bool>(
       context: context,
       useRootNavigator: true,
@@ -47,6 +54,7 @@ class _AboutSettingsPageState extends ConsumerState<AboutSettingsPage> {
     );
     if (ok != true) return;
     try {
+      ref.read(settingsProvider.notifier).setIconFollowTheme(false);
       await AppIcon.setLight(light);
       if (!mounted) return;
       setState(() => _light = light);
@@ -56,12 +64,32 @@ class _AboutSettingsPageState extends ConsumerState<AboutSettingsPage> {
     }
   }
 
-  Widget _iconChoice(String label, String asset, bool light) {
-    final selected = _light == light;
+  Future<void> _follow() async {
+    if (ref.read(settingsProvider).iconFollowTheme) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      useRootNavigator: true,
+      builder: (ctx) => AlertDialog(
+        title: const Text('圖示跟隨主題？'),
+        content: const Text('深色主題用深色圖示，淺色主題用淺色圖示（跟隨系統時看手機的深淺色）。\n\n'
+            '主題改變後，圖示會在你離開 OuOPlayer 時才換，避免使用中被打斷。'
+            '有些桌面換圖示時會把桌面上的圖示移除，這時從 App 清單重新拖到桌面就好。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('跟隨主題')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    ref.read(settingsProvider.notifier).setIconFollowTheme(true);
+    if (mounted) toast(context, '離開 OuOPlayer 後，圖示會換成跟主題相同的顏色');
+  }
+
+  Widget _iconChoice(String label, Widget image, {required bool selected, required VoidCallback? onTap}) {
     final cs = Theme.of(context).colorScheme;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
-      onTap: _light == null ? null : () => _setIcon(light),
+      onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
@@ -69,7 +97,7 @@ class _AboutSettingsPageState extends ConsumerState<AboutSettingsPage> {
           border: Border.all(color: selected ? cs.primary : cs.outlineVariant, width: selected ? 2 : 1),
         ),
         child: Column(children: [
-          ClipOval(child: Image.asset(asset, width: 64, height: 64)),
+          ClipOval(child: SizedBox(width: 56, height: 56, child: image)),
           const SizedBox(height: 6),
           Row(mainAxisSize: MainAxisSize.min, children: [
             if (selected) Icon(Icons.check, size: 16, color: cs.primary),
@@ -85,15 +113,25 @@ class _AboutSettingsPageState extends ConsumerState<AboutSettingsPage> {
     final s = ref.watch(settingsProvider);
     final n = ref.read(settingsProvider.notifier);
     return SettingsSectionPage(title: '關於與更新', children: [
-      const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.18.4')),
+      const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 0.19.0')),
       if (AppIcon.supported) ...[
         const ListTile(leading: Icon(Icons.palette_outlined), title: Text('App 圖示'), subtitle: Text('桌面和 App 清單上的圖示')),
         Padding(
           padding: const EdgeInsets.fromLTRB(72, 0, 16, 8),
-          child: Row(children: [
-            _iconChoice('深色', 'assets/icon/app_icon_dark.png', false),
-            const SizedBox(width: 12),
-            _iconChoice('淺色', 'assets/icon/app_icon_light.png', true),
+          child: Wrap(spacing: 10, runSpacing: 10, children: [
+            _iconChoice('深色', Image.asset(_dark),
+                selected: !s.iconFollowTheme && _light == false, onTap: _light == null ? null : () => _setIcon(false)),
+            _iconChoice('淺色', Image.asset(_lightAsset),
+                selected: !s.iconFollowTheme && _light == true, onTap: _light == null ? null : () => _setIcon(true)),
+            // Half dark, half light.
+            _iconChoice(
+                '跟隨主題',
+                Row(children: [
+                  Expanded(child: ClipRect(child: Align(alignment: Alignment.centerLeft, widthFactor: 0.5, child: Image.asset(_dark)))),
+                  Expanded(child: ClipRect(child: Align(alignment: Alignment.centerRight, widthFactor: 0.5, child: Image.asset(_lightAsset)))),
+                ]),
+                selected: s.iconFollowTheme,
+                onTap: _follow),
           ]),
         ),
       ],

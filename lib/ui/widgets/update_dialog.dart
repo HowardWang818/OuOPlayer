@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/providers.dart';
+import '../../services/network_check.dart';
 import '../../services/updater.dart';
 import 'dialogs.dart';
 
@@ -62,6 +63,15 @@ Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {
       ),
     );
     if (open == true) await Updater.openInstallSettings();
+    return;
+  }
+  if (!context.mounted) return;
+  final abis = await Updater.abis();
+  final size = info.apkFor(abis)?.size ?? 0;
+  if (!context.mounted ||
+      !await okToDownload(context,
+          warn: ProviderScope.containerOf(context).read(settingsProvider).wifiWarning,
+          size: size > 0 ? '約 ${(size / 1048576).round()} MB' : null)) {
     return;
   }
   if (!context.mounted) return;

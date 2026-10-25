@@ -31,7 +31,11 @@ final scannerProvider = Provider<LibraryScanner>((ref) => LibraryScanner(ref.wat
 final podcastServiceProvider = Provider<PodcastService>((ref) => PodcastService());
 final iTunesSearchProvider = Provider<ITunesSearch>((ref) => ITunesSearch());
 final youTubeLinkFinderProvider = Provider<YouTubeLinkFinder>((ref) => YouTubeLinkFinder());
-final lyricsServiceProvider = Provider<LyricsService>((ref) => LyricsService(ref.watch(scannerProvider)));
+final Provider<LyricsService> lyricsServiceProvider = Provider<LyricsService>((ref) {
+  final svc = LyricsService(ref.watch(scannerProvider));
+  svc.onFetched = (_) => ref.invalidate(lyricsProvider);
+  return svc;
+});
 
 /// Identifies a song for [lyricsProvider]: the current track is rebuilt on
 /// every media update (e.g. when its length arrives), so compare by content.
@@ -84,6 +88,10 @@ final bluetoothProvider = Provider<BluetoothService>((ref) => BluetoothService()
 final downloadServiceProvider = Provider<DownloadService>((ref) {
   final svc = DownloadService(ref.watch(scannerProvider), ref.watch(dbProvider));
   svc.outDir = ref.read(settingsProvider).downloadDir;
+  // 下載歌曲時自動找歌詞.
+  svc.onImported = (t) {
+    if (ref.read(settingsProvider).lyricsOnDownload) ref.read(lyricsServiceProvider).fetchLater(t);
+  };
   ref.listen(settingsProvider.select((s) => s.downloadDir), (_, dir) => svc.outDir = dir);
   return svc;
 });
@@ -174,6 +182,12 @@ class AppSettings {
   /// The same in Android Auto, apart from the phone's notification.
   final bool lyricsInCar;
 
+  /// Look lyrics up on LRCLIB right after a song is downloaded.
+  final bool lyricsOnDownload;
+
+  /// The app icon follows the theme (dark / light), switched when the app is left.
+  final bool iconFollowTheme;
+
   /// 記錄播放紀錄 (recently played, play counts, listening stats).
   final bool recordPlays;
 
@@ -213,6 +227,8 @@ class AppSettings {
     this.recordPlays = true,
     this.lyricsInMetadata = true,
     this.lyricsInCar = true,
+    this.lyricsOnDownload = true,
+    this.iconFollowTheme = false,
     this.artistImagesOnline = true,
     this.autoUpdateCheck = true,
     this.ytAutoUpdate = true,
@@ -249,6 +265,8 @@ class AppSettings {
     bool? recordPlays,
     bool? lyricsInMetadata,
     bool? lyricsInCar,
+    bool? lyricsOnDownload,
+    bool? iconFollowTheme,
     bool? artistImagesOnline,
     bool? autoUpdateCheck,
     bool? ytAutoUpdate,
@@ -283,6 +301,8 @@ class AppSettings {
         recordPlays: recordPlays ?? this.recordPlays,
         lyricsInMetadata: lyricsInMetadata ?? this.lyricsInMetadata,
         lyricsInCar: lyricsInCar ?? this.lyricsInCar,
+        lyricsOnDownload: lyricsOnDownload ?? this.lyricsOnDownload,
+        iconFollowTheme: iconFollowTheme ?? this.iconFollowTheme,
         artistImagesOnline: artistImagesOnline ?? this.artistImagesOnline,
         autoUpdateCheck: autoUpdateCheck ?? this.autoUpdateCheck,
         ytAutoUpdate: ytAutoUpdate ?? this.ytAutoUpdate,
@@ -329,6 +349,8 @@ class AppSettings {
       // On unless turned off (before v0.18.4 one switch, off by default, did both).
       lyricsInMetadata: m['lyrics_in_metadata'] != 'false',
       lyricsInCar: (m['lyrics_in_car'] ?? m['lyrics_in_metadata']) != 'false',
+      lyricsOnDownload: m['lyrics_on_download'] != 'false',
+      iconFollowTheme: m['icon_follow_theme'] == 'true',
       artistImagesOnline: !isDemo && m['artist_images_online'] != 'false',
       autoUpdateCheck: !isDemo && m['auto_update_check'] != 'false',
       ytAutoUpdate: m['yt_auto_update'] != 'false',
@@ -484,6 +506,16 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void setLyricsInMetadata(bool v) {
     state = state.copyWith(lyricsInMetadata: v);
     _db.setSetting('lyrics_in_metadata', '$v');
+  }
+
+  void setIconFollowTheme(bool v) {
+    state = state.copyWith(iconFollowTheme: v);
+    _db.setSetting('icon_follow_theme', '$v');
+  }
+
+  void setLyricsOnDownload(bool v) {
+    state = state.copyWith(lyricsOnDownload: v);
+    _db.setSetting('lyrics_on_download', '$v');
   }
 
   void setLyricsInCar(bool v) {

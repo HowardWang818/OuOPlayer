@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../providers/providers.dart';
+import '../lyrics_batch_page.dart';
 import 'section_page.dart';
 
 /// 歌詞: looking lyrics up, size, keeping the screen on, lyrics in the car.
@@ -21,6 +22,22 @@ class LyricsSettingsPage extends ConsumerWidget {
         subtitle: const Text('歌曲檔案和 .lrc 檔都沒有歌詞時，從 LRCLIB 查詢（免費，只會送出歌名、歌手、專輯和長度）'),
         value: s.lyricsOnline,
         onChanged: n.setLyricsOnline,
+      ),
+      SwitchListTile(
+        secondary: const Icon(Icons.download_done_outlined),
+        title: const Text('下載歌曲時自動找歌詞'),
+        subtitle: const Text('下載完成後就先從 LRCLIB 找好歌詞，第一次播放、離線或在車上都看得到'),
+        value: s.lyricsOnDownload,
+        onChanged: n.setLyricsOnDownload,
+      ),
+      ListTile(
+        leading: const Icon(Icons.manage_search),
+        title: const Text('替音樂庫找歌詞'),
+        subtitle: const Text('一次替所有還沒有歌詞的歌找歌詞。也可以在播放清單的 ⋮ 或選取歌曲後使用'),
+        onTap: () async {
+          final all = await ref.read(dbProvider).tracks();
+          if (context.mounted) await findLyrics(context, all, title: '音樂庫');
+        },
       ),
       ListTile(
         leading: const Icon(Icons.format_size),
