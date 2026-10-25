@@ -57,9 +57,9 @@ class LyricsService {
   /// "Nothing on LRCLIB" is remembered this long, then asked again.
   static const notFoundFor = Duration(days: 3);
 
-  /// Waits before the retries when LRCLIB is busy (it answers 503 now and
-  /// then) or slow.
-  static const retryDelays = [Duration(seconds: 1), Duration(seconds: 3)];
+  /// Waits before the retries when LRCLIB is busy (it answers 503 / 429 now
+  /// and then, more often during a batch) or slow.
+  static const retryDelays = [Duration(seconds: 2), Duration(seconds: 6), Duration(seconds: 15)];
 
   Future<Response<T>> _get<T>(String path, Map<String, dynamic> query) async {
     for (var attempt = 0;; attempt++) {
@@ -225,10 +225,30 @@ class LyricsService {
       if (clean != title || cleanArtist != artist) ...await search(clean, cleanArtist),
     ];
     if (found.isEmpty && artist.isNotEmpty) {
-      final me = SongKey(title, artist);
-      found.addAll((await search(clean, '')).where((r) => SongMatcher.sameArtist(SongKey(r.title, r.artist), me)));
+      // The title alone: the artist may be spelt another way on LRCLIB
+      // (romaji, English name, several artists), so the same title and length
+      // also count.
+      found.addAll((await search(clean, '')).where((r) => acceptLoose(r, title: clean, artist: artist, durationMs: durationMs)));
+    }
+    if (found.isEmpty) {
+      // LRCLIB's keyword search, which is fuzzier than the field search.
+      final res = await _get<List<dynamic>>('search', {'q': [clean, cleanArtist].where((s) => s.isNotEmpty).join(' ')});
+      found.addAll([
+        for (final j in res.data ?? const [])
+          if (LrclibResult.fromJson(j) case final r? when r.hasLyrics && acceptLoose(r, title: clean, artist: artist, durationMs: durationMs)) r,
+      ]);
     }
     return pickBest([if (exact != null && exact.hasLyrics) exact, ...found], durationMs: durationMs);
+  }
+
+  /// A search hit counts when the title is the same after cleaning, and the
+  /// artist is the same (any known spelling) or the length is within 3 s.
+  static bool acceptLoose(LrclibResult r, {required String title, required String artist, int? durationMs}) {
+    final want = foldText(title);
+    final sameTitle = foldText(r.title) == want || foldText(SongMatcher.searchTitle(r.title, r.artist)) == want;
+    if (!sameTitle) return false;
+    if (artist.isNotEmpty && SongMatcher.sameArtist(SongKey(r.title, r.artist), SongKey(title, artist))) return true;
+    return durationMs != null && r.durationSec != null && (r.durationSec! * 1000 - durationMs).abs() <= 3000;
   }
 
   /// Synced lyrics first, then the closest length.

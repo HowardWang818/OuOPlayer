@@ -204,7 +204,8 @@ Future<void> refreshLyrics(WidgetRef ref, Track track) async {
 }
 
 /// Search LRCLIB with an editable title/artist and pick the right lyrics.
-Future<void> showLyricsSearch(BuildContext context, WidgetRef ref, Track track) async {
+/// True if lyrics were picked.
+Future<bool> showLyricsSearch(BuildContext context, WidgetRef ref, Track track) async {
   final title = TextEditingController(text: track.title.replaceAll('（試聽）', '').trim());
   final artist = TextEditingController(text: track.artist == '未知演出者' ? '' : track.artist);
   final service = ref.read(lyricsServiceProvider);
@@ -272,8 +273,9 @@ Future<void> showLyricsSearch(BuildContext context, WidgetRef ref, Track track) 
       });
     },
   );
-  if (picked == null) return;
+  if (picked == null) return false;
   await service.choose(track, picked);
   ref.invalidate(lyricsProvider(LyricsKey(track)));
   if (context.mounted) toast(context, '已套用歌詞');
+  return true;
 }
