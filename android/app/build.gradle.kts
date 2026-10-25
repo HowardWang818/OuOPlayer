@@ -28,6 +28,10 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // README screenshots come from a separate demo copy (lib/config/demo.dart).
+        val demo = System.getenv("OUO_DEMO") == "true"
+        if (demo) applicationIdSuffix = ".demo"
+        manifestPlaceholders["appLabel"] = if (demo) "OuOPlayer Demo" else "OuOPlayer"
     }
 
     // Releases are signed with the same key since v0.1 (this PC's debug key),
@@ -61,6 +65,8 @@ android {
 dependencies {
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
+    // Knowing when Android Auto is connected (lyrics in the car).
+    implementation("androidx.car.app:app:1.4.0")
 }
 
 kotlin {

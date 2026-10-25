@@ -133,11 +133,21 @@ final downloadNotificationProvider = Provider<void>((ref) {
   channel.invokeMethod<String>('initialAction').then(handle).catchError((_) {});
 });
 
-/// 在車上和通知列顯示歌詞: follows the synced lyrics of the current song and
-/// hands the line being sung to the player (see showLyricLine).
+/// Whether Android Auto is showing the phone (CarConnectionPlugin.kt).
+final carConnectedProvider = StreamProvider<bool>((ref) {
+  if (!Platform.isAndroid) return Stream.value(false);
+  return const EventChannel('ouo/car').receiveBroadcastStream().map((v) => v == true);
+});
+
+/// 歌詞 → 在 Android Auto / 通知列和鎖定畫面顯示歌詞: follows the synced lyrics
+/// of the current song and hands the line being sung to the player (see
+/// showLyricLine). The car and the notification share one media session, so
+/// which switch counts depends on whether the car is connected.
 final lyricsInMetadataProvider = Provider<void>((ref) {
   final handler = ref.read(audioHandlerProvider);
-  if (!ref.watch(settingsProvider.select((s) => s.lyricsInMetadata))) {
+  final car = ref.watch(carConnectedProvider).value ?? false;
+  final on = ref.watch(settingsProvider.select((s) => car ? s.lyricsInCar : s.lyricsInMetadata));
+  if (!on) {
     handler.showLyricLine(null);
     return;
   }

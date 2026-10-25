@@ -71,7 +71,36 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
         final favCount = ref.watch(favoriteIdsProvider).value?.length ?? 0;
         final hiddenSmart = ref.watch(settingsProvider.select((s) => s.hiddenSmartLists));
         final folders = ref.watch(libraryFoldersProvider).value ?? const [];
+        Widget shortcut(IconData icon, String label, VoidCallback onTap) => Material(
+              color: Theme.of(context).colorScheme.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(8),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: onTap,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(children: [
+                    Icon(icon, size: 20, color: AppColors.accent),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  ]),
+                ),
+              ),
+            );
+        // 本地音樂 / music folders and 瀏覽資料夾: small buttons, not playlist-sized rows.
+        final shortcuts = [
+          for (final f in folders)
+            shortcut(f.path == null ? Icons.phone_android : Icons.folder, '${f.name} · ${f.count} 首', () => _push(CollectionPage.folder(f.path, f.name))),
+          shortcut(Icons.folder_open, '瀏覽資料夾', () => _push(const FolderBrowserPage())),
+        ];
         body = ListView(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: LayoutBuilder(builder: (context, c) {
+              final w = (c.maxWidth - 8) / 2;
+              return Wrap(spacing: 8, runSpacing: 8, children: [for (final b in shortcuts) SizedBox(width: w, child: b)]);
+            }),
+          ),
           ListTile(
             leading: Container(
               width: 56,
@@ -85,19 +114,6 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
             title: const Text('已按讚的歌曲'),
             subtitle: Text('播放清單 • $favCount 首歌曲', style: TextStyle(color: muted)),
             onTap: () => _push(CollectionPage.favorites()),
-          ),
-          for (final f in folders)
-            ListTile(
-              leading: folderIcon(context, f, 56),
-              title: Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-              subtitle: Text('${f.path == null ? '本機' : '資料夾'} • ${f.count} 首歌曲', style: TextStyle(color: muted)),
-              onTap: () => _push(CollectionPage.folder(f.path, f.name)),
-            ),
-          ListTile(
-            leading: folderIcon(context, const LibraryFolder('', '', 0), 56),
-            title: const Text('瀏覽資料夾'),
-            subtitle: Text('依資料夾找音樂資料夾和下載資料夾裡的歌', style: TextStyle(color: muted)),
-            onTap: () => _push(const FolderBrowserPage()),
           ),
           for (final s in SmartList.values.where((s) => !hiddenSmart.contains(s.name)))
             ListTile(

@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../data/db/database.dart';
 import '../data/models/track.dart';
+import '../config/demo.dart';
 import '../services/artist_images.dart';
 import '../services/artists.dart';
 import '../services/audio_handler.dart';
@@ -167,8 +168,11 @@ class AppSettings {
   /// Check the update server once a day when the app opens.
   final bool autoUpdateCheck;
 
-  /// Show the current synced lyric line as the artist in the car / notification.
+  /// Show the current synced lyric line as the artist in the notification and on the lock screen.
   final bool lyricsInMetadata;
+
+  /// The same in Android Auto, apart from the phone's notification.
+  final bool lyricsInCar;
 
   /// 記錄播放紀錄 (recently played, play counts, listening stats).
   final bool recordPlays;
@@ -207,7 +211,8 @@ class AppSettings {
     this.lyricsKeepAwake = false,
     this.wifiWarning = true,
     this.recordPlays = true,
-    this.lyricsInMetadata = false,
+    this.lyricsInMetadata = true,
+    this.lyricsInCar = true,
     this.artistImagesOnline = true,
     this.autoUpdateCheck = true,
     this.ytAutoUpdate = true,
@@ -243,6 +248,7 @@ class AppSettings {
     bool? wifiWarning,
     bool? recordPlays,
     bool? lyricsInMetadata,
+    bool? lyricsInCar,
     bool? artistImagesOnline,
     bool? autoUpdateCheck,
     bool? ytAutoUpdate,
@@ -276,6 +282,7 @@ class AppSettings {
         wifiWarning: wifiWarning ?? this.wifiWarning,
         recordPlays: recordPlays ?? this.recordPlays,
         lyricsInMetadata: lyricsInMetadata ?? this.lyricsInMetadata,
+        lyricsInCar: lyricsInCar ?? this.lyricsInCar,
         artistImagesOnline: artistImagesOnline ?? this.artistImagesOnline,
         autoUpdateCheck: autoUpdateCheck ?? this.autoUpdateCheck,
         ytAutoUpdate: ytAutoUpdate ?? this.ytAutoUpdate,
@@ -308,7 +315,7 @@ class AppSettings {
       youtubeApiKey: m['youtube_api_key'] ?? '',
       allowPlaylistDuplicates: m['allow_playlist_duplicates'] == 'true',
       autoCleanMissing: m['auto_clean_missing'] != 'false',
-      lyricsOnline: m['lyrics_online'] != 'false',
+      lyricsOnline: !isDemo && m['lyrics_online'] != 'false',
       deletePermanently: m['delete_permanently'] == 'true',
       hiddenSmartLists: (m['hidden_smart_lists'] ?? '').split(',').where((s) => s.isNotEmpty).toSet(),
       eqEnabled: m['eq_enabled'] == 'true',
@@ -319,9 +326,11 @@ class AppSettings {
       lyricsKeepAwake: m['lyrics_keep_awake'] == 'true',
       wifiWarning: m['wifi_warning'] != 'false',
       recordPlays: m['record_plays'] != 'false',
-      lyricsInMetadata: m['lyrics_in_metadata'] == 'true',
-      artistImagesOnline: m['artist_images_online'] != 'false',
-      autoUpdateCheck: m['auto_update_check'] != 'false',
+      // On unless turned off (before v0.18.4 one switch, off by default, did both).
+      lyricsInMetadata: m['lyrics_in_metadata'] != 'false',
+      lyricsInCar: (m['lyrics_in_car'] ?? m['lyrics_in_metadata']) != 'false',
+      artistImagesOnline: !isDemo && m['artist_images_online'] != 'false',
+      autoUpdateCheck: !isDemo && m['auto_update_check'] != 'false',
       ytAutoUpdate: m['yt_auto_update'] != 'false',
       ytLastUpdate: DateTime.tryParse(m['yt_last_update'] ?? ''),
       sorts: {for (final e in m.entries) if (e.key.startsWith('sort_')) e.key.substring(5): e.value},
@@ -334,6 +343,7 @@ class AppSettings {
       final music = p.join(home, 'Music');
       return (music: [music], download: p.join(music, 'OuOPlayer'));
     }
+    if (Platform.isAndroid && isDemo) return (music: [demoFolder], download: demoFolder);
     if (Platform.isAndroid) {
       const music = '/storage/emulated/0/Music';
       var download = '$music/OuOPlayer';
@@ -474,6 +484,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void setLyricsInMetadata(bool v) {
     state = state.copyWith(lyricsInMetadata: v);
     _db.setSetting('lyrics_in_metadata', '$v');
+  }
+
+  void setLyricsInCar(bool v) {
+    state = state.copyWith(lyricsInCar: v);
+    _db.setSetting('lyrics_in_car', '$v');
   }
 
   void setRecordPlays(bool v) {

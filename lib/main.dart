@@ -7,6 +7,8 @@ import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 
 import 'app.dart';
 import 'data/db/database.dart';
+import 'config/demo.dart';
+import 'config/demo_seed.dart';
 import 'providers/providers.dart';
 import 'services/car_browser.dart';
 import 'services/audio_handler.dart';
@@ -48,6 +50,9 @@ Future<void> main() async {
     LibraryScanner scanner = container.read(scannerProvider);
     scanner.scan({...settings.musicDirs, settings.downloadDir}.toList());
   }
+
+  // Demo copy (README screenshots) only: playlists and history for its demo songs.
+  if (isDemo) await seedDemo(db).catchError((Object e) => debugPrint('demo seed: $e'));
 
   runApp(UncontrolledProviderScope(container: container, child: const OuoApp()));
 }

@@ -63,7 +63,7 @@ class SettingsPage extends StatelessWidget {
         section(Icons.library_music_outlined, '音樂庫', '音樂資料夾、掃描、檢查已不存在的歌曲、刪除方式、封面與歌手圖片', const LibrarySettingsPage()),
         section(Icons.play_circle_outline, '播放', '等化器、淡入淡出、音量標準化、睡眠計時器', const PlaybackSettingsPage()),
         section(Icons.podcasts, 'Podcast', '播放速度、跳過靜音、快轉秒數', const PodcastSettingsPage()),
-        section(Icons.lyrics_outlined, '歌詞', '自動找歌詞、字體大小、螢幕常亮、車上顯示', const LyricsSettingsPage()),
+        section(Icons.lyrics_outlined, '歌詞', '自動找歌詞、字體大小、螢幕常亮、車上和通知列顯示', const LyricsSettingsPage()),
         section(Icons.queue_music, '播放清單', '智慧播放清單、允許重複', const PlaylistSettingsPage()),
         section(Icons.download_outlined, '下載與線上', '下載位置、Wi-Fi 提醒、yt-dlp、YouTube 金鑰', const DownloadSettingsPage()),
         if (Platform.isAndroid) section(Icons.bluetooth_audio, '藍牙與車用', '自動播放、藍牙裝置、Android Auto', const DevicesSettingsPage()),
@@ -71,7 +71,7 @@ class SettingsPage extends StatelessWidget {
         section(Icons.backup_outlined, '備份與還原', '手動備份、自動備份、從備份清單還原', const BackupPage()),
         section(Icons.storage_outlined, '儲存空間', '封面、歌手圖片、歌詞、下載暫存檔佔用的空間', const StoragePage()),
         const Divider(),
-        section(Icons.info_outline, '關於與更新', '版本 0.18.3${Updater.supported ? ' • 檢查更新' : ''}', const AboutSettingsPage()),
+        section(Icons.info_outline, '關於與更新', '版本 0.18.4${Updater.supported ? ' • 檢查更新' : ''}', const AboutSettingsPage()),
       ]),
     );
   }

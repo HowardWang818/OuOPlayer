@@ -25,6 +25,7 @@ class MainActivity : AudioServiceActivity() {
         widget = PlayerWidgetPlugin(applicationContext, messenger)
         UpdatePlugin(applicationContext, messenger)
         IconPlugin(applicationContext, messenger)
+        CarConnectionPlugin(applicationContext, messenger)
         // Download notification: progress from Dart; taps open the downloads page.
         downloads = DownloadNotifierPlugin(applicationContext, messenger).also {
             it.pendingAction = intent?.getStringExtra(DownloadForegroundService.EXTRA_OPEN)

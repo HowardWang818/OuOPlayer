@@ -80,11 +80,24 @@ class RestoreReport {
   final List<String> missing;
 }
 
-/// Replaces playlists, folders, likes, play counts, podcasts and settings
-/// with [backup]. Songs are matched to this library by path, file name, or
-/// title and artist; files that exist but weren't scanned yet are added.
-/// Music folders from another device are kept only if they exist here.
-Future<RestoreReport> restoreBackup(AppDatabase app, LibraryScanner scanner, Map<String, Object?> backup, {Directory? coverDir}) async {
+/// The parts of a backup that can be restored on their own.
+enum RestorePart {
+  settings('設定'),
+  playlists('播放清單和資料夾'),
+  likes('已按讚的歌曲'),
+  history('播放次數和收聽紀錄'),
+  podcasts('Podcast 訂閱和收聽進度');
+
+  const RestorePart(this.label);
+  final String label;
+}
+
+/// Replaces the chosen [parts] (all by default) with [backup]; the others
+/// are left exactly as they are. Songs are matched to this library by path,
+/// file name, or title and artist; files that exist but weren't scanned yet
+/// are added. Music folders from another device are kept only if they exist here.
+Future<RestoreReport> restoreBackup(AppDatabase app, LibraryScanner scanner, Map<String, Object?> backup,
+    {Directory? coverDir, Set<RestorePart> parts = const {...RestorePart.values}}) async {
   if (backup['app'] != 'OuOPlayer') throw '這不是 OuOPlayer 的備份檔';
   final db = app.db;
   final matcher = LibraryMatcher(await app.tracks());
@@ -134,7 +147,7 @@ Future<RestoreReport> restoreBackup(AppDatabase app, LibraryScanner scanner, Map
 
   final covers = coverDir ?? Directory(p.join((await getApplicationSupportDirectory()).path, 'covers'));
   await covers.create(recursive: true);
-  final playlists = (backup['playlists'] as List? ?? const []).cast<Map>();
+  final playlists = parts.contains(RestorePart.playlists) ? (backup['playlists'] as List? ?? const []).cast<Map>() : const <Map>[];
   // Resolve every song first, so the replacement below is quick and atomic.
   final playlistIds = <List<String>>[];
   for (final pl in playlists) {
@@ -146,12 +159,13 @@ Future<RestoreReport> restoreBackup(AppDatabase app, LibraryScanner scanner, Map
     playlistIds.add(ids);
   }
   final favorites = <(String, Object?)>[];
-  for (final f in (backup['favorites'] as List? ?? const [])) {
+  for (final f in parts.contains(RestorePart.likes) ? (backup['favorites'] as List? ?? const []) : const []) {
     final id = await resolve(f);
     if (id != null) favorites.add((id, (f as Map)['added_at']));
   }
   final listening = <Map<String, Object?>>[];
-  for (final r in (backup['listening'] as List? ?? const []).cast<Map>()) {
+  final history = parts.contains(RestorePart.history);
+  for (final r in history ? (backup['listening'] as List? ?? const []).cast<Map>() : const <Map>[]) {
     // Podcast episodes aren't library songs: keep their ids as they were.
     final id = r['log_source'] == TrackSource.podcast ? r['uri'] as String? : await resolve(r);
     if (id == null) continue;
@@ -164,17 +178,25 @@ Future<RestoreReport> restoreBackup(AppDatabase app, LibraryScanner scanner, Map
     });
   }
   final plays = <(String, Object?, Object?)>[];
-  for (final r in (backup['plays'] as List? ?? const [])) {
+  for (final r in history ? (backup['plays'] as List? ?? const []) : const []) {
     final id = await resolve(r);
     if (id != null) plays.add((id, (r as Map)['count'], r['last_played']));
   }
 
   await db.transaction((txn) async {
-    for (final table in ['playlist_tracks', 'playlists', 'playlist_folders', 'favorites', 'plays', 'podcasts', 'podcast_progress']) {
-      await txn.delete(table);
+    for (final (part, tables) in [
+      (RestorePart.playlists, ['playlist_tracks', 'playlists', 'playlist_folders']),
+      (RestorePart.likes, ['favorites']),
+      (RestorePart.history, ['plays']),
+      (RestorePart.podcasts, ['podcasts', 'podcast_progress']),
+    ]) {
+      if (!parts.contains(part)) continue;
+      for (final table in tables) {
+        await txn.delete(table);
+      }
     }
     // Only replace the log when the backup has one (older backups don't).
-    if (backup.containsKey('listening')) {
+    if (history && backup.containsKey('listening')) {
       await txn.delete('listening_log');
       for (final r in listening) {
         await txn.insert('listening_log', r);
@@ -210,7 +232,7 @@ Future<RestoreReport> restoreBackup(AppDatabase app, LibraryScanner scanner, Map
     for (final (id, count, last) in plays) {
       await txn.insert('plays', {'track_id': id, 'count': count, 'last_played': last}, conflictAlgorithm: ConflictAlgorithm.replace);
     }
-    for (final table in ['podcasts', 'podcast_progress']) {
+    for (final table in parts.contains(RestorePart.podcasts) ? ['podcasts', 'podcast_progress'] : const <String>[]) {
       for (final r in (backup[table] as List? ?? const []).cast<Map>()) {
         await txn.insert(table, r.cast<String, Object?>(), conflictAlgorithm: ConflictAlgorithm.replace);
       }
@@ -218,7 +240,7 @@ Future<RestoreReport> restoreBackup(AppDatabase app, LibraryScanner scanner, Map
     for (final r in (backup['download_history'] as List? ?? const []).cast<Map>()) {
       await txn.insert('download_history', r.cast<String, Object?>(), conflictAlgorithm: ConflictAlgorithm.ignore);
     }
-    final settings = (backup['settings'] as Map? ?? const {}).cast<String, Object?>();
+    final settings = parts.contains(RestorePart.settings) ? (backup['settings'] as Map? ?? const {}).cast<String, Object?>() : const <String, Object?>{};
     for (final e in settings.entries) {
       if (_privateSettings.contains(e.key) || e.value is! String) continue;
       final v = e.value as String;
