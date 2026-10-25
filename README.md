@@ -1,85 +1,156 @@
-# OuOPlayer
+<p align="right"><a href="README.en.md">English</a></p>
 
-仿 Spotify 的跨平台音樂播放器（Flutter），支援 **Windows** 與 **Android**。
+<p align="center">
+  <img src="assets/icon/app_icon_dark.png" width="96" alt="OuOPlayer">
+</p>
+
+<h1 align="center">OuOPlayer</h1>
+
+<p align="center">
+  像串流 App 一樣好用的本機音樂播放器<br>
+  Android ・ 免費 ・ 開源（GPL-3.0）・ 沒有廣告，不收集任何資料
+</p>
+
+<p align="center">
+  <a href="https://github.com/HowardWang818/OuOPlayer/releases/latest"><b>下載最新版</b></a>
+</p>
+
+## 截圖
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/dark_home.jpg" width="250"><br>首頁</td>
+    <td align="center"><img src="docs/screenshots/dark_list.jpg" width="250"><br>音樂庫</td>
+    <td align="center"><img src="docs/screenshots/dark_lyrics.jpg" width="250"><br>同步歌詞</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/light_home.jpg" width="250"><br>首頁（淺色）</td>
+    <td align="center"><img src="docs/screenshots/light_list.jpg" width="250"><br>音樂庫（淺色）</td>
+    <td align="center"><img src="docs/screenshots/light_lyrics.jpg" width="250"><br>同步歌詞（淺色）</td>
+  </tr>
+</table>
+
+<sub>截圖裡的歌手、歌曲和封面都是虛構的示範資料。</sub>
+
+## 下載
+
+到 [Releases](https://github.com/HowardWang818/OuOPlayer/releases/latest) 下載 APK（Android 7.0 以上）。之後可以在 App 裡直接更新。
+
+Windows 版準備中。
 
 ## 功能
-- **播放**：播放/暫停/上下首、拖曳進度、音量、隨機、重複（全部/單曲）、佇列（拖曳排序、滑動刪除）、全螢幕播放頁（依封面取色的漸層背景）
-- **背景播放與系統媒體控制**：Android 通知列、鎖定畫面、藍牙耳機/車機按鍵；Windows 媒體鍵與 SMTC
-- **音樂庫**：掃描本機資料夾（讀取標籤與封面）、歌曲/專輯/演出者分類、搜尋、播放清單、已按讚的歌曲、最近播放
-- **線上**：貼上網址直接串流、Podcast RSS 訂閱/串流/下載單集
-- **下載器（仿 youtube-dl-gui）**：貼上網址（可多個、可整個播放清單）→ 選格式（MP3 / M4A / Opus / FLAC / 原始）→ 進度、取消、重試；完成後自動加入音樂庫
-  - Windows：第一次使用時自動從官方 GitHub 下載 `yt-dlp.exe` 與 `ffmpeg`，可一鍵更新
-  - Android：內建 youtubedl-android（Python + yt-dlp + ffmpeg），下載時以前景服務執行；可從其他 App「分享」連結到 OuOPlayer 直接下載
-- **藍牙（Android）**：斷線自動暫停、連線自動續播（可關閉）、顯示目前輸出裝置、掃描/配對/連接藍牙耳機
-- **外觀**：深色/淺色/跟隨系統，強調色 `#1DBEEF`；手機為底部分頁＋迷你播放器，寬螢幕為 Spotify 桌面版排版
 
-> 請只下載你有權利保存的內容，並遵守來源網站的服務條款與著作權法。
+**播放**
+- 背景播放，通知列、鎖定畫面、藍牙耳機和車機按鍵都能控制
+- 等化器、音量標準化、播放／暫停淡入淡出、睡眠計時器
+- 佇列可以拖曳排序，播完後可以接著隨機播放
 
-## 開發環境（本機已安裝）
-| 項目 | 位置 |
-|---|---|
-| Flutter SDK | `D:\dev\flutter`（已加入使用者 PATH） |
-| Android SDK | `D:\dev\android-sdk`（`ANDROID_HOME`） |
-| JDK 17 | `C:\Program Files\Microsoft\jdk-17.*` |
-| VS 2022 Build Tools（C++ 桌面開發） | 預設位置 |
+**音樂庫**
+- 自動掃描手機裡的音樂，依專輯、歌手、歌曲分類
+- 照資料夾瀏覽，可以直接新增、重新命名、刪除資料夾，或把歌移到別的資料夾
+- 替沒有封面的歌找正式封面；自動抓歌手照片，也可以自己換圖、改名
+- 多選後一次編輯資訊、加入播放清單、隱藏或刪除
 
-**注意：專案路徑含中文時 Flutter 分析器會出錯**，因此請透過英文路徑的連結資料夾 `D:\dev\ouoplayer`（指向本專案）執行所有 flutter 指令。
+**播放清單**
+- 自訂播放清單和資料夾、自訂封面
+- 智慧播放清單：最常播放、最近加入、很久沒聽、從沒播過
+- 匯入 M3U，以及 Spotify 的歌單（資料匯出檔或 Exportify CSV）；手機裡沒有的歌會先保留位置，之後有了自動補上
 
-## 建置
-```bash
-cd D:/dev/ouoplayer
-flutter pub get
-flutter analyze
-flutter test
-flutter run -d windows                     # 開發執行
-flutter build windows --release            # → build/windows/x64/runner/Release/OuOPlayer.exe
-flutter build apk --release --split-per-abi  # → build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-```
-Windows 版需把整個 `Release` 資料夾一起複製才能執行。手機一般安裝 `app-arm64-v8a-release.apk`。
+**歌詞**
+- 同步歌詞跟著播放捲動，點一行就跳到那裡
+- 依序從歌曲檔案、同名 `.lrc` 檔、[LRCLIB](https://lrclib.net) 找歌詞；可以替整個音樂庫或一個播放清單一次找好
+- 日文和中文歌優先使用原文歌詞，不會抓到羅馬拼音版
+- 可以在 Android Auto 和通知列顯示正在唱的那一句
 
-## 發佈版本
-版本規則（從 0.0.0 起算）：
-- 第三位：小更新、修 bug（0.0.1 → 0.0.2）
-- 第二位：大更新或新功能（0.0.2 → 0.1.0）
-- 第一位：只有正式版才會用到（→ 1.0.0）
+**Podcast**
+- 搜尋、訂閱、下載單集
+- 記住每一集聽到哪裡，可以調整播放速度、跳過靜音
 
-`+` 後面的數字是建置編號，每次發佈都要加 1（Android 安裝更新需要遞增）。
+**車上與藍牙**
+- 支援 Android Auto，可以瀏覽播放清單、專輯、Podcast，也能用語音搜尋
+- 藍牙耳機連上時自動接著播，斷線時自動暫停
 
-1. 修改 `pubspec.yaml` 的 `version:`（例如 `0.0.2+3`），並同步 `lib/ui/pages/settings_page.dart` 裡「關於」顯示的版本
-2. 執行：
-   ```bash
-   powershell -ExecutionPolicy Bypass -File scripts/release.ps1
-   ```
-3. 產出：
-   - `release/windows/v<版本>/OuOPlayer/`（可直接執行的資料夾）與 `OuOPlayer-<版本>-windows-x64.zip`
-   - `release/android/v<版本>/OuOPlayer-<版本>-<abi>.apk`（一般手機用 `arm64-v8a`）
-4. 提交並打標籤：`git commit -am "Release v<版本>"`、`git tag v<版本>`
+**其他**
+- 收聽統計和年度回顧
+- 手動備份，或照你選的時間自動備份；還原時可以只挑一部分（例如只還原設定）
+- 桌面小工具（4x1 和 2x2）
+- 深色、淺色主題，App 圖示也可以換成淺色或跟著主題變
+- App 內直接更新
 
-已存在的版本資料夾不會被覆蓋（要重建請加 `-Force`）。`release/` 不納入 git，避免儲存庫被大型執行檔塞滿。
+**下載**
+- 貼上網址下載音訊（使用 [yt-dlp](https://github.com/yt-dlp/yt-dlp)），下載完自動加進音樂庫。
+- 請只下載你有權利保存的內容，並遵守來源網站的服務條款。
 
-## 專案結構
-```
-lib/
-  main.dart / app.dart          啟動、主題、藍牙自動播放、分享連結
-  theme/app_theme.dart          深/淺色主題
-  data/                         Track 模型、sqflite 資料庫
-  services/
-    audio_handler.dart          just_audio + audio_service（佇列、背景播放、續播）
-    library_scanner.dart        掃描資料夾、讀標籤封面
-    podcast_service.dart        RSS 解析
-    download_service.dart       下載佇列
-    ytdlp/                      yt-dlp：Windows（Process）與 Android（原生橋接）
-    bluetooth/                  藍牙 MethodChannel（Android）
-  providers/providers.dart      Riverpod 狀態
-  ui/                           AppShell、頁面與元件
-android/app/src/main/kotlin/com/ouo/ouoplayer/
-  MainActivity.kt               AudioServiceActivity + 註冊原生外掛
-  YtDlpPlugin.kt                youtubedl-android 橋接
-  BluetoothPlugin.kt            輸出裝置、掃描、配對、A2DP 連線事件
-  DownloadForegroundService.kt  下載時的前景服務
-```
+## 常見問題
 
-## 已知限制
-- Android 的「直接連接」藍牙裝置使用非公開 API，部分手機會拒絕，這時 App 會引導開啟系統藍牙設定。
-- Android 版 APK 因內建 Python/ffmpeg 較大（每個 ABI 約 +30–40MB）。
-- Release APK 目前使用 debug 簽章；要上架或長期使用請建立自己的簽章金鑰。
+<details>
+<summary>Android Auto 裡看不到 OuOPlayer？</summary>
+
+Android Auto 預設只顯示從 Play 商店安裝的 App，要先開啟「不明來源」：
+
+1. 打開手機的 Android Auto 設定（在系統設定裡搜尋「Android Auto」）。
+2. 往下找到「版本」，連續點約 10 次，允許開啟開發人員設定。
+3. 右上角「⋮」→「開發人員設定」→ 勾選「不明來源」。
+4. 重新連接車子。
+</details>
+
+<details>
+<summary>為什麼要「媒體管理」權限？</summary>
+
+刪除或移動不是 OuOPlayer 下載的歌時，Android 每次都會跳出確認視窗。開啟「媒體管理」（設定 → 音樂庫）後就不用每次確認。不開也可以正常使用。
+</details>
+
+<details>
+<summary>刪掉的歌去哪了？</summary>
+
+預設會移到系統的垃圾桶，大約 30 天內可以從「檔案」App 還原。如果在「設定 → 音樂庫」開啟「刪除檔案時直接永久刪除」，就無法還原。
+</details>
+
+<details>
+<summary>歌詞找不到，或找到別首歌的？</summary>
+
+在歌詞畫面按「不對？手動搜尋」，可以修改歌名和歌手重新搜尋，選好的歌詞會一直保留。
+</details>
+
+<details>
+<summary>換手機怎麼搬資料？</summary>
+
+在舊手機用「設定 → 備份與還原 → 備份資料」存成一個檔案，到新手機用「從檔案還原」。播放清單、按讚、播放次數、Podcast 和設定都會搬過去，歌曲會依檔案位置或歌名、歌手自動對上。
+</details>
+
+## 隱私
+
+OuOPlayer 不需要帳號，沒有廣告，也不會收集或上傳任何使用資料。播放本機音樂完全不用網路。
+
+只有下列情況會連網，而且只會送出列出的資料：
+
+| 用途 | 連到 | 送出的資料 | 怎麼關 |
+|---|---|---|---|
+| 找歌詞 | LRCLIB | 歌名、歌手、專輯、長度 | 設定 → 歌詞 |
+| 歌手照片 | Deezer | 歌手名字 | 設定 → 音樂庫 |
+| 找正式封面、線上搜尋、Podcast 搜尋 | Apple iTunes | 歌名、歌手或搜尋文字 | 只在你使用時才會連 |
+| 取得 YouTube Music 連結 | YouTube Data API | 歌名和歌手 | 只有你自己填了 API 金鑰才會用 |
+| 檢查更新 | OuOPlayer 的更新伺服器 | 不送出任何資料 | 設定 → 關於與更新 |
+| 下載、串流、Podcast | 你自己貼上或訂閱的網址 | — | 只在你使用時才會連 |
+
+## 授權
+
+OuOPlayer 以 [GNU General Public License v3.0](LICENSE) 授權釋出。
+
+感謝這些開源專案和服務：
+[Flutter](https://flutter.dev)、
+[just_audio](https://pub.dev/packages/just_audio)、
+[audio_service](https://pub.dev/packages/audio_service)、
+[media_kit](https://github.com/media-kit/media-kit)、
+[yt-dlp](https://github.com/yt-dlp/yt-dlp)、
+[youtubedl-android](https://github.com/JunkFood02/youtubedl-android)、
+[LRCLIB](https://lrclib.net)、
+[RapidFuzz](https://pub.dev/packages/rapidfuzz)、
+[Riverpod](https://riverpod.dev)、
+[sqflite](https://pub.dev/packages/sqflite)。
+
+## 給開發者
+
+建置方式、版本規則和發布流程請看 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
+
+這個專案的程式碼大部分是和 AI（Claude）一起寫的，設計、測試和每個版本的取捨由 HowardWang818 決定。
