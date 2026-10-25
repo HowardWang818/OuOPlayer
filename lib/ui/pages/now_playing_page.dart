@@ -22,6 +22,10 @@ class NowPlayingPage extends ConsumerWidget {
     final bg = theme.scaffoldBackgroundColor;
     final color = ref.watch(artColorProvider(track?.art)).value ?? theme.colorScheme.surfaceContainerHigh;
     final wide = MediaQuery.sizeOf(context).width > 900;
+    // What is behind the lyrics (the gradient a third of the way down) and
+    // behind the top bar (the cover's colour).
+    final lyricsBg = Color.lerp(color, bg, wide ? 0.45 : 0.35)!;
+    final topInk = ThemeData.estimateBrightnessForColor(color) == Brightness.dark ? Colors.white : const Color(0xFF111111);
     final showLyrics = ref.watch(showLyricsProvider);
 
     final cover = LayoutBuilder(builder: (context, c) {
@@ -79,22 +83,28 @@ class NowPlayingPage extends ConsumerWidget {
         ),
         child: SafeArea(
           child: Column(children: [
-            Padding(
+            // The top bar sits on the cover's colour itself.
+            IconTheme.merge(
+              data: IconThemeData(color: topInk),
+              child: DefaultTextStyle.merge(
+              style: TextStyle(color: topInk),
+              child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Row(children: [
-                IconButton(icon: const Icon(Icons.keyboard_arrow_down, size: 32), onPressed: () => Navigator.pop(context)),
+                IconButton(icon: const Icon(Icons.keyboard_arrow_down, size: 32), color: topInk, onPressed: () => Navigator.pop(context)),
                 Expanded(
                   child: Column(children: [
-                    Text('正在播放', style: theme.textTheme.labelSmall),
+                    Text('正在播放', style: theme.textTheme.labelSmall?.copyWith(color: topInk)),
                     Text(track?.album ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold)),
                   ]),
                 ),
                 IconButton(
                   icon: const Icon(Icons.more_vert),
+                  color: topInk,
                   onPressed: track == null ? null : () => showTrackMenu(context, ref, track),
                 ),
               ]),
-            ),
+            ))),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -104,11 +114,11 @@ class NowPlayingPage extends ConsumerWidget {
                         const SizedBox(width: 48),
                         Expanded(child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 520), child: info))),
                         // Desktop: lyrics in a panel on the right.
-                        if (showLyrics) ...[const SizedBox(width: 48), const Expanded(child: LyricsView())],
+                        if (showLyrics) ...[const SizedBox(width: 48), Expanded(child: LyricsInk.on(lyricsBg, child: const LyricsView()))],
                       ])
                     : Column(children: [
                         // Phone: lyrics take the cover's place.
-                        Expanded(child: showLyrics ? const LyricsView() : cover),
+                        Expanded(child: showLyrics ? LyricsInk.on(lyricsBg, child: const LyricsView()) : cover),
                         const SizedBox(height: 24),
                         info,
                       ]),

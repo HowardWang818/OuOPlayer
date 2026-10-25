@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/providers.dart';
 import '../../services/listening_stats.dart';
 import '../../theme/app_theme.dart';
+import '../../data/models/track.dart';
 import '../widgets/art_image.dart';
+import '../widgets/artist_avatar.dart';
 import 'stats_page.dart';
 
 /// 我的年度回顧: swipeable cards coloured after the year's top cover.
@@ -65,7 +67,8 @@ class _YearReviewPageState extends ConsumerState<YearReviewPage> {
               _Card(color: color, children: [
                 const Text('你的年度歌手', style: TextStyle(fontSize: 20)),
                 const SizedBox(height: 20),
-                ArtImage(s.topArtists.first.art, size: 200, circle: true, icon: Icons.person),
+                // The same picture as in the library (own photo, Deezer, or a cover).
+                ArtistAvatar(Artist(s.topArtists.first.name, s.topArtists.first.art, 0), size: 200),
                 const SizedBox(height: 20),
                 Text(s.topArtists.first.name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
                 Text('${s.topArtists.first.plays} 次 • ${formatListening(s.topArtists.first.listened)}', style: const TextStyle(fontSize: 16)),
