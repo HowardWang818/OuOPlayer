@@ -1,7 +1,7 @@
 name: ouoplayer
 description: "OuOPlayer - a Spotify-style music player for Android and Windows."
 publish_to: 'none'
-version: 1.0.0+48
+version: 1.5.0+55
 
 environment:
   sdk: ^3.6.0
@@ -11,7 +11,6 @@ dependencies:
     sdk: flutter
   just_audio: ^0.10.6
   just_audio_media_kit: ^2.1.0
-  media_kit_libs_windows_audio: ^1.0.9
   audio_service: ^0.18.19
   audio_service_win: ^0.0.3
   audio_session: ^0.2.4
@@ -31,6 +30,7 @@ dependencies:
   rxdart: ^0.28.0
   url_launcher: ^6.3.3
   rapidfuzz: ^0.1.1
+  media_kit_libs_windows_video: ^1.0.11
 
 dependency_overrides:
   # Patched copy that lets us set mpv's audio filter (volume normalization on Windows).

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -103,6 +105,17 @@ class _YouTubeKeyGuidePageState extends ConsumerState<YouTubeKeyGuidePage> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               const Text('開始前', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 8),
+              if (Platform.isAndroid) ...[
+                const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Icon(Icons.computer, size: 20, color: AppColors.accent),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text('建議在電腦上操作：Google Cloud 的網頁在手機上很難點。在電腦申請好後，把金鑰傳到手機（例如用 LINE 傳給自己），再貼到下面。',
+                        style: TextStyle(fontWeight: FontWeight.bold, height: 1.5)),
+                  ),
+                ]),
+                const SizedBox(height: 8),
+              ],
               Text(
                 '• 需要一個 Google 帳號，約 5 分鐘\n'
                 '• 免費：每天約可搜尋 100 次，超過不會收費，只會暫停到隔天\n'

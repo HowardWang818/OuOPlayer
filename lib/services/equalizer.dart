@@ -44,12 +44,6 @@ double eqGainAt(double hz, List<double> gains) {
   return gains.last;
 }
 
-/// ffmpeg peaking filters for mpv (Windows), one per band that isn't flat.
-String windowsEqFilter(List<double> gains) => [
-      for (var i = 0; i < eqFrequencies.length; i++)
-        if (gains[i] != 0) 'equalizer=f=${eqFrequencies[i]}:t=o:w=2:g=${gains[i].toStringAsFixed(1)}',
-    ].join(',');
-
 /// Keeps the Android equalizer in step with the settings. (Windows: the
 /// filter is combined with volume normalization in volumeNormalizationProvider.)
 final equalizerProvider = Provider<void>((ref) {

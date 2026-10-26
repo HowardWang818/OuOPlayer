@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -32,6 +33,7 @@ class OuoApp extends ConsumerWidget {
     ref.watch(bluetoothAutomationProvider);
     ref.watch(shareIntentProvider);
     ref.watch(volumeNormalizationProvider);
+    ref.watch(carMusicProvider);
     ref.watch(equalizerProvider);
     ref.watch(playerWidgetProvider);
     ref.watch(lyricsInMetadataProvider);
@@ -68,7 +70,19 @@ class _MissingFilesWatcherState extends ConsumerState<MissingFilesWatcher> {
   @override
   void initState() {
     super.initState();
-    _lifecycle = AppLifecycleListener(onResume: _check);
+    final handler = ref.read(audioHandlerProvider);
+    _lifecycle = AppLifecycleListener(
+      onResume: _check,
+      // Remember where playback is (Windows: closing the window doesn't pause).
+      onHide: () => unawaited(handler.saveSession()),
+      onExitRequested: () async {
+        await handler.saveSession();
+        return AppExitResponse.exit;
+      },
+    );
+    _unplayable = ref.read(audioHandlerProvider).unplayable.stream.listen((title) {
+      if (mounted) toast(context, '無法播放「$title」，已跳過');
+    });
     _filled = MissingSongs.filled.listen((songs) {
       if (!mounted || songs.isEmpty) return;
       final f = songs.first;
@@ -91,11 +105,13 @@ class _MissingFilesWatcherState extends ConsumerState<MissingFilesWatcher> {
   }
 
   StreamSubscription<List<FilledSong>>? _filled;
+  StreamSubscription<String>? _unplayable;
 
   @override
   void dispose() {
     _lifecycle.dispose();
     _filled?.cancel();
+    _unplayable?.cancel();
     super.dispose();
   }
 
@@ -162,12 +178,20 @@ final carConnectedProvider = StreamProvider<bool>((ref) {
   return const EventChannel('ouo/car').receiveBroadcastStream().map((v) => v == true);
 });
 
+/// 連上車子時切回音樂: Android Auto connecting while the app runs.
+final carMusicProvider = Provider<void>((ref) {
+  ref.listen(carConnectedProvider, (prev, next) {
+    if (next.value == true && prev?.value != true) ref.read(audioHandlerProvider).carConnected();
+  });
+});
+
 /// 歌詞 → 在 Android Auto / 通知列和鎖定畫面顯示歌詞: follows the synced lyrics
 /// of the current song and hands the line being sung to the player (see
 /// showLyricLine). The car and the notification share one media session, so
 /// which switch counts depends on whether the car is connected.
 final lyricsInMetadataProvider = Provider<void>((ref) {
   final handler = ref.read(audioHandlerProvider);
+  if (!Platform.isAndroid) return;
   final car = ref.watch(carConnectedProvider).value ?? false;
   final on = ref.watch(settingsProvider.select((s) => car ? s.lyricsInCar : s.lyricsInMetadata));
   if (!on) {

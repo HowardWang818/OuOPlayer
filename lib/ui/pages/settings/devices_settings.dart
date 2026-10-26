@@ -28,6 +28,13 @@ class DevicesSettingsPage extends ConsumerWidget {
         trailing: const Icon(Icons.chevron_right),
         onTap: () => Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => const DevicesPage())),
       ),
+      SwitchListTile(
+        secondary: const Icon(Icons.directions_car_filled_outlined),
+        title: const Text('連上車子時切回音樂'),
+        subtitle: const Text('在別處聽 Podcast 後連上 Android Auto，會記下 Podcast 聽到哪，改播上次的音樂（從上次的位置）'),
+        value: s.carMusic,
+        onChanged: n.setCarMusic,
+      ),
       ListTile(
         leading: const Icon(Icons.directions_car_outlined),
         title: const Text('Android Auto'),

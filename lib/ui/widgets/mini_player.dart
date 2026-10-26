@@ -8,6 +8,7 @@ import '../pages/queue_page.dart';
 import 'art_image.dart';
 import 'output_device_chip.dart';
 import 'player_controls.dart';
+import 'track_links.dart';
 
 void openNowPlaying(BuildContext context) => Navigator.of(context, rootNavigator: true).push(PageRouteBuilder(
       pageBuilder: (_, __, ___) => const NowPlayingPage(),
@@ -50,7 +51,8 @@ class MiniPlayer extends ConsumerWidget {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontWeight: FontWeight.w600, color: fg)),
-                    Text(track.artist, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    LinkText(track.artist,
+                        onTap: hasPages(track) ? () => openArtist(context, track) : null,
                         style: TextStyle(fontSize: 12, color: fg.withValues(alpha: 0.7))),
                   ]),
                 ),
@@ -97,7 +99,9 @@ class DesktopPlayerBar extends ConsumerWidget {
                     Flexible(
                       child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
-                        Text(track.artist, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                        LinkText(track.artist,
+                            onTap: hasPages(track) ? () => openArtist(context, track) : null,
+                            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                       ]),
                     ),
                     const FavoriteButton(),

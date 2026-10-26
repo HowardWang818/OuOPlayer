@@ -4,7 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   audio_service_win
-  media_kit_libs_windows_audio
+  media_kit_libs_windows_video
   permission_handler_windows
   url_launcher_windows
 )

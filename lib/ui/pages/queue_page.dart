@@ -36,7 +36,7 @@ class QueuePage extends ConsumerWidget {
                     leading: ArtImage(t.art, size: 44),
                     title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis,
                         style: TextStyle(color: current ? AppColors.accent : null, fontWeight: current ? FontWeight.bold : null)),
-                    subtitle: Text(t.artist, maxLines: 1, style: TextStyle(color: muted)),
+                    subtitle: Text(handler.isQueuedAt(i) ? '插播 • ${t.artist}' : t.artist, maxLines: 1, style: TextStyle(color: muted)),
                     trailing: const Icon(Icons.drag_handle),
                     onTap: () => handler.skipToQueueItem(i),
                   ),

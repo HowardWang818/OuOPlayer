@@ -2,19 +2,27 @@ package com.ouo.ouoplayer
 
 import android.media.audiofx.DynamicsProcessing
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import java.util.concurrent.Executors
 
 /**
- * Volume normalization: a compressor that lifts quiet passages and tames loud
- * ones, followed by a limiter, on the player's audio session (Android 9+).
+ * Volume normalization, one fixed gain per song (Android 9+): the gain the
+ * song's measured loudness calls for, then a limiter that only acts on peaks
+ * that would clip. Nothing in between, so a song keeps its own quiet and loud
+ * parts (the compressor used before v1.5.0 flattened them).
+ *
+ * Also measures songs ([LoudnessAnalyzer]) on a background thread.
  */
 class NormalizerPlugin(messenger: BinaryMessenger) : MethodChannel.MethodCallHandler {
     private val method = MethodChannel(messenger, "ouo/normalize")
     private var effect: DynamicsProcessing? = null
     private var sessionId = 0
-    private var level = ""
+    private val worker = Executors.newSingleThreadExecutor()
+    private val main = Handler(Looper.getMainLooper())
 
     init {
         method.setMethodCallHandler(this)
@@ -22,25 +30,32 @@ class NormalizerPlugin(messenger: BinaryMessenger) : MethodChannel.MethodCallHan
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
-            "set" -> {
+            "gain" -> {
                 val session = call.argument<Int>("sessionId") ?: 0
                 val enabled = call.argument<Boolean>("enabled") ?: false
-                val lvl = call.argument<String>("level") ?: "normal"
-                result.success(apply(session, enabled, lvl))
+                val gain = (call.argument<Double>("gainDb") ?: 0.0).toFloat()
+                result.success(apply(session, enabled, gain))
+            }
+            "measure" -> {
+                val path = call.argument<String>("path") ?: return result.success(null)
+                worker.execute {
+                    val r = LoudnessAnalyzer.measure(path)
+                    main.post { result.success(r?.let { mapOf("lufs" to it.lufs, "peak" to it.peakDb) }) }
+                }
             }
             else -> result.notImplemented()
         }
     }
 
-    private fun apply(session: Int, enabled: Boolean, lvl: String): Boolean {
+    private fun apply(session: Int, enabled: Boolean, gainDb: Float): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || session == 0) return false
         try {
-            if (session != sessionId || lvl != level) {
+            if (session != sessionId || effect == null) {
                 release()
-                effect = create(session, lvl)
+                effect = create(session)
                 sessionId = session
-                level = lvl
             }
+            effect?.setInputGainAllChannelsTo(if (enabled) gainDb else 0f)
             effect?.enabled = enabled
             return effect != null
         } catch (_: Exception) {
@@ -49,34 +64,17 @@ class NormalizerPlugin(messenger: BinaryMessenger) : MethodChannel.MethodCallHan
         }
     }
 
-    /** Compressor settings per strength: threshold (dB), ratio, make-up gain (dB). */
-    private fun params(lvl: String): Triple<Float, Float, Float> = when (lvl) {
-        "quiet" -> Triple(-24f, 2.5f, 3f)
-        "loud" -> Triple(-30f, 4f, 12f)
-        else -> Triple(-26f, 3f, 8f)
-    }
-
-    private fun create(session: Int, lvl: String): DynamicsProcessing {
-        val (threshold, ratio, makeUp) = params(lvl)
+    private fun create(session: Int): DynamicsProcessing {
         val config = DynamicsProcessing.Config.Builder(
             DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
             2, // channels
             false, 0, // pre-EQ
-            true, 1, // one full-range compressor band
+            false, 0, // no compressor
             false, 0, // post-EQ
             true, // limiter
         ).build()
         val fx = DynamicsProcessing(0, session, config)
-        fx.setMbcBandAllChannelsTo(
-            0,
-            DynamicsProcessing.MbcBand(
-                true, 20000f, // enabled, cutoff (Hz)
-                30f, 400f, // attack, release (ms)
-                ratio, threshold, 8f, // ratio, threshold (dB), knee (dB)
-                -90f, 1f, // noise gate threshold, expander ratio
-                0f, makeUp, // pre-gain, make-up gain (dB)
-            ),
-        )
+        // Catches only what would clip: fast attack, short release, at -1 dBFS.
         fx.setLimiterAllChannelsTo(
             DynamicsProcessing.Limiter(true, true, 0, 1f, 60f, 10f, -1f, 0f),
         )
@@ -87,6 +85,5 @@ class NormalizerPlugin(messenger: BinaryMessenger) : MethodChannel.MethodCallHan
         effect?.release()
         effect = null
         sessionId = 0
-        level = ""
     }
 }

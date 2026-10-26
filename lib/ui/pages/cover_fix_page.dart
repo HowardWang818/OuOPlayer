@@ -8,6 +8,25 @@ import '../../services/song_matcher.dart';
 import '../../services/tag_editor.dart';
 import '../widgets/art_image.dart';
 import '../widgets/dialogs.dart';
+import '../widgets/lookup_confirm.dart';
+
+/// 找封面 for [tracks] (the library, a playlist): asks first, then opens
+/// [CoverFixPage] with the songs worth looking up.
+Future<void> findCovers(BuildContext context, WidgetRef ref, List<Track> tracks) async {
+  final want = tracks.where(CoverFinder.wantsCover).toList();
+  if (want.isEmpty) {
+    toast(context, '沒有需要找封面的歌曲');
+    return;
+  }
+  final list = await confirmLookup(context, ref,
+      kind: 'cover',
+      tracks: want,
+      title: (n) => '替 $n 首找封面？',
+      message: (n) => 'iTunes 每分鐘大約只能查 20 次，大約需要 ${(n * 3 / 60).ceil()} 分鐘。找完會先讓你預覽，確認後才更換。');
+  if (list != null && context.mounted) {
+    await Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => CoverFixPage(tracks: list)));
+  }
+}
 
 /// 補封面: looks up official covers for [tracks], shows old and new side by
 /// side, and replaces the ticked ones (into the file when its format allows).
@@ -22,7 +41,7 @@ class CoverFixPage extends ConsumerStatefulWidget {
 class _CoverFixPageState extends ConsumerState<CoverFixPage> {
   final _hits = <String, CoverHit?>{};
   final _ticked = <String>{};
-  bool _searching = true, _applying = false, _stop = false;
+  bool _searching = true, _applying = false, _stop = false, _paused = false;
   int _done = 0;
 
   @override
@@ -39,14 +58,16 @@ class _CoverFixPageState extends ConsumerState<CoverFixPage> {
 
   Future<void> _run() async {
     final finder = CoverFinder(ref.read(iTunesSearchProvider));
+    final db = ref.read(dbProvider);
     await finder.findAll(widget.tracks, (t, hit) {
+      db.setLookupMiss('cover', t.id, hit == null);
       if (!mounted) return;
       setState(() {
         _hits[t.id] = hit;
         _done++;
         if (hit?.level == MatchLevel.sure) _ticked.add(t.id);
       });
-    }, cancelled: () => _stop || !mounted);
+    }, cancelled: () => _stop || !mounted, paused: () => _paused);
     if (mounted) setState(() => _searching = false);
   }
 
@@ -97,7 +118,9 @@ class _CoverFixPageState extends ConsumerState<CoverFixPage> {
     final found = _hits.values.whereType<CoverHit>().length;
     return Scaffold(
       appBar: AppBar(
-        title: Text(_searching ? '找封面中 $_done / ${widget.tracks.length}' : '找到 $found 首的封面'),
+        title: Text(_searching
+            ? '${_stop ? '停止中' : _paused ? '已暫停' : '找封面中'} $_done / ${widget.tracks.length}'
+            : '找到 $found 首的封面'),
         actions: [
           FilledButton(
             onPressed: _applying || _ticked.isEmpty ? null : _apply,
@@ -113,7 +136,18 @@ class _CoverFixPageState extends ConsumerState<CoverFixPage> {
               '「可能是」的結果預設不勾，請確認是同一張專輯再勾。',
               style: TextStyle(color: muted, fontSize: 13)),
         ),
-        if (_searching) const LinearProgressIndicator(),
+        if (_searching) ...[
+          LinearProgressIndicator(value: _paused ? _done / widget.tracks.length : null),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: LookupControls(
+              paused: _paused,
+              stopping: _stop,
+              onPause: () => setState(() => _paused = !_paused),
+              onStop: () => setState(() => _stop = true),
+            ),
+          ),
+        ],
         for (final t in widget.tracks)
           if (_hits.containsKey(t.id)) _row(t, _hits[t.id]),
       ]),

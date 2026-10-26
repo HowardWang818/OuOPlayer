@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
@@ -34,7 +35,9 @@ Future<void> main() async {
       androidBrowsableRootExtras: CarBrowser.rootExtras,
     ),
   );
-  await handler.restoreSession();
+  // The last queue loads in the background: a song that can't be opened
+  // must never keep the window from showing.
+  unawaited(handler.restoreSession());
 
   final container = ProviderContainer(overrides: [
     dbProvider.overrideWithValue(db),

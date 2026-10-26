@@ -1,6 +1,8 @@
 /// `package:media_kit` bindings for `just_audio` to support Linux and Windows.
 library just_audio_media_kit;
 
+import 'dart:async';
+
 import 'dart:collection';
 
 import 'package:flutter/services.dart';
@@ -54,8 +56,29 @@ class JustAudioMediaKit extends JustAudioPlatform {
   /// Applied to new players and, when changed, to every existing player.
   static String get audioFilter => _audioFilter;
   static set audioFilter(String value) {
+    if (value == _audioFilter) return;
     _audioFilter = value;
-    MediaKitPlayer.applyAudioFilter(value);
+    // OuOPlayer patch: every change rebuilds mpv's audio chain (a short
+    // dropout); while an EQ slider is dragged, only the last value is applied.
+    _filterTimer?.cancel();
+    _filterTimer = Timer(const Duration(milliseconds: 300), () => MediaKitPlayer.applyAudioFilter(_audioFilter));
+  }
+
+  static Timer? _filterTimer;
+
+  /// OuOPlayer patch: live values for the filters in [audioFilter], sent with
+  /// mpv's `af-command` (no rebuild of the audio chain, so no dropout).
+  /// Key: `target|command`; the latest value of each is kept so it can be
+  /// sent again whenever mpv builds the chain anew (new player, new file).
+  static final filterCommands = <String, (String target, String command, String value)>{};
+
+  /// Sets [command] of the lavfi filter [target] (e.g. `volume@level`,
+  /// `volume`, `-8dB`) in the `@ouo` filter on every player.
+  static void sendFilterCommand(String target, String command, String value) {
+    final key = '$target|$command';
+    if (filterCommands[key]?.$3 == value) return;
+    filterCommands[key] = (target, command, value);
+    MediaKitPlayer.sendFilterCommand(target, command, value);
   }
 
   static final _logger = Logger('JustAudioMediaKit');

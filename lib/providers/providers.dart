@@ -20,6 +20,7 @@ import '../services/download_service.dart';
 import '../services/library_scanner.dart';
 import '../services/lyrics/lrc.dart';
 import '../services/lyrics/lyrics_service.dart';
+import '../services/native_names.dart';
 import '../services/online/itunes.dart';
 import '../services/online/youtube_link.dart';
 import '../services/podcast_service.dart';
@@ -30,9 +31,11 @@ final audioHandlerProvider = Provider<OuoAudioHandler>((ref) => throw Unimplemen
 final scannerProvider = Provider<LibraryScanner>((ref) => LibraryScanner(ref.watch(dbProvider)));
 final podcastServiceProvider = Provider<PodcastService>((ref) => PodcastService());
 final iTunesSearchProvider = Provider<ITunesSearch>((ref) => ITunesSearch());
+final nativeNamesProvider = Provider<NativeNames>((ref) => NativeNames(ref.watch(iTunesSearchProvider)));
 final youTubeLinkFinderProvider = Provider<YouTubeLinkFinder>((ref) => YouTubeLinkFinder());
 final Provider<LyricsService> lyricsServiceProvider = Provider<LyricsService>((ref) {
-  final svc = LyricsService(ref.watch(scannerProvider));
+  final names = ref.watch(nativeNamesProvider);
+  final svc = LyricsService(ref.watch(scannerProvider), nativeName: names.find);
   svc.onFetched = (_) => ref.invalidate(lyricsProvider);
   return svc;
 });
@@ -88,9 +91,20 @@ final bluetoothProvider = Provider<BluetoothService>((ref) => BluetoothService()
 final downloadServiceProvider = Provider<DownloadService>((ref) {
   final svc = DownloadService(ref.watch(scannerProvider), ref.watch(dbProvider));
   svc.outDir = ref.read(settingsProvider).downloadDir;
-  // 下載歌曲時自動找歌詞.
-  svc.onImported = (t) {
-    if (ref.read(settingsProvider).lyricsOnDownload) ref.read(lyricsServiceProvider).fetchLater(t);
+  // 下載歌曲時改成日文原名 (only when certain), then 自動找歌詞 by that name.
+  svc.onImported = (t) async {
+    var track = t;
+    if (ref.read(settingsProvider).nativeNamesOnDownload && NativeNames.wants(t)) {
+      try {
+        final n = await ref.read(nativeNamesProvider).find(t);
+        final updated = n == null ? null : await NativeNames.apply(ref.read(dbProvider), n);
+        if (updated != null) {
+          track = updated;
+          ref.read(audioHandlerProvider).updateTrackInfo(updated);
+        }
+      } catch (_) {}
+    }
+    if (ref.read(settingsProvider).lyricsOnDownload) ref.read(lyricsServiceProvider).fetchLater(track);
   };
   ref.listen(settingsProvider.select((s) => s.downloadDir), (_, dir) => svc.outDir = dir);
   return svc;
@@ -124,6 +138,9 @@ class AppSettings {
   final List<String> musicDirs;
   final String downloadDir;
   final bool btAutoPlay;
+
+  /// 連上車子時切回音樂 (see OuoAudioHandler.carConnected).
+  final bool carMusic;
   final String ytFormat;
   final bool normalizeVolume;
   final NormalizeLevel normalizeLevel;
@@ -185,6 +202,14 @@ class AppSettings {
   /// Look lyrics up on LRCLIB right after a song is downloaded.
   final bool lyricsOnDownload;
 
+  /// Rename downloads tagged in romaji to their Japanese names (iTunes Japan).
+  final bool nativeNamesOnDownload;
+
+  /// Home shortcuts (「liked」, 「podcast」, 「playlist:3」, 「album:名」): pinned
+  /// ones first in this order; hidden ones not shown.
+  final List<String> homePinned;
+  final Set<String> homeHidden;
+
   /// The app icon follows the theme (dark / light), switched when the app is left.
   final bool iconFollowTheme;
 
@@ -203,6 +228,7 @@ class AppSettings {
     required this.musicDirs,
     required this.downloadDir,
     required this.btAutoPlay,
+    this.carMusic = true,
     required this.ytFormat,
     required this.normalizeVolume,
     required this.normalizeLevel,
@@ -228,6 +254,9 @@ class AppSettings {
     this.lyricsInMetadata = true,
     this.lyricsInCar = true,
     this.lyricsOnDownload = true,
+    this.nativeNamesOnDownload = true,
+    this.homePinned = const [],
+    this.homeHidden = const {},
     this.iconFollowTheme = false,
     this.artistImagesOnline = true,
     this.autoUpdateCheck = true,
@@ -241,6 +270,7 @@ class AppSettings {
     List<String>? musicDirs,
     String? downloadDir,
     bool? btAutoPlay,
+    bool? carMusic,
     String? ytFormat,
     bool? normalizeVolume,
     NormalizeLevel? normalizeLevel,
@@ -266,6 +296,9 @@ class AppSettings {
     bool? lyricsInMetadata,
     bool? lyricsInCar,
     bool? lyricsOnDownload,
+    bool? nativeNamesOnDownload,
+    List<String>? homePinned,
+    Set<String>? homeHidden,
     bool? iconFollowTheme,
     bool? artistImagesOnline,
     bool? autoUpdateCheck,
@@ -277,6 +310,7 @@ class AppSettings {
         musicDirs: musicDirs ?? this.musicDirs,
         downloadDir: downloadDir ?? this.downloadDir,
         btAutoPlay: btAutoPlay ?? this.btAutoPlay,
+        carMusic: carMusic ?? this.carMusic,
         ytFormat: ytFormat ?? this.ytFormat,
         normalizeVolume: normalizeVolume ?? this.normalizeVolume,
         normalizeLevel: normalizeLevel ?? this.normalizeLevel,
@@ -302,6 +336,9 @@ class AppSettings {
         lyricsInMetadata: lyricsInMetadata ?? this.lyricsInMetadata,
         lyricsInCar: lyricsInCar ?? this.lyricsInCar,
         lyricsOnDownload: lyricsOnDownload ?? this.lyricsOnDownload,
+        nativeNamesOnDownload: nativeNamesOnDownload ?? this.nativeNamesOnDownload,
+        homePinned: homePinned ?? this.homePinned,
+        homeHidden: homeHidden ?? this.homeHidden,
         iconFollowTheme: iconFollowTheme ?? this.iconFollowTheme,
         artistImagesOnline: artistImagesOnline ?? this.artistImagesOnline,
         autoUpdateCheck: autoUpdateCheck ?? this.autoUpdateCheck,
@@ -323,6 +360,7 @@ class AppSettings {
       musicDirs: m['music_dirs'] != null ? (jsonDecode(m['music_dirs']!) as List).cast<String>() : defaults.music,
       downloadDir: m['download_dir'] ?? defaults.download,
       btAutoPlay: m['bt_autoplay'] != 'false',
+      carMusic: m['car_music'] != 'false',
       // M4A by default: usually no re-encoding, so much faster than MP3.
       ytFormat: m['yt_format'] ?? 'm4a',
       normalizeVolume: m['normalize_volume'] != 'false',
@@ -350,6 +388,9 @@ class AppSettings {
       lyricsInMetadata: m['lyrics_in_metadata'] != 'false',
       lyricsInCar: (m['lyrics_in_car'] ?? m['lyrics_in_metadata']) != 'false',
       lyricsOnDownload: m['lyrics_on_download'] != 'false',
+      nativeNamesOnDownload: m['original_names_on_download'] != 'false',
+      homePinned: _keys(m['home_pinned']),
+      homeHidden: _keys(m['home_hidden']).toSet(),
       iconFollowTheme: m['icon_follow_theme'] == 'true',
       artistImagesOnline: !isDemo && m['artist_images_online'] != 'false',
       autoUpdateCheck: !isDemo && m['auto_update_check'] != 'false',
@@ -513,6 +554,31 @@ class SettingsNotifier extends Notifier<AppSettings> {
     _db.setSetting('icon_follow_theme', '$v');
   }
 
+  void setHomePinned(String key, bool pinned) {
+    final list = [...state.homePinned]..remove(key);
+    if (pinned) list.add(key);
+    state = state.copyWith(homePinned: list);
+    _db.setSetting('home_pinned', jsonEncode(list));
+  }
+
+  void setHomeHidden(String key, bool hidden) {
+    final set = {...state.homeHidden};
+    hidden ? set.add(key) : set.remove(key);
+    state = state.copyWith(homeHidden: set, homePinned: hidden ? ([...state.homePinned]..remove(key)) : null);
+    _db.setSetting('home_hidden', jsonEncode(set.toList()));
+    if (hidden) _db.setSetting('home_pinned', jsonEncode(state.homePinned));
+  }
+
+  void setCarMusic(bool v) {
+    state = state.copyWith(carMusic: v);
+    _db.setSetting('car_music', '$v');
+  }
+
+  void setNativeNamesOnDownload(bool v) {
+    state = state.copyWith(nativeNamesOnDownload: v);
+    _db.setSetting('original_names_on_download', '$v');
+  }
+
   void setLyricsOnDownload(bool v) {
     state = state.copyWith(lyricsOnDownload: v);
     _db.setSetting('lyrics_on_download', '$v');
@@ -578,6 +644,16 @@ class SettingsNotifier extends Notifier<AppSettings> {
 }
 
 final settingsProvider = NotifierProvider<SettingsNotifier, AppSettings>(SettingsNotifier.new);
+
+/// A JSON list of strings saved in settings (names may contain commas).
+List<String> _keys(String? json) {
+  if (json == null || json.isEmpty) return const [];
+  try {
+    return (jsonDecode(json) as List).whereType<String>().toList();
+  } catch (_) {
+    return const [];
+  }
+}
 
 /// A list's saved sort choice (encoded [TrackSort] or [GroupSort]), by scope
 /// such as 'songs', 'albums', 'playlist', 'favorites'.
@@ -712,7 +788,8 @@ final playbackStateProvider = StreamProvider<PlaybackState>((ref) => ref.watch(a
 final queueProvider = StreamProvider<List<MediaItem>>((ref) => ref.watch(audioHandlerProvider).queue);
 final positionProvider = StreamProvider<Duration>((ref) => ref.watch(audioHandlerProvider).player.positionStream);
 final durationProvider = StreamProvider<Duration?>((ref) => ref.watch(audioHandlerProvider).player.durationStream);
-final volumeProvider = StreamProvider<double>((ref) => ref.watch(audioHandlerProvider).player.volumeStream);
+/// The volume the user set (fades scale it without changing this).
+final volumeProvider = StreamProvider<double>((ref) => ref.watch(audioHandlerProvider).userVolume.stream);
 final loopModeProvider = StreamProvider<LoopMode>((ref) => ref.watch(audioHandlerProvider).player.loopModeStream);
 final shuffleProvider = StreamProvider<bool>((ref) => ref.watch(audioHandlerProvider).shuffleStream);
 

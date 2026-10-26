@@ -134,14 +134,15 @@ class VolumeSlider extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // The user's volume, not the player's (which moves during fades).
     final v = ref.watch(volumeProvider).value ?? 1;
-    final player = ref.read(audioHandlerProvider).player;
+    final handler = ref.read(audioHandlerProvider);
     return Row(mainAxisSize: MainAxisSize.min, children: [
       IconButton(
         icon: Icon(v == 0 ? Icons.volume_off : (v < 0.5 ? Icons.volume_down : Icons.volume_up), size: 20),
-        onPressed: () => player.setVolume(v == 0 ? 1 : 0),
+        onPressed: () => handler.setUserVolume(v == 0 ? 1 : 0),
       ),
-      SizedBox(width: 110, child: Slider(value: v, onChanged: player.setVolume)),
+      SizedBox(width: 110, child: Slider(value: v, onChanged: handler.setUserVolume)),
     ]);
   }
 }

@@ -3,12 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
+import '../../theme/app_theme.dart';
 import '../widgets/art_image.dart';
 import '../widgets/image_viewer.dart';
 import '../widgets/lyrics_view.dart';
 import '../widgets/output_device_chip.dart';
 import '../widgets/player_controls.dart';
 import '../widgets/sleep_timer_sheet.dart';
+import '../widgets/track_links.dart';
 import '../widgets/track_tile.dart';
 import 'queue_page.dart';
 
@@ -20,7 +22,11 @@ class NowPlayingPage extends ConsumerWidget {
     final track = ref.watch(currentTrackProvider);
     final theme = Theme.of(context);
     final bg = theme.scaffoldBackgroundColor;
-    final color = ref.watch(artColorProvider(track?.art)).value ?? theme.colorScheme.surfaceContainerHigh;
+    // A song without a cover gets a gradient in the app's colour.
+    final noCover = track != null && (track.art == null || track.art!.isEmpty);
+    final color = noCover
+        ? Color.alphaBlend(AppColors.accent.withValues(alpha: 0.55), bg)
+        : ref.watch(artColorProvider(track?.art)).value ?? theme.colorScheme.surfaceContainerHigh;
     final wide = MediaQuery.sizeOf(context).width > 900;
     // What is behind the lyrics (the gradient a third of the way down) and
     // behind the top bar (the cover's colour).
@@ -45,7 +51,9 @@ class NowPlayingPage extends ConsumerWidget {
             Text(track?.title ?? '沒有播放中的歌曲',
                 maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
-            Text(track?.artist ?? '', maxLines: 1, overflow: TextOverflow.ellipsis,
+            // The artist and the album (top bar) open their pages.
+            LinkText(track?.artist ?? '',
+                onTap: track != null && hasPages(track) ? () => openArtist(context, track) : null,
                 style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
           ]),
         ),
@@ -95,7 +103,9 @@ class NowPlayingPage extends ConsumerWidget {
                 Expanded(
                   child: Column(children: [
                     Text('正在播放', style: theme.textTheme.labelSmall?.copyWith(color: topInk)),
-                    Text(track?.album ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    LinkText(track?.album ?? '',
+                        onTap: track != null && hasPages(track) ? () => openAlbum(context, track) : null,
+                        style: TextStyle(fontWeight: FontWeight.bold, color: topInk)),
                   ]),
                 ),
                 IconButton(

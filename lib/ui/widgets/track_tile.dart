@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
@@ -10,11 +12,14 @@ import '../../theme/app_theme.dart';
 import '../pages/collection_page.dart';
 import '../pages/cover_fix_page.dart';
 import '../pages/missing_songs_page.dart';
+import '../pages/native_name_page.dart';
+import '../../services/native_names.dart';
 import '../pages/pick_replacement_page.dart';
 import 'art_image.dart';
 import 'dialogs.dart';
 import 'edit_track_dialog.dart';
 import 'removal_summary.dart';
+import 'track_links.dart';
 import 'track_selection.dart';
 
 class TrackTile extends ConsumerWidget {
@@ -27,6 +32,7 @@ class TrackTile extends ConsumerWidget {
     this.onRemove,
     this.removeLabel = '從此播放清單移除',
     this.trailing,
+    this.dragHandle,
     this.selectIndex,
   });
 
@@ -37,6 +43,9 @@ class TrackTile extends ConsumerWidget {
   final VoidCallback? onRemove;
   final String removeLabel;
   final Widget? trailing;
+
+  /// Shown last, right of the ⋮ menu (a playlist's reorder handle).
+  final Widget? dragHandle;
 
   /// Row index inside an enclosing [TrackSelectionScope]; enables long-press
   /// (or right-click) selection.
@@ -127,6 +136,7 @@ class TrackTile extends ConsumerWidget {
             icon: const Icon(Icons.more_vert),
             onPressed: () => showTrackMenu(context, ref, track, onRemove: onRemove, removeLabel: removeLabel),
           ),
+        if (dragHandle != null && !selecting) dragHandle!,
       ]),
     );
     // Right-click starts selecting on desktop.
@@ -243,10 +253,20 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
               title: const Text('前往演出者'),
               onTap: () {
                 Navigator.pop(ctx);
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => CollectionPage.artist(track.artist)));
+                openArtist(context, track);
               },
             ),
           ],
+          if (isLocalFile(track))
+            ListTile(
+              leading: const Icon(Icons.folder_open),
+              title: const Text('在資料夾中顯示'),
+              subtitle: Text(Platform.isWindows ? '用檔案總管開啟並選取這首歌' : '在「瀏覽資料夾」打開這首歌所在的資料夾'),
+              onTap: () {
+                Navigator.pop(ctx);
+                showInFolder(context, track);
+              },
+            ),
           if (onRemove != null)
             ListTile(
               leading: const Icon(Icons.remove_circle_outline),
@@ -264,6 +284,16 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
               onTap: () {
                 Navigator.pop(ctx);
                 Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => CoverFixPage(tracks: [track])));
+              },
+            ),
+          if (NativeNames.wants(track))
+            ListTile(
+              leading: const Icon(Icons.translate),
+              title: const Text('找原文歌名'),
+              subtitle: const Text('羅馬拼音或英文的歌名，查日文或中文的原名'),
+              onTap: () {
+                Navigator.pop(ctx);
+                Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => NativeNamePage(tracks: [track])));
               },
             ),
           if (track.source == TrackSource.local || track.source == TrackSource.download)

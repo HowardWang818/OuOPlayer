@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../data/models/track.dart';
+import 'native_names.dart';
 import 'online/itunes.dart';
 import 'song_matcher.dart';
 
@@ -50,14 +51,19 @@ class CoverFinder {
   @visibleForTesting
   static (ITunesSong?, MatchResult) pick(Track t, List<ITunesSong> results) => SongMatcher.best(
         SongKey(t.title, t.artist, durationMs: t.durationMs),
-        results.where((r) => r.artwork != null),
+        // Covers, piano / music-box versions and live takes carry their own artwork.
+        results.where((r) => r.artwork != null && !isOtherVersion('${r.title} ${r.artist}', t.title)),
         (r) => SongKey(r.title, r.artist, durationMs: r.durationMs),
       );
 
   /// Looks up [tracks] one after another; [onHit] gets each result (null
   /// when nothing fits). Stops when [cancelled] returns true.
-  Future<void> findAll(List<Track> tracks, void Function(Track, CoverHit?) onHit, {bool Function()? cancelled}) async {
+  Future<void> findAll(List<Track> tracks, void Function(Track, CoverHit?) onHit,
+      {bool Function()? cancelled, bool Function()? paused}) async {
     for (var i = 0; i < tracks.length; i++) {
+      while ((paused?.call() ?? false) && !(cancelled?.call() ?? false)) {
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
       if (cancelled?.call() ?? false) return;
       CoverHit? hit;
       try {
