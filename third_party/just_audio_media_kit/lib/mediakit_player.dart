@@ -56,8 +56,41 @@ class MediaKitPlayer extends AudioPlayerPlatform {
   /// OuOPlayer patch: sets mpv's `af` (audio filter chain) on every live player.
   static void applyAudioFilter(String filter) {
     for (final p in _live) {
-      p.ready().then((_) => setProperty(p._player, 'af', filter));
+      p.ready().then((_) => setProperty(p._player, 'af', filter)).then((_) => p._replayFilterCommands());
     }
+  }
+
+  /// OuOPlayer patch: a live filter change on every player (see
+  /// [JustAudioMediaKit.sendFilterCommand]).
+  static void sendFilterCommand(String target, String command, String value) {
+    for (final p in _live) {
+      p._sendFilterCommand(target, command, value);
+    }
+  }
+
+  Future<void> _sendFilterCommand(String target, String command, String value) async {
+    final platform = _player.platform;
+    if (platform is! NativePlayer || !_live.contains(this)) return;
+    try {
+      await platform.command(['af-command', 'ouo', command, value, target]);
+    } catch (_) {
+      // No audio chain yet (nothing loaded): sent again once a file loads.
+    }
+  }
+
+  /// mpv builds the filter chain again for each file (and on format
+  /// changes) from the `af` text, so the live values are sent again.
+  void _replayFilterCommands() {
+    void send() {
+      for (final (target, command, value) in JustAudioMediaKit.filterCommands.values) {
+        _sendFilterCommand(target, command, value);
+      }
+    }
+
+    // The chain is built a moment after the file opens: again a little later.
+    send();
+    Future.delayed(const Duration(milliseconds: 500), send);
+    Future.delayed(const Duration(milliseconds: 1500), send);
   }
 
   MediaKitPlayer(super.id) {
@@ -74,17 +107,21 @@ class MediaKitPlayer extends AudioPlayerPlatform {
     _live.add(this);
     final filter = JustAudioMediaKit.audioFilter;
     if (filter.isNotEmpty) {
-      ready().then((_) => setProperty(_player, 'af', filter));
+      ready().then((_) => setProperty(_player, 'af', filter)).then((_) => _replayFilterCommands());
     }
 
     if (JustAudioMediaKit.prefetchPlaylist) {
       setProperty(_player, 'prefetch-playlist', 'yes');
     }
+    // OuOPlayer patch: a same-name .lrc is lyrics, not subtitles for mpv.
+    ready().then((_) => setProperty(_player, 'sub-auto', 'no'));
 
     _streamSubscriptions = [
       _player.stream.duration.listen((duration) {
         if (_currentMedia?.extras?['overrideDuration'] != null) return;
 
+        // OuOPlayer patch: a file is loaded (its filter chain is new).
+        if (duration > Duration.zero) _replayFilterCommands();
         if (_setPosition != null && duration.inSeconds > 0) {
           unawaited(_player.seek(_setPosition!));
           _setPosition = null;
@@ -275,7 +312,14 @@ class MediaKitPlayer extends AudioPlayerPlatform {
     }
 
     _updatePlaybackEvent();
-    final duration = await _loadCompleter?.future;
+    // OuOPlayer patch: mpv sometimes never reports "done buffering" for a
+    // file it opened (seen with some MP3s); don't wait for ever — carry on and
+    // let the app notice the song isn't playing.
+    final duration = await _loadCompleter?.future.timeout(const Duration(seconds: 10), onTimeout: () {
+      _processingState = ProcessingStateMessage.ready;
+      _updatePlaybackEvent();
+      return _duration;
+    });
     return LoadResponse(duration: duration);
   }
 
@@ -408,12 +452,13 @@ class MediaKitPlayer extends AudioPlayerPlatform {
     _logger.info('releasing player resources');
     _mediaOpened = false;
     _live.remove(this);
-    await _player.dispose();
-    // cancel all stream subscriptions
+    // OuOPlayer patch: stop listening first, so a late event (e.g. duration)
+    // can't reach the player after it's gone ("[Player] has been disposed").
     for (final StreamSubscription subscription in _streamSubscriptions) {
-      unawaited(subscription.cancel());
+      await subscription.cancel();
     }
     _streamSubscriptions.clear();
+    await _player.dispose();
   }
 
   /// Converts an [AudioSourceMessage] into a [Media] for playback

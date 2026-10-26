@@ -60,10 +60,12 @@ class Shelf extends StatelessWidget {
 
 /// Compact tile used in the "quick picks" grid at the top of Home.
 class QuickTile extends StatelessWidget {
-  const QuickTile({super.key, required this.leading, required this.title, required this.onTap});
+  const QuickTile({super.key, required this.leading, required this.title, required this.onTap, this.onLongPress, this.pinned = false});
   final Widget leading;
   final String title;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  final bool pinned;
 
   @override
   Widget build(BuildContext context) {
@@ -73,10 +75,16 @@ class QuickTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Row(children: [
           SizedBox(width: 56, height: 56, child: leading),
           const SizedBox(width: 10),
           Expanded(child: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
+          if (pinned)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Icon(Icons.push_pin, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
         ]),
       ),
     );

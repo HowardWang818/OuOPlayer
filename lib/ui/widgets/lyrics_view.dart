@@ -81,8 +81,17 @@ class _LyricsBody extends ConsumerWidget {
     if (track == null) return const SizedBox.shrink();
     final muted = LyricsInk.maybeOf(context)?.soft ?? Theme.of(context).colorScheme.onSurfaceVariant;
     final lyrics = ref.watch(lyricsProvider(LyricsKey(track)));
+    // 重新查詢 keeps the old lyrics while it asks again; show it working instead.
     return lyrics.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
+      skipLoadingOnRefresh: false,
+      skipLoadingOnReload: false,
+      loading: () => Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 12),
+          Text('查詢歌詞中…', style: TextStyle(color: muted)),
+        ]),
+      ),
       error: (e, _) => _Empty(
           track: track,
           retry: true,

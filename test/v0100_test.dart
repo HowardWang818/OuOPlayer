@@ -25,14 +25,29 @@ void main() {
       expect(between, greaterThan(4));
     });
 
-    test('Windows filter chain: equalizer, then normalizer', () {
-      expect(windowsEqFilter(const [0, 0, 0, 0, 0]), '');
-      expect(windowsEqFilter(const [6, 0, 0, 0, -2]), 'equalizer=f=60:t=o:w=2:g=6.0,equalizer=f=14000:t=o:w=2:g=-2.0');
-      expect(windowsAudioFilter(normalize: false, level: NormalizeLevel.normal), '');
-      expect(windowsAudioFilter(normalize: true, level: NormalizeLevel.normal), windowsNormalizeFilter(NormalizeLevel.normal));
-      expect(windowsAudioFilter(normalize: true, level: NormalizeLevel.normal, eq: const [6, 0, 0, 0, 0]),
-          'lavfi=[equalizer=f=60:t=o:w=2:g=6.0,dynaudnorm=f=500:g=31:p=0.9:m=10]');
-      expect(windowsAudioFilter(normalize: false, level: NormalizeLevel.normal, eq: const [0, 0, 0, 0, 0]), '');
+    test('Windows chain: built once, values change live', () {
+      final off = windowsFilterValues(normalize: false, level: NormalizeLevel.normal);
+      // Everything neutral when off: normalizer at peak 1 / gain 1, flat EQ.
+      expect(off, contains(('dynaudnorm@norm', 'p', '1')));
+      expect(off, contains(('dynaudnorm@norm', 'm', '1')));
+      expect(off, contains(('volume@level', 'volume', '0dB')));
+      expect(off, contains(('volume@headroom', 'volume', '-0.0dB')));
+      expect(off, contains(('equalizer@b0', 'g', '0.0')));
+      final on = windowsFilterValues(normalize: true, level: NormalizeLevel.quiet, eq: const [6, 0, 0, 0, -2]);
+      expect(on, contains(('dynaudnorm@norm', 'm', '4')));
+      expect(on, contains(('volume@level', 'volume', '-8dB')));
+      // Half the biggest boost as headroom.
+      expect(on, contains(('volume@headroom', 'volume', '-3.0dB')));
+      expect(on, contains(('equalizer@b4', 'g', '-2.0')));
+      expect(
+          windowsFilterChain(on),
+          '@ouo:lavfi=[dynaudnorm@norm=f=500:g=51:p=0.8:m=4,volume@level=volume=-8dB,volume@headroom=volume=-3.0dB,'
+          'equalizer@b0=f=60:t=o:w=2:g=6.0,equalizer@b1=f=230:t=o:w=2:g=0.0,equalizer@b2=f=910:t=o:w=2:g=0.0,'
+          'equalizer@b3=f=3600:t=o:w=2:g=0.0,equalizer@b4=f=14000:t=o:w=2:g=-2.0,'
+          'alimiter@limit=limit=0.95:attack=10:release=300:level=0]');
+      // Same filters whatever the settings: only values differ.
+      String shape(String chain) => chain.replaceAll(RegExp(r'=-?[0-9.]+(dB)?'), '=');
+      expect(shape(windowsFilterChain(off)), shape(windowsFilterChain(on)));
     });
   });
 

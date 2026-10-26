@@ -5,4 +5,4 @@
      or the whole media notification fails to show. Android Auto tab icons
      (android.resource://…/drawable/car_*) are looked up by name too. -->
 <resources xmlns:tools="http://schemas.android.com/tools"
-    tools:keep="@drawable/ic_stat_music,@drawable/ic_action_favorite,@drawable/ic_action_favorite_border,@drawable/car_*" />
+    tools:keep="@drawable/ic_stat_music,@drawable/ic_action_favorite,@drawable/ic_action_favorite_border,@drawable/ic_action_shuffle,@drawable/ic_action_shuffle_on,@drawable/car_*" />

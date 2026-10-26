@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../data/models/track.dart';
+import '../native_names.dart';
 import '../song_matcher.dart';
 import '../library_scanner.dart';
 import 'lrc.dart';
@@ -69,11 +70,24 @@ double scriptShare(String text) {
 /// Whether a song's title or artist is written in CJK / kana / hangul.
 bool hasNativeScript(Track t) => _nativeChar.hasMatch(t.title) || _nativeChar.hasMatch(t.artist);
 
+/// A word made only of Japanese syllables (ka, shi, tsu, kyo, n…).
+final _romajiWord = RegExp(r'^(?:[bcdfghjkmnprstwyz]{0,3}[aeiou]|n)+$');
+
+/// Whether [text] is Japanese written in romaji: Latin letters only, and
+/// nearly every word a run of Japanese syllables. Measured on LRCLIB:
+/// romaji lyrics 0.88–1.0, English songs 0.32–0.45.
+bool looksRomaji(String text) {
+  if (scriptShare(text) >= 0.15) return false;
+  final words = RegExp(r'[a-z]+').allMatches(text.replaceAll(RegExp(r'\[[^\]]*\]'), '').toLowerCase()).map((m) => m[0]!).toList();
+  if (words.length < 20) return false;
+  return words.where(_romajiWord.hasMatch).length / words.length >= 0.75;
+}
+
 /// Finds lyrics, in order: the file's own tags, a same-name .lrc next to it,
 /// the local cache, then LRCLIB (lrclib.net, free, no key) if allowed.
 /// Lyrics are only shown in the app; nothing is written to music files.
 class LyricsService {
-  LyricsService(this._scanner, {Dio? dio})
+  LyricsService(this._scanner, {Dio? dio, this.nativeName})
       : _dio = dio ??
             Dio(BaseOptions(
               connectTimeout: const Duration(seconds: 30),
@@ -83,6 +97,10 @@ class LyricsService {
 
   final LibraryScanner _scanner;
   final Dio _dio;
+
+  /// The song's Japanese names (iTunes Japan) for songs tagged in romaji,
+  /// whose LRCLIB entries under that name are romaji too.
+  final Future<NativeName?> Function(Track)? nativeName;
   static const _api = 'https://lrclib.net/api';
 
   /// "Nothing on LRCLIB" is remembered this long, then asked again.
@@ -141,7 +159,18 @@ class LyricsService {
           final at = DateTime.fromMillisecondsSinceEpoch((j['at'] as int?) ?? 0);
           if (DateTime.now().difference(at) < notFoundFor) return null;
         } else {
-          return Lyrics.parse(j['lrc'] as String, source: j['source'] as String? ?? 'LRCLIB');
+          final lrc = j['lrc'] as String;
+          final cached = Lyrics.parse(lrc, source: j['source'] as String? ?? 'LRCLIB');
+          // Romaji saved before v1.2.0 searched by the Japanese name too:
+          // once, then kept.
+          if (!online || !_recheck(t, j)) return cached;
+          final r = await _lookup(t).catchError((_) => null);
+          if (r != null && r.hasLyrics && !looksRomaji(r.text)) {
+            await _save(cache, r);
+            return r.toLyrics();
+          }
+          await cache.writeAsString(jsonEncode({...j, 'nativeChecked': true}));
+          return cached;
         }
       } catch (_) {}
     }
@@ -169,13 +198,20 @@ class LyricsService {
       final j = jsonDecode(await cache.readAsString()) as Map;
       final lrc = j['lrc'];
       if (lrc is! String) return false;
-      // Romaji picked automatically for a Japanese / Chinese title: try again
-      // for the original. Lyrics the user chose by hand are kept.
-      if (j['manual'] != true && hasNativeScript(t) && scriptShare(lrc) < 0.15) return false;
-      return true;
+      // Romaji picked automatically: try again for the original (once).
+      // Lyrics the user chose by hand are kept.
+      return !_recheck(t, j);
     } catch (_) {
       return false;
     }
+  }
+
+  /// Cached romaji (not chosen by hand) not yet looked up by the song's
+  /// Japanese name.
+  bool _recheck(Track t, Map j) {
+    final lrc = j['lrc'];
+    if (lrc is! String || j['manual'] == true || j['nativeChecked'] == true || t.source == TrackSource.podcast) return false;
+    return looksRomaji(lrc) || (hasNativeScript(t) && scriptShare(lrc) < 0.15);
   }
 
   /// 找歌詞 (batch, or after a download): asks LRCLIB now, even if it had
@@ -248,7 +284,7 @@ class LyricsService {
           if (durationMs != null) 'duration': (durationMs / 1000).round(),
         });
         exact = LrclibResult.fromJson(res.data);
-        if (exact != null && (exact.synced ?? '').trim().isNotEmpty) return exact;
+        if (exact != null && (exact.synced ?? '').trim().isNotEmpty && !looksRomaji(exact.text)) return exact;
       } on DioException catch (e) {
         if (e.response?.statusCode != 404) rethrow;
       }
@@ -275,7 +311,19 @@ class LyricsService {
           if (LrclibResult.fromJson(j) case final r? when r.hasLyrics && acceptLoose(r, title: clean, artist: artist, durationMs: durationMs)) r,
       ]);
     }
-    return pickBest([if (exact != null && exact.hasLyrics) exact, ...found], durationMs: durationMs, preferNative: hasNativeScript(t));
+    final all = [if (exact != null && exact.hasLyrics) exact, ...found];
+    final best = pickBest(all, durationMs: durationMs, preferNative: hasNativeScript(t));
+    if (best != null && !looksRomaji(best.text)) return best;
+    // Only romaji (or nothing) under a romaji name: LRCLIB files the original
+    // under the Japanese name, so ask for that too.
+    final native = nativeName == null || !NativeNames.wants(t) ? null : await nativeName!(t).catchError((_) => null);
+    if (native == null) return best;
+    final title2 = SongMatcher.searchTitle(native.title, native.artist);
+    final artist2 = SongMatcher.searchArtist(native.artist);
+    final more = (await search(title2, artist2))
+        .where((r) => acceptLoose(r, title: title2, artist: native.artist, durationMs: durationMs))
+        .toList();
+    return pickBest([...all, ...more], durationMs: durationMs, preferNative: true);
   }
 
   /// A search hit counts when the title is the same after cleaning, and the
@@ -328,6 +376,6 @@ class LyricsService {
     final lrc = r == null ? null : ((r.synced ?? '').trim().isNotEmpty ? r.synced : r.plain);
     await f.writeAsString(jsonEncode(lrc == null
         ? {'none': true, 'at': DateTime.now().millisecondsSinceEpoch}
-        : {'lrc': lrc, 'source': 'LRCLIB', if (manual) 'manual': true}));
+        : {'lrc': lrc, 'source': 'LRCLIB', if (manual) 'manual': true, 'nativeChecked': true}));
   }
 }

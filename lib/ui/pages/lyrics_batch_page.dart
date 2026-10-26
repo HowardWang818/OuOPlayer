@@ -6,6 +6,7 @@ import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../services/lyrics/lyrics_service.dart';
 import '../widgets/art_image.dart';
+import '../widgets/lookup_confirm.dart';
 import '../widgets/lyrics_view.dart';
 
 /// Songs whose lyrics a batch can look up (not online streams or podcasts).
@@ -15,23 +16,16 @@ List<Track> lyricsCandidates(Iterable<Track> tracks) => [
     ];
 
 /// Asks first, then opens the batch page.
-Future<void> findLyrics(BuildContext context, List<Track> tracks, {required String title}) async {
-  final list = lyricsCandidates(tracks);
-  if (list.isEmpty) return;
-  final ok = await showDialog<bool>(
-    context: context,
-    useRootNavigator: true,
-    builder: (ctx) => AlertDialog(
-      title: Text('替 ${list.length} 首找歌詞？'),
-      content: const Text('已經有歌詞的歌會略過。其他的會從 LRCLIB（免費歌詞資料庫）一首一首查，'
-          '只會送出歌名、歌手、專輯和長度。每首大約 1 秒，找到的歌詞存在手機上。'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('開始')),
-      ],
-    ),
-  );
-  if (ok == true && context.mounted) {
+Future<void> findLyrics(BuildContext context, WidgetRef ref, List<Track> tracks, {required String title}) async {
+  final all = lyricsCandidates(tracks);
+  if (all.isEmpty) return;
+  final list = await confirmLookup(context, ref,
+      kind: 'lyrics',
+      tracks: all,
+      title: (n) => '替 $n 首找歌詞？',
+      message: (_) => '已經有歌詞的歌會略過。其他的會從 LRCLIB（免費歌詞資料庫）一首一首查，'
+          '只會送出歌名、歌手、專輯和長度。每首大約 1 秒，找到的歌詞存在手機上。');
+  if (list != null && context.mounted) {
     await Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => LyricsBatchPage(tracks: list, title: title)));
   }
 }
@@ -50,7 +44,7 @@ class LyricsBatchPage extends ConsumerStatefulWidget {
 class _LyricsBatchPageState extends ConsumerState<LyricsBatchPage> {
   int _done = 0, _found = 0, _had = 0;
   final _missing = <Track>[];
-  bool _stop = false, _finished = false;
+  bool _stop = false, _finished = false, _paused = false;
   String? _current, _error;
 
   /// Songs being tried again after LRCLIB was busy.
@@ -68,20 +62,28 @@ class _LyricsBatchPageState extends ConsumerState<LyricsBatchPage> {
     // real "no lyrics" puts a song on the not-found list.
     final later = <Track>[];
     var failures = 0;
+    final db = ref.read(dbProvider);
     Future<bool> one(Track t, {required bool lastTry}) async {
+      while (_paused && !_stop && mounted) {
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+      if (_stop || !mounted) return false;
       setState(() => _current = t.title);
       try {
         if (await lyrics.hasLyrics(t)) {
           _had++;
+          await db.setLookupMiss('lyrics', t.id, false);
         } else {
           final ok = await lyrics.fetchOnline(t);
           ok ? _found++ : _missing.add(t);
+          await db.setLookupMiss('lyrics', t.id, !ok);
           failures = 0;
           await Future.delayed(const Duration(milliseconds: 1500));
         }
       } on DioException catch (e) {
         if (!LyricsService.isTemporary(e)) {
           _missing.add(t);
+          await db.setLookupMiss('lyrics', t.id, true);
         } else if (lastTry) {
           _missing.add(t);
         } else {
@@ -135,6 +137,8 @@ class _LyricsBatchPageState extends ConsumerState<LyricsBatchPage> {
               running
                   ? (_stop
                       ? '停止中…'
+                      : _paused
+                      ? '已暫停：$_done / $total'
                       : _done >= total && _retrying > 0
                           ? 'LRCLIB 剛剛太忙，重試 $_retrying 首：${_current ?? ''}'
                           : '$_done / $total：${_current ?? ''}')
@@ -150,10 +154,11 @@ class _LyricsBatchPageState extends ConsumerState<LyricsBatchPage> {
           if (running)
             Align(
               alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                onPressed: _stop ? null : () => setState(() => _stop = true),
-                icon: const Icon(Icons.stop),
-                label: const Text('停止'),
+              child: LookupControls(
+                paused: _paused,
+                stopping: _stop,
+                onPause: () => setState(() => _paused = !_paused),
+                onStop: () => setState(() => _stop = true),
               ),
             ),
           if (_missing.isNotEmpty) ...[
@@ -169,6 +174,7 @@ class _LyricsBatchPageState extends ConsumerState<LyricsBatchPage> {
                 onTap: () async {
                   // Found by hand: off the list.
                   if (await showLyricsSearch(context, ref, t) && mounted) {
+                    await ref.read(dbProvider).setLookupMiss('lyrics', t.id, false);
                     setState(() {
                       _missing.remove(t);
                       _found++;

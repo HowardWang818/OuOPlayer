@@ -6,13 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../../../providers/providers.dart';
-import '../../../services/cover_finder.dart';
 import '../../../services/file_trash.dart';
 import '../../../services/missing_files.dart';
 import '../../widgets/dialogs.dart';
 import '../../widgets/manage_media_tile.dart';
 import '../../widgets/missing_files_dialog.dart';
 import '../cover_fix_page.dart';
+import '../native_name_page.dart';
 import '../settings_page.dart';
 import 'section_page.dart';
 
@@ -96,6 +96,13 @@ class LibrarySettingsPage extends ConsumerWidget {
         value: s.deletePermanently,
         onChanged: n.setDeletePermanently,
       ),
+      if (s.homeHidden.isNotEmpty)
+        ListTile(
+          leading: const Icon(Icons.restore),
+          title: const Text('還原首頁捷徑'),
+          subtitle: Text('從首頁移除了 ${s.homeHidden.length} 個捷徑，選要放回首頁的'),
+          onTap: () => restoreHomeShortcuts(context, ref),
+        ),
       settingsSubheader(context, '封面與歌手圖片'),
       ListTile(
         leading: const Icon(Icons.image_search_outlined),
@@ -103,35 +110,72 @@ class LibrarySettingsPage extends ConsumerWidget {
         subtitle: const Text('替沒有封面、或封面是影片截圖的歌，從 iTunes 找正式的正方形封面（會先預覽）'),
         onTap: () async {
           final all = await ref.read(dbProvider).tracks();
-          final want = all.where(CoverFinder.wantsCover).toList();
-          if (!context.mounted) return;
-          if (want.isEmpty) {
-            toast(context, '沒有需要找封面的歌曲');
-            return;
-          }
-          final ok = await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: Text('替 ${want.length} 首找封面？'),
-              content: Text('iTunes 每分鐘大約只能查 20 次，大約需要 ${(want.length * 3 / 60).ceil()} 分鐘。找完會先讓你預覽，確認後才更換。'),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('開始')),
-              ],
-            ),
-          );
-          if (ok == true && context.mounted) {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => CoverFixPage(tracks: want)));
-          }
+          if (context.mounted) await findCovers(context, ref, all);
+        },
+      ),
+      ListTile(
+        leading: const Icon(Icons.translate),
+        title: const Text('找原文歌名'),
+        subtitle: const Text('羅馬拼音或英文的歌名（例如 YouTube Music 下載的「Yoru ni Kakeru」）改回日文或中文的原名（會先預覽）'),
+        onTap: () async {
+          final all = await ref.read(dbProvider).tracks();
+          if (context.mounted) await findNativeNames(context, ref, all);
         },
       ),
       SwitchListTile(
         secondary: const Icon(Icons.person_search_outlined),
         title: const Text('自動上網找歌手圖片'),
-        subtitle: const Text('從 Deezer 下載歌手照片（免費，只會送出歌手名字），存在手機上'),
+        subtitle: Text('從 Deezer 下載歌手照片（免費，只會送出歌手名字），存在${Platform.isAndroid ? '手機' : '電腦'}上'),
         value: s.artistImagesOnline,
         onChanged: n.setArtistImagesOnline,
       ),
     ]);
   }
+}
+
+/// Lists the shortcuts taken off the home page; the ticked ones go back.
+Future<void> restoreHomeShortcuts(BuildContext context, WidgetRef ref) async {
+  final hidden = [...ref.read(settingsProvider).homeHidden];
+  final playlists = await ref.read(dbProvider).playlists();
+  if (!context.mounted) return;
+  String label(String k) {
+    if (k.startsWith('playlist:')) {
+      final id = int.tryParse(k.substring(9));
+      final name = playlists.where((p) => p.id == id).firstOrNull?.name;
+      return name == null ? '（已刪除的播放清單）' : '播放清單：$name';
+    }
+    if (k.startsWith('album:')) return '專輯：${k.substring(6)}';
+    return k;
+  }
+
+  final picked = <String>{};
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) => AlertDialog(
+        title: const Text('還原首頁捷徑'),
+        content: SizedBox(
+          width: 400,
+          child: ListView(shrinkWrap: true, children: [
+            for (final k in hidden)
+              CheckboxListTile(
+                value: picked.contains(k),
+                onChanged: (v) => setState(() => v == true ? picked.add(k) : picked.remove(k)),
+                title: Text(label(k), maxLines: 2, overflow: TextOverflow.ellipsis),
+              ),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(onPressed: picked.isEmpty ? null : () => Navigator.pop(ctx, true), child: Text('還原 ${picked.length} 個')),
+        ],
+      ),
+    ),
+  );
+  if (ok != true || !context.mounted) return;
+  final n = ref.read(settingsProvider.notifier);
+  for (final k in picked) {
+    n.setHomeHidden(k, false);
+  }
+  toast(context, '已還原 ${picked.length} 個首頁捷徑');
 }

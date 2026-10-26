@@ -67,6 +67,13 @@ class _AppShellState extends ConsumerState<AppShell> {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
+        // The player (or another page) opened above the shell closes first:
+        // back sometimes reaches the shell while it's still covered.
+        final route = ModalRoute.of(context);
+        if (route != null && !route.isCurrent) {
+          Navigator.of(context, rootNavigator: true).maybePop();
+          return;
+        }
         final nav = _navKey.currentState;
         if (nav != null && nav.canPop()) {
           nav.pop();

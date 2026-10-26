@@ -86,10 +86,11 @@ class ITunesSearch {
   }
 
   /// 200 is the API's maximum; its offset parameter is ignored, so this is all we can get.
-  Future<List<ITunesSong>> search(String query, {int limit = 200}) async {
+  /// [store] picks another storefront (e.g. 'JP' for Japanese song names).
+  Future<List<ITunesSong>> search(String query, {int limit = 200, String? store}) async {
     final res = await _dio.get<String>(
       'https://itunes.apple.com/search',
-      queryParameters: {'term': query, 'entity': 'song', 'limit': limit, 'country': country},
+      queryParameters: {'term': query, 'entity': 'song', 'limit': limit, 'country': store ?? country},
       // Served as text/javascript, so parse it ourselves.
       options: Options(responseType: ResponseType.plain),
     );

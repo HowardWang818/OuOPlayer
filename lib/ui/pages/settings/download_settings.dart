@@ -36,10 +36,18 @@ class DownloadSettingsPage extends ConsumerWidget {
           onChanged: n.setWifiWarning,
         ),
       SwitchListTile(
+        secondary: const Icon(Icons.translate),
+        title: const Text('下載時找原文歌名'),
+        subtitle: const Text('羅馬拼音或英文的歌名（例如「Yoru ni Kakeru」）下載完改回日文或中文的原名，只有很確定時才改。每首多花幾秒'),
+        value: s.nativeNamesOnDownload,
+        onChanged: n.setNativeNamesOnDownload,
+      ),
+      SwitchListTile(
         secondary: const Icon(Icons.system_update_alt),
         title: const Text('自動更新 yt-dlp'),
         subtitle: Text(
-            '每 7 天在背景檢查一次${s.ytLastUpdate == null ? '' : '（上次：${s.ytLastUpdate!.month}/${s.ytLastUpdate!.day}）'}。開啟「沒有 Wi-Fi 時下載前提醒」時只在 Wi-Fi 下更新'),
+            '每 7 天在背景檢查一次${s.ytLastUpdate == null ? '' : '（上次：${s.ytLastUpdate!.month}/${s.ytLastUpdate!.day}）'}'
+            '${Platform.isAndroid ? '。開啟「沒有 Wi-Fi 時下載前提醒」時只在 Wi-Fi 下更新' : ''}'),
         value: s.ytAutoUpdate,
         onChanged: n.setYtAutoUpdate,
       ),

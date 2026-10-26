@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -65,10 +67,11 @@ class EqualizerPage extends ConsumerWidget {
             ]),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text('Android 會依手機支援的頻段套用，效果可能因手機和耳機而略有不同。', style: TextStyle(fontSize: 12, color: muted)),
-        ),
+        if (Platform.isAndroid)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text('Android 會依手機支援的頻段套用，效果可能因手機和耳機而略有不同。', style: TextStyle(fontSize: 12, color: muted)),
+          ),
       ]),
     );
   }

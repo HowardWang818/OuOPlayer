@@ -26,7 +26,7 @@ class LyricsSettingsPage extends ConsumerWidget {
       SwitchListTile(
         secondary: const Icon(Icons.download_done_outlined),
         title: const Text('下載歌曲時自動找歌詞'),
-        subtitle: const Text('下載完成後就先從 LRCLIB 找好歌詞，第一次播放、離線或在車上都看得到'),
+        subtitle: Text('下載完成後就先從 LRCLIB 找好歌詞，第一次播放${Platform.isAndroid ? '、離線或在車上' : '或離線時'}都看得到'),
         value: s.lyricsOnDownload,
         onChanged: n.setLyricsOnDownload,
       ),
@@ -36,7 +36,7 @@ class LyricsSettingsPage extends ConsumerWidget {
         subtitle: const Text('一次替所有還沒有歌詞的歌找歌詞。也可以在播放清單的 ⋮ 或選取歌曲後使用'),
         onTap: () async {
           final all = await ref.read(dbProvider).tracks();
-          if (context.mounted) await findLyrics(context, all, title: '音樂庫');
+          if (context.mounted) await findLyrics(context, ref, all, title: '音樂庫');
         },
       ),
       ListTile(
@@ -70,13 +70,14 @@ class LyricsSettingsPage extends ConsumerWidget {
           value: s.lyricsInCar,
           onChanged: n.setLyricsInCar,
         ),
-      SwitchListTile(
-        secondary: const Icon(Icons.subtitles_outlined),
-        title: const Text('在通知列和鎖定畫面顯示歌詞'),
-        subtitle: const Text('有同步歌詞時，歌手那一行會換成正在唱的歌詞'),
-        value: s.lyricsInMetadata,
-        onChanged: n.setLyricsInMetadata,
-      ),
+      if (Platform.isAndroid)
+        SwitchListTile(
+          secondary: const Icon(Icons.subtitles_outlined),
+          title: const Text('在通知列和鎖定畫面顯示歌詞'),
+          subtitle: const Text('有同步歌詞時，歌手那一行會換成正在唱的歌詞'),
+          value: s.lyricsInMetadata,
+          onChanged: n.setLyricsInMetadata,
+        ),
     ]);
   }
 }

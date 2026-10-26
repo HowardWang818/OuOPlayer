@@ -8,6 +8,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' show sqfliteFfiInit, databaseFactoryFfi;
 
 import '../../services/artists.dart';
+import '../../services/loudness.dart' show SongLoudness;
 import '../models/track.dart';
 
 /// Thin sqflite wrapper. Every write emits on [changes] so providers can refresh.
@@ -53,7 +54,7 @@ class AppDatabase {
     return AppDatabase._(db);
   }
 
-  static const schemaVersion = 6;
+  static const schemaVersion = 8;
 
   /// Schema changes since version 1; existing data is kept.
   static Future<void> migrate(Database db, int from, int to) async {
@@ -102,7 +103,43 @@ class AppDatabase {
           'SELECT h.track_id, h.played_at, COALESCE(t.duration_ms, 0), t.source, 1 FROM history h LEFT JOIN tracks t ON t.id = h.track_id '
           'WHERE h.track_id IS NOT NULL');
     }
+    if (from < 7 && to >= 7) {
+      // v1.3.0: songs 找歌詞 / 找封面 / 找日文歌名 found nothing for, skipped
+      // the next time a whole list is looked up.
+      await db.execute('CREATE TABLE lookup_misses(kind TEXT NOT NULL, track_id TEXT NOT NULL, at INTEGER, PRIMARY KEY(kind, track_id))');
+    }
+    if (from < 8 && to >= 8) {
+      // v1.5.0: each song's measured loudness (LUFS) and peak, for one fixed
+      // 音量平衡 gain per song.
+      await db.execute('CREATE TABLE track_loudness(track_id TEXT PRIMARY KEY, lufs REAL NOT NULL, peak REAL NOT NULL, at INTEGER)');
+    }
   }
+
+  // ---------- loudness ----------
+  Future<SongLoudness?> loudness(String trackId) async {
+    final rows = await db.query('track_loudness', where: 'track_id = ?', whereArgs: [trackId], limit: 1);
+    if (rows.isEmpty) return null;
+    return SongLoudness((rows.first['lufs'] as num).toDouble(), (rows.first['peak'] as num).toDouble());
+  }
+
+  Future<Set<String>> loudnessIds() async =>
+      {for (final r in await db.query('track_loudness', columns: ['track_id'])) r['track_id'] as String};
+
+  Future<void> setLoudness(String trackId, double lufs, double peak) => db.insert(
+      'track_loudness', {'track_id': trackId, 'lufs': lufs, 'peak': peak, 'at': DateTime.now().millisecondsSinceEpoch},
+      conflictAlgorithm: ConflictAlgorithm.replace);
+
+  // ---------- lookup misses ----------
+  Future<Set<String>> lookupMisses(String kind) async {
+    final rows = await db.query('lookup_misses', columns: ['track_id'], where: 'kind = ?', whereArgs: [kind]);
+    return {for (final r in rows) r['track_id'] as String};
+  }
+
+  /// Remembers (or forgets) that [kind] found nothing for the song.
+  Future<void> setLookupMiss(String kind, String trackId, bool missed) => missed
+      ? db.insert('lookup_misses', {'kind': kind, 'track_id': trackId, 'at': DateTime.now().millisecondsSinceEpoch},
+          conflictAlgorithm: ConflictAlgorithm.replace)
+      : db.delete('lookup_misses', where: 'kind = ? AND track_id = ?', whereArgs: [kind, trackId]);
 
   // ---------- settings ----------
   Future<Map<String, String>> allSettings() async {

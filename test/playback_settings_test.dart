@@ -12,13 +12,9 @@ void main() {
     expect(fadeFactor(const Duration(seconds: -3)), 0.0);
   });
 
-  test('each normalization strength maps to its own mpv filter', () {
-    final filters = NormalizeLevel.values.map(windowsNormalizeFilter).toSet();
-    expect(filters, hasLength(3));
-    for (final f in filters) {
-      expect(f, startsWith('lavfi=[dynaudnorm='));
-      expect(f, endsWith(']'));
-    }
+  test('each normalization strength has its own mpv values', () {
+    final values = {for (final l in NormalizeLevel.values) windowsFilterValues(normalize: true, level: l).toString()};
+    expect(values, hasLength(3));
   });
 
   test('playback option lists include the defaults', () {
