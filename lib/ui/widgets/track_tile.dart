@@ -223,20 +223,15 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
               showAddToPlaylist(context, ref, [track]);
             },
           ),
-          ListTile(
-            leading: const Icon(Icons.queue_play_next),
-            title: const Text('下一首播放'),
-            onTap: () {
-              Navigator.pop(ctx);
-              handler.playNext(track);
-            },
-          ),
+          // Only 加入佇列 (like Spotify): it plays after the current song and
+          // the ones queued before, so 「下一首播放」 isn't needed.
           ListTile(
             leading: const Icon(Icons.queue_music),
             title: const Text('加入佇列'),
-            onTap: () {
+            onTap: () async {
               Navigator.pop(ctx);
-              handler.enqueue([track]);
+              await handler.enqueue([track]);
+              if (context.mounted) toast(context, '已加入佇列');
             },
           ),
           if (track.source != TrackSource.url && track.source != TrackSource.podcast) ...[

@@ -585,20 +585,6 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     _scheduleSave();
   }
 
-  Future<void> playNext(Track t) async {
-    if (_tracks.isEmpty) return playTracks([t]);
-    final at = (player.currentIndex ?? -1) + 1;
-    if (_shuffled) {
-      final cur = currentTrack;
-      final i = cur == null ? -1 : _unshuffled.indexWhere((x) => identical(x, cur));
-      _unshuffled.insert(i + 1, t);
-    }
-    _tracks.insert(at, t);
-    await player.insertAudioSource(at, _source(t));
-    queue.add(_tracks.map(_item).toList());
-    _scheduleSave();
-  }
-
   /// 加入佇列: after the current song and the songs queued before (Spotify's
   /// queue), not at the end of the list.
   Future<void> enqueue(List<Track> list) async {
