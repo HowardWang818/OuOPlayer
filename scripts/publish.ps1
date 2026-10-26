@@ -18,7 +18,10 @@
   powershell -ExecutionPolicy Bypass -File scripts\publish.ps1
   powershell -ExecutionPolicy Bypass -File scripts\publish.ps1 -SkipGitHub
 #>
-param([switch]$SkipGitHub, [switch]$SkipR2)
+# -Replace: publish the same version again (only when the user asked to
+# overwrite it): the APKs and latest.json are replaced, the GitHub Release
+# gets the new APKs and notes.
+param([switch]$SkipGitHub, [switch]$SkipR2, [switch]$Replace)
 
 $ErrorActionPreference = 'Stop'
 $project = Split-Path -Parent $PSScriptRoot
@@ -62,7 +65,7 @@ if (-not $SkipR2) {
     $ErrorActionPreference = 'Stop'
     # (Windows PowerShell returns a JSON array as one object: unrolled with ForEach.)
     if ($LASTEXITCODE -eq 0 -and (Test-Path $versionsFile)) { $versions = @(Get-Content $versionsFile -Raw | ConvertFrom-Json | ForEach-Object { $_ }) }
-    if ($versions -contains $version) { throw "$tag is already on the update server." }
+    if (($versions -contains $version) -and -not $Replace) { throw "$tag is already on the update server." }
 
     $apks = [ordered]@{}
     foreach ($abi in $abis) {
@@ -84,7 +87,7 @@ if (-not $SkipR2) {
     Put 'latest.json' $latestFile 'application/json; charset=utf-8'
 
     # Only the newest versions stay on R2.
-    $versions = @($versions) + $version
+    if ($versions -notcontains $version) { $versions = @($versions) + $version }
     $old = @()
     if ($versions.Count -gt $keep) { $old = $versions[0..($versions.Count - $keep - 1)] }
     foreach ($v in $old) {
@@ -101,8 +104,15 @@ if (-not $SkipR2) {
 if (-not $SkipGitHub) {
     Write-Host "== GitHub Release $tag" -ForegroundColor Cyan
     $files = foreach ($abi in $abis) { Join-Path $apkDir "OuOPlayer-$version-$abi.apk" }
-    gh release create $tag @files --repo HowardWang818/OuOPlayer --title "OuOPlayer $version" --notes-file $notesFile --verify-tag
-    if ($LASTEXITCODE -ne 0) { throw 'gh release create failed' }
+    if ($Replace) {
+        gh release upload $tag @files --repo HowardWang818/OuOPlayer --clobber
+        if ($LASTEXITCODE -ne 0) { throw 'gh release upload failed' }
+        gh release edit $tag --repo HowardWang818/OuOPlayer --notes-file $notesFile
+        if ($LASTEXITCODE -ne 0) { throw 'gh release edit failed' }
+    } else {
+        gh release create $tag @files --repo HowardWang818/OuOPlayer --title "OuOPlayer $version" --notes-file $notesFile --verify-tag
+        if ($LASTEXITCODE -ne 0) { throw 'gh release create failed' }
+    }
 }
 
 Remove-Item -Recurse -Force $tmp
