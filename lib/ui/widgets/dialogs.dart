@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
+import '../../providers/sync_provider.dart' show offerSync;
 import 'art_image.dart';
 
 Future<String?> promptText(BuildContext context, {required String title, String hint = '', String initial = '', String ok = '確定'}) {
@@ -47,6 +48,7 @@ Future<void> showAddToPlaylist(BuildContext context, WidgetRef ref, List<Track> 
             final id = await db.createPlaylist(name.isEmpty ? '我的播放清單 #${lists.length + 1}' : name);
             await db.addToPlaylist(id, tracks, allowDuplicates: allow);
             if (context.mounted) _toast(context, '已加入「${name.isEmpty ? '我的播放清單 #${lists.length + 1}' : name}」');
+            if (context.mounted) await offerSync(context, ref, id);
           },
         ),
         for (final pl in lists)

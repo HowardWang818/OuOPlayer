@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,6 +7,7 @@ import '../../providers/providers.dart';
 import '../../services/artist_images.dart';
 import '../../services/storage_usage.dart';
 import '../widgets/dialogs.dart';
+import 'settings/section_page.dart';
 
 /// 儲存空間: how much space OuOPlayer's own caches use, and clearing them
 /// (after a warning). Music files are never touched here.
@@ -65,9 +68,7 @@ class _StoragePageState extends ConsumerState<StoragePage> {
   Widget build(BuildContext context) {
     final total = _sizes.values.fold<int>(0, (a, b) => a + b);
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
-    return Scaffold(
-      appBar: AppBar(title: const Text('儲存空間')),
-      body: ListView(children: [
+    return SettingsSectionPage(title: '儲存空間', children: [
         ListTile(
           title: const Text('OuOPlayer 的快取'),
           subtitle: Text(_sizes.length < CacheKind.values.length ? '計算中…' : '共 ${formatBytes(total)}（不含音樂檔案）'),
@@ -84,9 +85,10 @@ class _StoragePageState extends ConsumerState<StoragePage> {
             title: Text(k.label),
             subtitle: Text('${_sizes[k] == null ? '計算中…' : formatBytes(_sizes[k]!)}\n${k.description}', style: TextStyle(color: muted)),
             isThreeLine: true,
-            trailing: TextButton(onPressed: _busy || (_sizes[k] ?? 0) == 0 ? null : () => _clear(k), child: const Text('清除')),
+            trailing: Platform.isWindows
+                ? SettingButton('清除', onPressed: _busy || (_sizes[k] ?? 0) == 0 ? null : () => _clear(k))
+                : TextButton(onPressed: _busy || (_sizes[k] ?? 0) == 0 ? null : () => _clear(k), child: const Text('清除')),
           ),
-      ]),
-    );
+      ]);
   }
 }

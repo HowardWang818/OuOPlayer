@@ -12,7 +12,12 @@ import 'missing_songs.dart';
 import 'playlist_import.dart';
 
 /// Settings that never go into a backup: secrets and per-device state.
-const _privateSettings = {'youtube_api_key', 'last_session', 'auto_backup_dir', 'auto_backup_last', 'update_last_check'};
+const _privateSettings = {
+  'youtube_api_key', 'last_session', 'last_music_session', 'auto_backup_dir', 'auto_backup_last', 'update_last_check',
+  // Google Drive sync: the sign-in and this device's own sync state.
+  'gdrive_refresh', 'sync_signed_in', 'sync_device_id', 'sync_last', 'sync_email', 'sync_base', 'sync_remote_base', 'sync_stamps',
+  'sync_requests', 'sync_history_seen', 'sync_history_sent', 'sync_library_sent', 'sync_resume_seen', 'sync_declined', 'sync_skip', 'start_with_windows', 'sync_pushes', 'sync_cloud_library', 'gdrive_file_scope',
+};
 
 /// Builds a backup of everything the user made: playlists (with custom
 /// covers), folders, likes, play counts, podcast subscriptions and progress,

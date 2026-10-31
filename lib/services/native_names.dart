@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import '../data/db/database.dart';
@@ -163,6 +165,26 @@ class NativeNames {
       addedAt: t.addedAt,
     );
     await db.updateTrackInfo(updated);
+    // Remembered for Google Drive sync: the same song on another device gets the same name.
+    await rememberRename(db, t, updated);
     return updated;
+  }
+
+  /// Adds a rename to the list sync shares ('sync_names': original song → names).
+  static Future<void> rememberRename(AppDatabase db, Track from, Track to) async {
+    final raw = (await db.allSettings())['sync_names'];
+    Map<String, Object?> all;
+    try {
+      all = raw == null || raw.isEmpty ? {} : (jsonDecode(raw) as Map).cast<String, Object?>();
+    } catch (_) {
+      all = {};
+    }
+    all['${foldText(from.title)}|${foldText(from.artist)}'] = {
+      'from': {'title': from.title, 'artist': from.artist, 'ms': from.durationMs},
+      'title': to.title,
+      'artist': to.artist,
+      'album': to.album,
+    };
+    await db.setSetting('sync_names', jsonEncode(all));
   }
 }

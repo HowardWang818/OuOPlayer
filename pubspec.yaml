@@ -1,7 +1,7 @@
 name: ouoplayer
 description: "OuOPlayer - a Spotify-style music player for Android and Windows."
 publish_to: 'none'
-version: 1.5.0+56
+version: 1.14.3+80
 
 environment:
   sdk: ^3.6.0
@@ -31,11 +31,18 @@ dependencies:
   url_launcher: ^6.3.3
   rapidfuzz: ^0.1.1
   media_kit_libs_windows_video: ^1.0.11
+  google_sign_in: ^7.2.0
+  tray_manager: 0.5.0
+  window_manager: ^0.5.2
+  screen_retriever: ^0.2.0
 
 dependency_overrides:
   # Patched copy that lets us set mpv's audio filter (volume normalization on Windows).
   just_audio_media_kit:
     path: third_party/just_audio_media_kit
+  # Patched copy: keyboard media keys reach the app (windows/audio_service_win_plugin.cpp).
+  audio_service_win:
+    path: third_party/audio_service_win
 
 dev_dependencies:
   flutter_test:
@@ -51,6 +58,12 @@ flutter:
     # The two choices in 設定 → 關於與更新 → App 圖示.
     - assets/icon/app_icon_dark.png
     - assets/icon/app_icon_light.png
+    - assets/icon/tray.ico
+  fonts:
+    # Windows: song titles and artists (設定 → 播放 → 歌名字體).
+    - family: NotoSansTC
+      fonts:
+        - asset: assets/fonts/NotoSansTC-VF.ttf
 
 flutter_launcher_icons:
   android: true

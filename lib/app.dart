@@ -20,9 +20,11 @@ import 'services/ytdlp_auto_update.dart';
 import 'theme/app_theme.dart';
 import 'ui/shell/app_shell.dart';
 import 'providers/auto_backup_provider.dart';
+import 'providers/sync_provider.dart';
 import 'ui/widgets/dialogs.dart';
 import 'ui/widgets/update_dialog.dart';
 import 'ui/widgets/missing_files_dialog.dart';
+import 'ui/widgets/title_bar.dart';
 
 class OuoApp extends ConsumerWidget {
   const OuoApp({super.key});
@@ -41,6 +43,7 @@ class OuoApp extends ConsumerWidget {
     ref.watch(downloadNotificationProvider);
     ref.watch(iconFollowThemeProvider);
     ref.watch(autoBackupProvider);
+    ref.watch(syncTriggersProvider);
     return MaterialApp(
       navigatorKey: rootNavigatorKey,
       title: 'OuOPlayer',
@@ -48,6 +51,7 @@ class OuoApp extends ConsumerWidget {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: mode,
+      builder: Platform.isWindows ? (_, child) => Column(children: [const TitleBar(), Expanded(child: child!)]) : null,
       home: const UpdateWatcher(child: MissingFilesWatcher(child: AppShell())),
     );
   }
@@ -133,6 +137,12 @@ final downloadNotificationProvider = Provider<void>((ref) {
 
   Future<void> handle(String? action) async {
     if (action == null) return;
+    if (action == 'sync' || action.startsWith('transfer_')) {
+      final sync = ref.read(syncProvider.notifier);
+      if (action == 'transfer_pause') sync.pauseTransfers();
+      if (action == 'transfer_resume') sync.resumeTransfers();
+      return;
+    }
     ref.read(tabProvider.notifier).set(3);
     if (action != 'cancel_downloads') return;
     final context = rootNavigatorKey.currentContext;
@@ -219,6 +229,7 @@ final playbackSettingsProvider = Provider<void>((ref) {
         seekSeconds: s.seekSeconds,
         fadeMs: s.fadeMs,
         recordPlays: s.recordPlays,
+        unplayedFirst: s.unplayedFirst,
       );
 });
 

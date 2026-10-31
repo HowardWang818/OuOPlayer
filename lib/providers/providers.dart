@@ -141,6 +141,10 @@ class AppSettings {
 
   /// 連上車子時切回音樂 (see OuoAudioHandler.carConnected).
   final bool carMusic;
+
+  /// 同步: only over Wi-Fi (phone), and offer to continue what another device played.
+  final bool syncWifiOnly;
+  final bool syncResume;
   final String ytFormat;
   final bool normalizeVolume;
   final NormalizeLevel normalizeLevel;
@@ -216,6 +220,9 @@ class AppSettings {
   /// 記錄播放紀錄 (recently played, play counts, listening stats).
   final bool recordPlays;
 
+  /// 隨機播放時，沒播過的歌優先.
+  final bool unplayedFirst;
+
   /// Update yt-dlp by itself once a week.
   final bool ytAutoUpdate;
   final DateTime? ytLastUpdate;
@@ -229,6 +236,8 @@ class AppSettings {
     required this.downloadDir,
     required this.btAutoPlay,
     this.carMusic = true,
+    this.syncWifiOnly = true,
+    this.syncResume = true,
     required this.ytFormat,
     required this.normalizeVolume,
     required this.normalizeLevel,
@@ -251,6 +260,7 @@ class AppSettings {
     this.lyricsKeepAwake = false,
     this.wifiWarning = true,
     this.recordPlays = true,
+    this.unplayedFirst = true,
     this.lyricsInMetadata = true,
     this.lyricsInCar = true,
     this.lyricsOnDownload = true,
@@ -271,6 +281,8 @@ class AppSettings {
     String? downloadDir,
     bool? btAutoPlay,
     bool? carMusic,
+    bool? syncWifiOnly,
+    bool? syncResume,
     String? ytFormat,
     bool? normalizeVolume,
     NormalizeLevel? normalizeLevel,
@@ -293,6 +305,7 @@ class AppSettings {
     bool? lyricsKeepAwake,
     bool? wifiWarning,
     bool? recordPlays,
+    bool? unplayedFirst,
     bool? lyricsInMetadata,
     bool? lyricsInCar,
     bool? lyricsOnDownload,
@@ -311,6 +324,8 @@ class AppSettings {
         downloadDir: downloadDir ?? this.downloadDir,
         btAutoPlay: btAutoPlay ?? this.btAutoPlay,
         carMusic: carMusic ?? this.carMusic,
+        syncWifiOnly: syncWifiOnly ?? this.syncWifiOnly,
+        syncResume: syncResume ?? this.syncResume,
         ytFormat: ytFormat ?? this.ytFormat,
         normalizeVolume: normalizeVolume ?? this.normalizeVolume,
         normalizeLevel: normalizeLevel ?? this.normalizeLevel,
@@ -333,6 +348,7 @@ class AppSettings {
         lyricsKeepAwake: lyricsKeepAwake ?? this.lyricsKeepAwake,
         wifiWarning: wifiWarning ?? this.wifiWarning,
         recordPlays: recordPlays ?? this.recordPlays,
+        unplayedFirst: unplayedFirst ?? this.unplayedFirst,
         lyricsInMetadata: lyricsInMetadata ?? this.lyricsInMetadata,
         lyricsInCar: lyricsInCar ?? this.lyricsInCar,
         lyricsOnDownload: lyricsOnDownload ?? this.lyricsOnDownload,
@@ -361,6 +377,8 @@ class AppSettings {
       downloadDir: m['download_dir'] ?? defaults.download,
       btAutoPlay: m['bt_autoplay'] != 'false',
       carMusic: m['car_music'] != 'false',
+      syncWifiOnly: m['sync_wifi_only'] != 'false',
+      syncResume: m['sync_resume'] != 'false',
       // M4A by default: usually no re-encoding, so much faster than MP3.
       ytFormat: m['yt_format'] ?? 'm4a',
       normalizeVolume: m['normalize_volume'] != 'false',
@@ -384,6 +402,7 @@ class AppSettings {
       lyricsKeepAwake: m['lyrics_keep_awake'] == 'true',
       wifiWarning: m['wifi_warning'] != 'false',
       recordPlays: m['record_plays'] != 'false',
+      unplayedFirst: m['unplayed_first'] != 'false',
       // On unless turned off (before v0.18.4 one switch, off by default, did both).
       lyricsInMetadata: m['lyrics_in_metadata'] != 'false',
       lyricsInCar: (m['lyrics_in_car'] ?? m['lyrics_in_metadata']) != 'false',
@@ -569,6 +588,16 @@ class SettingsNotifier extends Notifier<AppSettings> {
     if (hidden) _db.setSetting('home_pinned', jsonEncode(state.homePinned));
   }
 
+  void setSyncWifiOnly(bool v) {
+    state = state.copyWith(syncWifiOnly: v);
+    _db.setSetting('sync_wifi_only', '$v');
+  }
+
+  void setSyncResume(bool v) {
+    state = state.copyWith(syncResume: v);
+    _db.setSetting('sync_resume', '$v');
+  }
+
   void setCarMusic(bool v) {
     state = state.copyWith(carMusic: v);
     _db.setSetting('car_music', '$v');
@@ -592,6 +621,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void setRecordPlays(bool v) {
     state = state.copyWith(recordPlays: v);
     _db.setSetting('record_plays', '$v');
+  }
+
+  void setUnplayedFirst(bool v) {
+    state = state.copyWith(unplayedFirst: v);
+    _db.setSetting('unplayed_first', '$v');
   }
 
   void setYtAutoUpdate(bool v) {
@@ -787,7 +821,13 @@ final mediaItemProvider = StreamProvider<MediaItem?>((ref) => ref.watch(audioHan
 final playbackStateProvider = StreamProvider<PlaybackState>((ref) => ref.watch(audioHandlerProvider).playbackState);
 final queueProvider = StreamProvider<List<MediaItem>>((ref) => ref.watch(audioHandlerProvider).queue);
 final positionProvider = StreamProvider<Duration>((ref) => ref.watch(audioHandlerProvider).player.positionStream);
-final durationProvider = StreamProvider<Duration?>((ref) => ref.watch(audioHandlerProvider).player.durationStream);
+/// The playing song's length. While the queue is rearranged (shuffle turned
+/// on mid-song) the player briefly reports none; the song's own length is
+/// used then, so the progress bar doesn't break.
+final durationProvider = StreamProvider<Duration?>((ref) {
+  final h = ref.watch(audioHandlerProvider);
+  return h.player.durationStream.map((d) => d == null || d == Duration.zero ? h.mediaItem.value?.duration ?? h.currentTrack?.duration ?? d : d);
+});
 /// The volume the user set (fades scale it without changing this).
 final volumeProvider = StreamProvider<double>((ref) => ref.watch(audioHandlerProvider).userVolume.stream);
 final loopModeProvider = StreamProvider<LoopMode>((ref) => ref.watch(audioHandlerProvider).player.loopModeStream);

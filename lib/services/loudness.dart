@@ -25,14 +25,24 @@ double targetLufs(NormalizeLevel level) => switch (level) {
       NormalizeLevel.loud => -10,
     };
 
-/// The one fixed gain (dB) for a whole song: what brings it to the target,
-/// but a quiet song is only raised as far as its peaks allow (at most 4 dB
-/// into the limiter at −1 dBFS), so raising never turns into distortion.
+/// The one fixed gain (dB) for a whole song: what brings it to the target. A
+/// quiet song is raised at most 9 dB and only as far as its peaks allow (6 dB
+/// into the limiter at −1 dBFS, which rounds them off); raising only ever
+/// happens at the start of a song, so it is never a sudden blast.
 double songGain(SongLoudness s, NormalizeLevel level) {
   final wanted = targetLufs(level) - s.lufs;
-  final room = -1 - s.peak + 4;
-  return min(wanted, max(0.0, room)).clamp(-24.0, 12.0);
+  final room = -1 - s.peak + 6;
+  return min(wanted, max(0.0, room)).clamp(-24.0, 9.0);
 }
+
+/// A song not measured yet plays this much quieter (per strength): most music
+/// is mastered well above the target, and a song that turns out quiet is only
+/// raised from its next play (never in the middle of it).
+double unmeasuredGain(NormalizeLevel level) => switch (level) {
+      NormalizeLevel.quiet => -12,
+      NormalizeLevel.normal => -6,
+      NormalizeLevel.loud => -2,
+    };
 
 /// The last of 「I: … LUFS」 and 「Peak: … dBFS」 in ffmpeg's ebur128 summary.
 SongLoudness? parseEbur128(String log) {

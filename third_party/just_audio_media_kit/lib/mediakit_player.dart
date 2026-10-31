@@ -54,9 +54,14 @@ class MediaKitPlayer extends AudioPlayerPlatform {
   static final _live = <MediaKitPlayer>{};
 
   /// OuOPlayer patch: sets mpv's `af` (audio filter chain) on every live player.
-  static void applyAudioFilter(String filter) {
+  static Future<void> applyAudioFilter(String filter) => Future.wait([
+        for (final p in _live) p.ready().then((_) => setProperty(p._player, 'af', filter)).then((_) => p._replayFilterCommands()),
+      ]);
+
+  /// OuOPlayer patch: sets mpv's `volume-gain` on every live player.
+  static void applyVolumeGain(double db) {
     for (final p in _live) {
-      p.ready().then((_) => setProperty(p._player, 'af', filter)).then((_) => p._replayFilterCommands());
+      p.ready().then((_) => setProperty(p._player, 'volume-gain', db.toStringAsFixed(1)));
     }
   }
 
@@ -108,6 +113,10 @@ class MediaKitPlayer extends AudioPlayerPlatform {
     final filter = JustAudioMediaKit.audioFilter;
     if (filter.isNotEmpty) {
       ready().then((_) => setProperty(_player, 'af', filter)).then((_) => _replayFilterCommands());
+    }
+    final gain = JustAudioMediaKit.volumeGain;
+    if (gain != 0) {
+      ready().then((_) => setProperty(_player, 'volume-gain', gain.toStringAsFixed(1)));
     }
 
     if (JustAudioMediaKit.prefetchPlaylist) {
@@ -408,19 +417,25 @@ class MediaKitPlayer extends AudioPlayerPlatform {
   Future<ConcatenatingInsertAllResponse> concatenatingInsertAll(
       ConcatenatingInsertAllRequest request) async {
     // _logger.fine('concatenatingInsertAll(${request.toMap()})');
-    for (final source in request.children) {
+    for (final (offset, source) in request.children.indexed) {
       await _player.add(_convertAudioSourceIntoMediaKit(source));
 
+      // OuOPlayer patch: the old code moved from `length`, one past the end;
+      // mpv refused, so the song stayed last while the app showed it inserted.
       final length = _player.state.playlist.medias.length;
-
-      if (length == 0 || length == 1) continue;
-
-      if (request.index < (length - 1) && request.index >= 0) {
-        await _player.move(length, request.index);
-      }
+      final to = insertTarget(request.index, offset, length);
+      if (to != null) await _player.move(length - 1, to);
     }
 
     return ConcatenatingInsertAllResponse();
+  }
+
+  /// OuOPlayer patch: where the song added last to a playlist of [length]
+  /// belongs, as number [offset] of the songs inserted at [index]; null when
+  /// it is there already.
+  static int? insertTarget(int index, int offset, int length) {
+    final to = index + offset;
+    return index >= 0 && to < length - 1 ? to : null;
   }
 
   @override

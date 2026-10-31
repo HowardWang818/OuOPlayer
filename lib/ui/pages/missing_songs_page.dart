@@ -13,6 +13,7 @@ import '../widgets/dialogs.dart';
 import '../widgets/links.dart';
 import 'pick_replacement_page.dart';
 import 'youtube_key_guide_page.dart';
+import '../../config/device_words.dart';
 
 /// Many songs missing: Soundiiz moves whole playlists to YouTube Music
 /// in one go, faster than looking songs up one by one (and no API quota).
@@ -243,7 +244,7 @@ class _MissingSongsPageState extends ConsumerState<MissingSongsPage> {
           : ListView(children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: Text('這些歌在播放清單裡，但手機上還沒有。之後下載或加入音樂庫時，會自動補回原本的位置。連結只是方便你找，不會自動下載。',
+                child: Text('這些歌在播放清單裡，但$thisDevice上還沒有。之後下載或加入音樂庫時，會自動補回原本的位置。連結只是方便你找，不會自動下載。',
                     style: TextStyle(color: muted, fontSize: 13)),
               ),
               if (list.length >= soundiizMinMissing) const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: SoundiizTip()),

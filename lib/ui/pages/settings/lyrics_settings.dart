@@ -16,21 +16,22 @@ class LyricsSettingsPage extends ConsumerWidget {
     final s = ref.watch(settingsProvider);
     final n = ref.read(settingsProvider.notifier);
     return SettingsSectionPage(title: '歌詞', children: [
-      SwitchListTile(
+      SettingSwitch(
         secondary: const Icon(Icons.lyrics_outlined),
         title: const Text('自動上網找歌詞'),
         subtitle: const Text('歌曲檔案和 .lrc 檔都沒有歌詞時，從 LRCLIB 查詢（免費，只會送出歌名、歌手、專輯和長度）'),
         value: s.lyricsOnline,
         onChanged: n.setLyricsOnline,
       ),
-      SwitchListTile(
+      SettingSwitch(
         secondary: const Icon(Icons.download_done_outlined),
         title: const Text('下載歌曲時自動找歌詞'),
         subtitle: Text('下載完成後就先從 LRCLIB 找好歌詞，第一次播放${Platform.isAndroid ? '、離線或在車上' : '或離線時'}都看得到'),
         value: s.lyricsOnDownload,
         onChanged: n.setLyricsOnDownload,
       ),
-      ListTile(
+      SettingTile(
+        action: '尋找',
         leading: const Icon(Icons.manage_search),
         title: const Text('替音樂庫找歌詞'),
         subtitle: const Text('一次替所有還沒有歌詞的歌找歌詞。也可以在播放清單的 ⋮ 或選取歌曲後使用'),
@@ -56,14 +57,14 @@ class LyricsSettingsPage extends ConsumerWidget {
         ),
       ),
       if (Platform.isAndroid)
-        SwitchListTile(
+        SettingSwitch(
           secondary: const Icon(Icons.light_mode_outlined),
           title: const Text('顯示歌詞時螢幕保持常亮'),
           value: s.lyricsKeepAwake,
           onChanged: n.setLyricsKeepAwake,
         ),
       if (Platform.isAndroid)
-        SwitchListTile(
+        SettingSwitch(
           secondary: const Icon(Icons.directions_car_outlined),
           title: const Text('在 Android Auto 顯示歌詞'),
           subtitle: const Text('有同步歌詞時，車上歌手那一行會換成正在唱的歌詞。開車時請注意安全'),
@@ -71,7 +72,7 @@ class LyricsSettingsPage extends ConsumerWidget {
           onChanged: n.setLyricsInCar,
         ),
       if (Platform.isAndroid)
-        SwitchListTile(
+        SettingSwitch(
           secondary: const Icon(Icons.subtitles_outlined),
           title: const Text('在通知列和鎖定畫面顯示歌詞'),
           subtitle: const Text('有同步歌詞時，歌手那一行會換成正在唱的歌詞'),

@@ -8,6 +8,7 @@ import '../../services/lyrics/lyrics_service.dart';
 import '../widgets/art_image.dart';
 import '../widgets/lookup_confirm.dart';
 import '../widgets/lyrics_view.dart';
+import '../../config/device_words.dart';
 
 /// Songs whose lyrics a batch can look up (not online streams or podcasts).
 List<Track> lyricsCandidates(Iterable<Track> tracks) => [
@@ -24,7 +25,7 @@ Future<void> findLyrics(BuildContext context, WidgetRef ref, List<Track> tracks,
       tracks: all,
       title: (n) => '替 $n 首找歌詞？',
       message: (_) => '已經有歌詞的歌會略過。其他的會從 LRCLIB（免費歌詞資料庫）一首一首查，'
-          '只會送出歌名、歌手、專輯和長度。每首大約 1 秒，找到的歌詞存在手機上。');
+          '只會送出歌名、歌手、專輯和長度。每首大約 1 秒，找到的歌詞存在$thisDevice上。');
   if (list != null && context.mounted) {
     await Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => LyricsBatchPage(tracks: list, title: title)));
   }

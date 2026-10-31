@@ -18,6 +18,9 @@ import '../widgets/track_selection.dart';
 import '../widgets/track_tile.dart';
 import 'youtube_key_guide_page.dart';
 
+/// The search shortcut: the search box takes the cursor once the page is there.
+final searchFocusWanted = ValueNotifier(false);
+
 class SearchPage extends ConsumerStatefulWidget {
   const SearchPage({super.key});
 
@@ -43,8 +46,27 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     });
   }
 
+  final _box = FocusNode();
+
+  void _takeFocus() {
+    if (!searchFocusWanted.value) return;
+    searchFocusWanted.value = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _box.requestFocus();
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    searchFocusWanted.addListener(_takeFocus);
+    _takeFocus();
+  }
+
   @override
   void dispose() {
+    searchFocusWanted.removeListener(_takeFocus);
+    _box.dispose();
     _debounce?.cancel();
     _ctrl.dispose();
     super.dispose();
@@ -71,6 +93,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: TextField(
             controller: _ctrl,
+            focusNode: _box,
             textInputAction: TextInputAction.search,
             onChanged: _onTyped,
             onSubmitted: (_) => _submit(),

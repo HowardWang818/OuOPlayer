@@ -65,7 +65,7 @@ void main() {
     final raw = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
     await raw.execute('CREATE TABLE tracks(id TEXT PRIMARY KEY, uri TEXT NOT NULL, title TEXT NOT NULL, artist TEXT, album TEXT, '
         'duration_ms INTEGER, art TEXT, source TEXT, track_no INTEGER, added_at INTEGER)');
-    await raw.execute('CREATE TABLE playlist_tracks(playlist_id INTEGER, track_id TEXT, position INTEGER)');
+    await raw.execute('CREATE TABLE playlist_tracks(playlist_id INTEGER, track_id TEXT, position INTEGER, item_id TEXT)');
     final db = AppDatabase.wrap(raw);
     Track t(String id) => Track(id: id, uri: id, title: id);
     await db.addToPlaylist(1, [t('a'), t('b')]);

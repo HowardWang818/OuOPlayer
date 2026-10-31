@@ -9,7 +9,7 @@ import '../../widgets/dialogs.dart';
 import '../../widgets/update_dialog.dart';
 import 'section_page.dart';
 
-/// 關於與更新: the version, the app icon and in-app updates (Android).
+/// 關於與更新: the version, the app icon and in-app updates.
 class AboutSettingsPage extends ConsumerStatefulWidget {
   const AboutSettingsPage({super.key});
 
@@ -137,7 +137,8 @@ class _AboutSettingsPageState extends ConsumerState<AboutSettingsPage> {
         ),
       ],
       if (Updater.supported) ...[
-        ListTile(
+        SettingTile(
+          action: '檢查',
           leading: _checking
               ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.system_update_outlined),
@@ -150,7 +151,7 @@ class _AboutSettingsPageState extends ConsumerState<AboutSettingsPage> {
                   if (mounted) setState(() => _checking = false);
                 },
         ),
-        SwitchListTile(
+        SettingSwitch(
           secondary: const Icon(Icons.update),
           title: const Text('自動檢查更新'),
           subtitle: const Text('每天第一次打開 App 時檢查；有新版本時會先問你'),

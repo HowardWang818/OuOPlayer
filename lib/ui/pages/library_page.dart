@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/db/database.dart';
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
+import '../../providers/sync_provider.dart' show offerSync;
 import '../../theme/app_theme.dart';
 import '../widgets/art_image.dart';
 import '../widgets/artist_avatar.dart';
@@ -49,6 +50,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     if (name == null) return;
     final n = name.isEmpty ? '我的播放清單 #${count + 1}' : name;
     final id = await db.createPlaylist(n);
+    if (mounted) await offerSync(context, ref, id);
     if (mounted) _push(CollectionPage.playlist(id, n));
   }
 

@@ -73,7 +73,7 @@ void main() {
       final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
       await db.execute('CREATE TABLE tracks(id TEXT PRIMARY KEY, uri TEXT NOT NULL, title TEXT NOT NULL, artist TEXT, album TEXT, '
           'duration_ms INTEGER, art TEXT, source TEXT, track_no INTEGER, added_at INTEGER)');
-      await db.execute('CREATE TABLE playlist_tracks(playlist_id INTEGER, track_id TEXT, position INTEGER)');
+      await db.execute('CREATE TABLE playlist_tracks(playlist_id INTEGER, track_id TEXT, position INTEGER, item_id TEXT)');
       return AppDatabase.wrap(db);
     }
 

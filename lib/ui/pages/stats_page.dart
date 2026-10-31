@@ -17,7 +17,7 @@ final statsProvider = FutureProvider.family<ListeningStats, StatsPeriod>((ref, p
   final db = ref.watch(dbProvider);
   final (from, to) = period.range(DateTime.now());
   final log = await db.listening(from, to);
-  final library = {for (final t in await db.tracks()) t.id: t};
+  final library = {for (final t in await db.tracks()) t.id: t, ...await db.remoteSongs()};
   return ListeningStats.compute(log, library);
 });
 

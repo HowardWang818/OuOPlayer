@@ -27,11 +27,13 @@ class DownloadNotifierPlugin(private val context: Context, messenger: BinaryMess
                     call.argument<String>("title") ?: "",
                     call.argument<String>("text") ?: "",
                     call.argument<Int>("progress") ?: -1,
+                    call.argument<Boolean>("transfer") ?: false,
+                    call.argument<Boolean>("paused") ?: false,
                 )
                 result.success(null)
             }
             "stop" -> {
-                DownloadForegroundService.stop(context, call.argument<String>("doneText"))
+                DownloadForegroundService.stop(context, call.argument<String>("doneText"), call.argument<String>("doneTitle"))
                 result.success(null)
             }
             "initialAction" -> {

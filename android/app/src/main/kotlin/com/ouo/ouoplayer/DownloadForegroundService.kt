@@ -23,18 +23,26 @@ class DownloadForegroundService : Service() {
         const val EXTRA_OPEN = "ouo_open"
         const val OPEN_DOWNLOADS = "downloads"
         const val CANCEL_ALL = "cancel_downloads"
+        // Songs between devices (Google Drive sync).
+        const val TRANSFER_PAUSE = "transfer_pause"
+        const val TRANSFER_RESUME = "transfer_resume"
 
         @Volatile
         private var running = false
         private var title = ""
         private var text = ""
         private var progress = -1
+        private var transfer = false
+        private var paused = false
 
-        /** Show or update progress; starts the service on the first call. */
-        fun update(context: Context, title: String, text: String, progress: Int) {
+        /** Show or update progress; starts the service on the first call. [transfer]: songs
+         *  between devices, with pause / resume instead of the downloads' buttons. */
+        fun update(context: Context, title: String, text: String, progress: Int, transfer: Boolean = false, paused: Boolean = false) {
             this.title = title
             this.text = text
             this.progress = progress
+            this.transfer = transfer
+            this.paused = paused
             if (running) {
                 // Already in the foreground: just refresh the notification. Starting
                 // the service again isn't allowed once the app is in the background.
@@ -50,14 +58,14 @@ class DownloadForegroundService : Service() {
         }
 
         /** All downloads finished: stop, and leave a dismissible summary if [doneText] is given. */
-        fun stop(context: Context, doneText: String?) {
+        fun stop(context: Context, doneText: String?, doneTitle: String? = null) {
             context.stopService(Intent(context, DownloadForegroundService::class.java))
             running = false
             if (doneText != null) {
                 ensureChannel(context)
                 manager(context).notify(DONE_ID, builder(context)
                     .setSmallIcon(android.R.drawable.stat_sys_download_done)
-                    .setContentTitle("OuOPlayer 下載完成")
+                    .setContentTitle(doneTitle ?: "OuOPlayer 下載完成")
                     .setContentText(doneText)
                     .setContentIntent(openIntent(context, OPEN_DOWNLOADS, 1))
                     .setAutoCancel(true)
@@ -87,14 +95,20 @@ class DownloadForegroundService : Service() {
 
         private fun build(context: Context): Notification {
             ensureChannel(context)
-            val cancel = Notification.Action.Builder(null, "全部取消", openIntent(context, CANCEL_ALL, 2)).build()
-            return builder(context)
+            val b = builder(context)
                 .setSmallIcon(android.R.drawable.stat_sys_download)
                 .setContentTitle(title.ifEmpty { "OuOPlayer 正在下載" })
                 .setContentText(text)
-                .setProgress(100, progress.coerceIn(0, 100), progress < 0)
-                .setContentIntent(openIntent(context, OPEN_DOWNLOADS, 1))
-                .addAction(cancel)
+                .setProgress(100, progress.coerceIn(0, 100), progress < 0 && !paused)
+            if (transfer) {
+                val toggle = if (paused) TRANSFER_RESUME else TRANSFER_PAUSE
+                b.setContentIntent(openIntent(context, "sync", 3))
+                    .addAction(Notification.Action.Builder(null, if (paused) "繼續" else "暫停", openIntent(context, toggle, 4)).build())
+            } else {
+                b.setContentIntent(openIntent(context, OPEN_DOWNLOADS, 1))
+                    .addAction(Notification.Action.Builder(null, "全部取消", openIntent(context, CANCEL_ALL, 2)).build())
+            }
+            return b
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .build()

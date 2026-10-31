@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,6 +11,7 @@ import '../widgets/image_viewer.dart';
 import '../widgets/lyrics_view.dart';
 import '../widgets/output_device_chip.dart';
 import '../widgets/player_controls.dart';
+import '../widgets/song_font.dart';
 import '../widgets/sleep_timer_sheet.dart';
 import '../widgets/track_links.dart';
 import '../widgets/track_tile.dart';
@@ -33,6 +36,30 @@ class NowPlayingPage extends ConsumerWidget {
     final lyricsBg = Color.lerp(color, bg, wide ? 0.45 : 0.35)!;
     final topInk = ThemeData.estimateBrightnessForColor(color) == Brightness.dark ? Colors.white : const Color(0xFF111111);
     final showLyrics = ref.watch(showLyricsProvider);
+    // Windows: the queue stays on the right.
+    final queueBeside = Platform.isWindows && wide;
+    final font = ref.watch(songFontProvider);
+    // Windows: the window has more room than the side panel's lyrics.
+    final lyricsSize = Platform.isWindows ? 1.3 : 1.0;
+    // Light theme: dark text stays readable all over the gradient.
+    final box = !AppTheme.lightDesktop(context)
+        ? null
+        : BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.75),
+            borderRadius: BorderRadius.circular(12),
+            // The gradient ends in white: this keeps the box's edges there.
+            border: Border.all(color: Colors.black.withValues(alpha: 0.1)),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
+          );
+
+    // The queue or the lyrics beside the cover. Ends level with the play
+    // button: the row below it takes 48.
+    Widget sideBox(Widget child) => Container(
+          margin: const EdgeInsets.only(bottom: 48),
+          clipBehavior: box == null ? Clip.none : Clip.antiAlias,
+          decoration: box,
+          child: Material(type: MaterialType.transparency, child: child),
+        );
 
     final cover = LayoutBuilder(builder: (context, c) {
       final size = c.maxWidth.clamp(120.0, 520.0);
@@ -44,17 +71,19 @@ class NowPlayingPage extends ConsumerWidget {
       );
     });
 
-    final info = Column(mainAxisSize: MainAxisSize.min, children: [
+    final info = Theme(
+        data: AppTheme.playerControls(theme),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
       Row(children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(track?.title ?? '沒有播放中的歌曲',
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: font.title(theme.textTheme.headlineSmall!.copyWith(fontWeight: FontWeight.bold))),
             const SizedBox(height: 4),
             // The artist and the album (top bar) open their pages.
             LinkText(track?.artist ?? '',
                 onTap: track != null && hasPages(track) ? () => openArtist(context, track) : null,
-                style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                style: font.artist(theme.textTheme.titleMedium!.copyWith(color: theme.colorScheme.onSurfaceVariant))),
           ]),
         ),
         const FavoriteButton(),
@@ -75,15 +104,18 @@ class NowPlayingPage extends ConsumerWidget {
           onPressed: ref.read(showLyricsProvider.notifier).toggle,
         ),
         const SleepTimerButton(),
-        IconButton(
-          tooltip: '佇列',
-          icon: const Icon(Icons.queue_music),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const QueuePage())),
-        ),
+        if (!queueBeside)
+          IconButton(
+            tooltip: '佇列',
+            icon: const Icon(Icons.queue_music),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const QueuePage())),
+          ),
       ]),
-    ]);
+    ]));
 
-    return Scaffold(
+    return _TintTitleBar(
+      color: color,
+      child: Scaffold(
       body: AnimatedContainer(
         duration: const Duration(milliseconds: 500),
         decoration: BoxDecoration(
@@ -118,17 +150,39 @@ class NowPlayingPage extends ConsumerWidget {
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                child: wide
+                child: queueBeside
+                    ? Row(children: [
+                        Expanded(
+                          child: Column(children: [
+                            Expanded(child: cover),
+                            const SizedBox(height: 16),
+                            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 560), child: info),
+                          ]),
+                        ),
+                        const SizedBox(width: 32),
+                        // The lyrics take the queue's place until they're closed.
+                        if (showLyrics)
+                          Expanded(
+                            child: sideBox(Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: LyricsInk.on(box == null ? lyricsBg : Colors.white, child: LyricsView(size: lyricsSize)),
+                            )),
+                          )
+                        else
+                          SizedBox(width: 360, child: sideBox(const QueueList())),
+                        const SizedBox(width: 64),
+                      ])
+                    : wide
                     ? Row(children: [
                         Expanded(child: cover),
                         const SizedBox(width: 48),
                         Expanded(child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 520), child: info))),
                         // Desktop: lyrics in a panel on the right.
-                        if (showLyrics) ...[const SizedBox(width: 48), Expanded(child: LyricsInk.on(lyricsBg, child: const LyricsView()))],
+                        if (showLyrics) ...[const SizedBox(width: 48), Expanded(child: LyricsInk.on(lyricsBg, child: LyricsView(size: lyricsSize)))],
                       ])
                     : Column(children: [
                         // Phone: lyrics take the cover's place.
-                        Expanded(child: showLyrics ? LyricsInk.on(lyricsBg, child: const LyricsView()) : cover),
+                        Expanded(child: showLyrics ? LyricsInk.on(lyricsBg, child: LyricsView(size: lyricsSize)) : cover),
                         const SizedBox(height: 24),
                         info,
                       ]),
@@ -137,8 +191,46 @@ class NowPlayingPage extends ConsumerWidget {
           ]),
         ),
       ),
-    );
+    ));
   }
+}
+
+/// Windows: the title bar takes the top colour of the player's gradient
+/// while the player is open.
+class _TintTitleBar extends ConsumerStatefulWidget {
+  const _TintTitleBar({required this.color, required this.child});
+  final Color color;
+  final Widget child;
+
+  @override
+  ConsumerState<_TintTitleBar> createState() => _TintTitleBarState();
+}
+
+class _TintTitleBarState extends ConsumerState<_TintTitleBar> {
+  late final TitleBarTint _tint = ref.read(titleBarTintProvider.notifier);
+
+  void _send(Color? c) => WidgetsBinding.instance.addPostFrameCallback((_) => _tint.set(c));
+
+  @override
+  void initState() {
+    super.initState();
+    _send(widget.color);
+  }
+
+  @override
+  void didUpdateWidget(_TintTitleBar old) {
+    super.didUpdateWidget(old);
+    if (old.color != widget.color) _send(widget.color);
+  }
+
+  @override
+  void dispose() {
+    _send(null);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 /// Rewind / speed / forward row, shown only while a podcast is playing.

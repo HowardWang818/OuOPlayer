@@ -21,6 +21,7 @@ import 'edit_track_dialog.dart';
 import 'removal_summary.dart';
 import 'track_links.dart';
 import 'track_selection.dart';
+import '../../config/device_words.dart';
 
 class TrackTile extends ConsumerWidget {
   const TrackTile({
@@ -155,13 +156,13 @@ Future<void> showMissingSongMenu(BuildContext context, WidgetRef ref, Track trac
           ListTile(
             leading: const Icon(Icons.music_off_outlined),
             title: Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text('${track.artist} • 手機上還沒有這首歌，有了之後會自動補上'),
+            subtitle: Text('${track.artist} • $thisDevice上還沒有這首歌，有了之後會自動補上'),
           ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.library_music_outlined),
             title: const Text('從音樂庫選擇這首歌'),
-            subtitle: const Text('手機上其實有，只是沒自動對上時用'),
+            subtitle: Text('$thisDevice上其實有，只是沒自動對上時用'),
             onTap: () {
               Navigator.pop(ctx);
               Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => PickReplacementPage(missing: track)));

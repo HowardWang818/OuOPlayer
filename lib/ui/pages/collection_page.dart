@@ -1,5 +1,6 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/db/database.dart';
@@ -19,11 +20,13 @@ import '../../services/song_matcher.dart';
 import '../../services/track_sort.dart';
 import '../widgets/track_selection.dart';
 import '../widgets/track_tile.dart';
+import '../../providers/sync_provider.dart';
 import 'cover_fix_page.dart';
 import 'folder_page.dart';
 import 'lyrics_batch_page.dart';
 import 'native_name_page.dart';
 import 'pick_songs_page.dart';
+import '../../config/device_words.dart';
 
 enum CollectionKind { album, artist, playlist, favorites, allSongs, folder, smart }
 
@@ -37,6 +40,24 @@ class ListSearchNotifier extends Notifier<String?> {
 }
 
 final listSearchProvider = NotifierProvider.autoDispose.family<ListSearchNotifier, String?, String>(ListSearchNotifier.new);
+
+/// Whether a list page's header has scrolled up to its top bar, per page.
+class ListHeaderNotifier extends Notifier<bool> {
+  ListHeaderNotifier(this.page);
+  final String page;
+  @override
+  bool build() => false;
+  void set(bool v) => state = v;
+}
+
+final listHeaderProvider = NotifierProvider.autoDispose.family<ListHeaderNotifier, bool, String>(ListHeaderNotifier.new);
+
+const _headerHeight = 300.0;
+
+/// The header has faded out at this scroll offset: its cover colour fades
+/// over the last [kToolbarHeight] of its way, so the top bar takes over
+/// about half way through that.
+bool headerCollapsed(double offset) => offset >= _headerHeight - kToolbarHeight * 1.5;
 
 /// Album / artist / playlist / liked-songs page with a Spotify-like header.
 class CollectionPage extends ConsumerWidget {
@@ -89,6 +110,7 @@ class CollectionPage extends ConsumerWidget {
         if (words.isEmpty || words.every(foldText('${tracks[i].title} ${tracks[i].artist} ${tracks[i].album}').contains)) i,
     ];
     final info = playlistId == null ? null : ref.watch(playlistInfoProvider(playlistId!)).value;
+    final synced = playlistId != null && syncAvailable && (ref.watch(playlistSyncedProvider(playlistId!)).value ?? false);
     // A custom playlist cover wins over the first song's cover.
     // An artist page shows the artist's photo when one was found.
     final photo = kind == CollectionKind.artist ? ref.watch(artistImageProvider(name)).value : null;
@@ -97,6 +119,16 @@ class CollectionPage extends ConsumerWidget {
     final theme = Theme.of(context);
     final handler = ref.read(audioHandlerProvider);
     final db = ref.read(dbProvider);
+    // Light theme: the header's gradient can be any colour, so its buttons and
+    // text take white or near-black by what is behind them (the text sits
+    // low in the gradient, the buttons at the top).
+    final light = theme.brightness == Brightness.light;
+    final solid = Color.alphaBlend(color, theme.scaffoldBackgroundColor);
+    final topInk = light ? AppTheme.inkOn(Color.lerp(solid, theme.scaffoldBackgroundColor, 0.15)!) : null;
+    final textInk = light ? AppTheme.textOn(Color.lerp(solid, theme.scaffoldBackgroundColor, 0.8)!) : null;
+    // Scrolled up, the top bar is the page's own colour.
+    final collapsed = ref.watch(listHeaderProvider(pageKey));
+    final barInk = collapsed ? theme.colorScheme.onSurface : topInk;
 
     final label = switch (kind) {
       CollectionKind.album => '專輯',
@@ -130,14 +162,34 @@ class CollectionPage extends ConsumerWidget {
         tracks: tracks,
         onRemove: removeMany,
         removeLabel: kind == CollectionKind.favorites ? '從已按讚的歌曲移除' : '從此播放清單移除',
-        child: CustomScrollView(slivers: [
-        SliverAppBar(
+        onFilter: () => ref.read(listSearchProvider(pageKey).notifier).set(search == null ? '' : null),
+        child: NotificationListener<ScrollNotification>(
+          onNotification: (n) {
+            if (n.depth == 0) ref.read(listHeaderProvider(pageKey).notifier).set(headerCollapsed(n.metrics.pixels));
+            return false;
+          },
+          child: CustomScrollView(slivers: [
+        Theme(
+          data: !light
+              ? theme
+              : theme.copyWith(
+                  iconButtonTheme: IconButtonThemeData(
+                    style: (theme.iconButtonTheme.style ?? const ButtonStyle()).copyWith(foregroundColor: WidgetStatePropertyAll(barInk)),
+                  ),
+                ),
+          child: SliverAppBar(
+          foregroundColor: barInk,
+          iconTheme: light ? IconThemeData(color: barInk) : null,
+          actionsIconTheme: light ? IconThemeData(color: barInk) : null,
           pinned: true,
-          expandedHeight: 300,
-          backgroundColor: Color.lerp(color, theme.scaffoldBackgroundColor, 0.3),
+          expandedHeight: _headerHeight,
+          backgroundColor: theme.scaffoldBackgroundColor,
+          shape: collapsed ? Border(bottom: BorderSide(color: theme.dividerColor)) : null,
+          // The status bar's icons sit on the cover's colour until then.
+          systemOverlayStyle: !collapsed && topInk == Colors.white ? SystemUiOverlayStyle.light : null,
           // While searching, the box sits in the top bar, left of the search button.
           title: search == null
-              ? null
+              ? (collapsed ? Text(info?.name ?? name, maxLines: 1, overflow: TextOverflow.ellipsis) : null)
               : TextField(
                   autofocus: true,
                   decoration: InputDecoration(
@@ -169,7 +221,7 @@ class CollectionPage extends ConsumerWidget {
                 itemBuilder: (_) => [
                   const PopupMenuItem(value: 'rename', child: Text('重新命名歌手')),
                   if (ArtistRenames.originals(name).isNotEmpty) const PopupMenuItem(value: 'restore', child: Text('還原原本的名字')),
-                  const PopupMenuItem(value: 'photo', child: Text('從手機選圖片')),
+                  PopupMenuItem(value: 'photo', child: Text('從$thisDevice選圖片')),
                   const PopupMenuItem(value: 'deezer', child: Text('從 Deezer 結果挑選')),
                   if (ArtistImages.hasCustom(name)) const PopupMenuItem(value: 'removePhoto', child: Text('移除自訂圖片')),
                 ],
@@ -229,6 +281,16 @@ class CollectionPage extends ConsumerWidget {
                   } else if (v == 'queue') {
                     await handler.enqueue(tracks);
                     if (context.mounted) toast(context, '已加入佇列');
+                  } else if (v == 'sync') {
+                    final engine = ref.read(syncEngineProvider);
+                    if (synced) {
+                      await engine.disable(playlistId!);
+                      if (context.mounted) toast(context, '已停止同步，兩台的清單都會保留');
+                    } else {
+                      await engine.enable(playlistId!);
+                      if (context.mounted) toast(context, '已開始同步這個播放清單');
+                    }
+                    await ref.read(syncProvider.notifier).run();
                   } else if (v == 'export') {
                     await showExportSheet(context, info?.name ?? name, tracks);
                   } else if (v == 'lyrics') {
@@ -255,6 +317,8 @@ class CollectionPage extends ConsumerWidget {
                 itemBuilder: (_) => [
                   const PopupMenuItem(value: 'rename', child: Text('重新命名')),
                   const PopupMenuItem(value: 'queue', child: Text('加入佇列')),
+                  if (syncAvailable && ref.read(syncProvider).signedIn)
+                    PopupMenuItem(value: 'sync', child: Text(synced ? '停止同步' : '同步這個清單')),
                   const PopupMenuItem(value: 'cover', child: Text('更換播放清單圖片')),
                   if (info?.cover != null) const PopupMenuItem(value: 'resetCover', child: Text('移除播放清單圖片')),
                   const PopupMenuItem(value: 'folder', child: Text('移到資料夾')),
@@ -295,17 +359,17 @@ class CollectionPage extends ConsumerWidget {
                 const SizedBox(width: 20),
                 Expanded(
                   child: Column(mainAxisAlignment: MainAxisAlignment.end, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(label, style: theme.textTheme.labelMedium),
+                    Text(label, style: theme.textTheme.labelMedium?.copyWith(color: textInk)),
                     Text(info?.name ?? name, maxLines: 2, overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
+                        style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, color: textInk)),
                     const SizedBox(height: 8),
-                    Text(subtitle, style: theme.textTheme.bodySmall),
+                    Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: textInk)),
                   ]),
                 ),
               ]),
             ),
           ),
-        ),
+        )),
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -430,6 +494,7 @@ class CollectionPage extends ConsumerWidget {
           ),
         const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ]),
+        ),
       ),
     );
   }
