@@ -1,7 +1,9 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../config/update_config.dart';
 import '../../providers/providers.dart';
 import '../../services/network_check.dart';
 import '../../services/updater.dart';
@@ -16,7 +18,7 @@ Future<void> checkForUpdate(BuildContext context, WidgetRef ref, {bool manual = 
     final me = await Updater.current();
     await ref.read(dbProvider).setSetting('update_last_check', DateTime.now().toIso8601String());
     if (!context.mounted) return;
-    if (!info.isNewerThan(me.build)) {
+    if (!info.isNewerThanApp(me)) {
       if (manual) toast(context, '已是最新版本（${me.name}）');
       return;
     }
@@ -27,6 +29,7 @@ Future<void> checkForUpdate(BuildContext context, WidgetRef ref, {bool manual = 
 }
 
 Future<void> _offer(BuildContext context, UpdateInfo info, String mine) async {
+  final portable = Updater.portable;
   final go = await showDialog<bool>(
     context: context,
     useRootNavigator: true,
@@ -40,11 +43,16 @@ Future<void> _offer(BuildContext context, UpdateInfo info, String mine) async {
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('之後再說')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('更新')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(portable ? '前往 GitHub' : '更新')),
       ],
     ),
   );
-  if (go == true && context.mounted) await _downloadAndInstall(context, info);
+  if (go != true) return;
+  if (portable) {
+    await launchUrl(Uri.parse(releasesPage), mode: LaunchMode.externalApplication);
+  } else if (context.mounted) {
+    await _downloadAndInstall(context, info);
+  }
 }
 
 Future<void> _downloadAndInstall(BuildContext context, UpdateInfo info) async {

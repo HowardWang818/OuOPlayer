@@ -12,8 +12,10 @@ import '../widgets/lookup_confirm.dart';
 
 /// 找封面 for [tracks] (the library, a playlist): asks first, then opens
 /// [CoverFixPage] with the songs worth looking up.
-Future<void> findCovers(BuildContext context, WidgetRef ref, List<Track> tracks) async {
-  final want = tracks.where(CoverFinder.wantsCover).toList();
+Future<void> findCovers(BuildContext context, WidgetRef ref, List<Track> tracks, {bool small = false}) async {
+  await CoverFinder.loadSize(ref.read(dbProvider));
+  final want = tracks.where((t) => CoverFinder.wantsCover(t) || (small && CoverFinder.smallCover(t))).toList();
+  if (!context.mounted) return;
   if (want.isEmpty) {
     toast(context, '沒有需要找封面的歌曲');
     return;
@@ -57,7 +59,7 @@ class _CoverFixPageState extends ConsumerState<CoverFixPage> {
   }
 
   Future<void> _run() async {
-    final finder = CoverFinder(ref.read(iTunesSearchProvider));
+    final finder = CoverFinder(ref.read(iTunesSearchProvider), japaneseLyrics: ref.read(lyricsServiceProvider).japaneseLyrics);
     final db = ref.read(dbProvider);
     await finder.findAll(widget.tracks, (t, hit) {
       db.setLookupMiss('cover', t.id, hit == null);

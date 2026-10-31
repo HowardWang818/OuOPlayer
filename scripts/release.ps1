@@ -17,8 +17,8 @@
 
   -WindowsOnly builds just the Windows app (e.g. for a version whose APKs
   are already out).
-  -WindowsVersion 0.5.0 numbers the Windows build on its own (Windows isn't
-  an official release yet); the APKs keep pubspec.yaml's version.
+  Since 1.14.1 Windows and Android share pubspec.yaml's version;
+  -WindowsVersion only overrides it for a one-off build.
 #>
 param([switch]$Windows, [switch]$WindowsOnly, [string]$WindowsVersion, [switch]$Force)
 if ($WindowsOnly) { $Windows = $true }
@@ -91,7 +91,17 @@ try {
         $staleMpv = Join-Path $buildRoot 'build\windows\x64\libmpv'
         if (Test-Path $staleMpv) { Remove-Item -Recurse -Force $staleMpv }
 
-        flutter build windows --release --build-name=$winVersion --build-number=$build --dart-define=OUO_VERSION=$winVersion
+        # Google Drive sync on Windows: the desktop OAuth client, kept with the
+        # signing key outside the public repository. Without it, no sync.
+        $googleArgs = @()
+        $googleFile = 'D:\dev\ouoplayer-keys\google_oauth.json'
+        if (Test-Path $googleFile) {
+            $g = Get-Content $googleFile -Raw | ConvertFrom-Json
+            $googleArgs = @("--dart-define=OUO_GOOGLE_DESKTOP_ID=$($g.desktopClientId)", "--dart-define=OUO_GOOGLE_DESKTOP_SECRET=$($g.desktopClientSecret)")
+        } else {
+            Write-Host "== $googleFile not found: the Windows build has no Google Drive sync" -ForegroundColor Yellow
+        }
+        flutter build windows --release --build-name=$winVersion --build-number=$build --dart-define=OUO_VERSION=$winVersion @googleArgs
         if ($LASTEXITCODE -ne 0) { throw 'Windows build failed' }
         Copy-Item -Force $mpvDll (Join-Path $buildRoot 'build\windows\x64\runner\Release\libmpv-2.dll')
     }
@@ -116,6 +126,12 @@ if ($Windows) {
     $winApp = Join-Path $winDir 'OuOPlayer'
     Copy-Item -Recurse (Join-Path $buildRoot 'build\windows\x64\runner\Release') $winApp
     Compress-Archive -Path "$winApp\*" -DestinationPath (Join-Path $winDir "OuOPlayer-$winVersion-windows-x64.zip")
+
+    Write-Host "== Building the Windows installer" -ForegroundColor Cyan
+    $iscc = 'D:\dev\InnoSetup\ISCC.exe'
+    if (-not (Test-Path $iscc)) { throw "Inno Setup not found: $iscc" }
+    & $iscc /Q "/DAppVersion=$winVersion" "/DSourceDir=$winApp" "/O$winDir" (Join-Path $buildRoot 'windows\installer\OuOPlayer.iss')
+    if ($LASTEXITCODE -ne 0) { throw 'Windows installer build failed' }
 }
 
 Write-Host "== Done: OuOPlayer $tag" -ForegroundColor Green

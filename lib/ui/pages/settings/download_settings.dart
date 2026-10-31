@@ -18,7 +18,8 @@ class DownloadSettingsPage extends ConsumerWidget {
     final n = ref.read(settingsProvider.notifier);
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     return SettingsSectionPage(title: '下載與線上', children: [
-      ListTile(
+      SettingTile(
+        action: '更改',
         leading: const Icon(Icons.download_outlined),
         title: const Text('下載位置'),
         subtitle: Text(s.downloadDir, style: TextStyle(color: muted)),
@@ -28,21 +29,21 @@ class DownloadSettingsPage extends ConsumerWidget {
         },
       ),
       if (Platform.isAndroid)
-        SwitchListTile(
+        SettingSwitch(
           secondary: const Icon(Icons.wifi_off_outlined),
           title: const Text('沒有 Wi-Fi 時下載前提醒'),
           subtitle: const Text('使用行動數據時，開始下載前先問你'),
           value: s.wifiWarning,
           onChanged: n.setWifiWarning,
         ),
-      SwitchListTile(
+      SettingSwitch(
         secondary: const Icon(Icons.translate),
         title: const Text('下載時找原文歌名'),
         subtitle: const Text('羅馬拼音或英文的歌名（例如「Yoru ni Kakeru」）下載完改回日文或中文的原名，只有很確定時才改。每首多花幾秒'),
         value: s.nativeNamesOnDownload,
         onChanged: n.setNativeNamesOnDownload,
       ),
-      SwitchListTile(
+      SettingSwitch(
         secondary: const Icon(Icons.system_update_alt),
         title: const Text('自動更新 yt-dlp'),
         subtitle: Text(
@@ -51,7 +52,7 @@ class DownloadSettingsPage extends ConsumerWidget {
         value: s.ytAutoUpdate,
         onChanged: n.setYtAutoUpdate,
       ),
-      ListTile(
+      SettingTile(
         leading: const Icon(Icons.key_outlined),
         title: const Text('YouTube Data API 金鑰'),
         subtitle: Text(

@@ -15,11 +15,15 @@ void main() {
   });
 
   test('a quiet song is only raised as far as its peaks allow', () {
-    // Peaks at −2 dBFS: up to 5 dB more (peaks at most 4 dB into the limiter at −1).
-    expect(songGain(const SongLoudness(-22, -2), NormalizeLevel.normal), closeTo(5, 0.001));
-    expect(songGain(const SongLoudness(-20, 0), NormalizeLevel.loud), closeTo(3, 0.001));
+    // Peaks at −2 dBFS: 7 dB more at most (peaks at most 6 dB into the limiter at −1).
+    expect(songGain(const SongLoudness(-22, -2), NormalizeLevel.normal), closeTo(7, 0.001));
+    expect(songGain(const SongLoudness(-20, 0), NormalizeLevel.loud), closeTo(5, 0.001));
+    // Never more than 9 dB, however quiet.
+    expect(songGain(const SongLoudness(-40, -30), NormalizeLevel.loud), closeTo(9, 0.001));
+    // Not measured yet: quieter per strength.
+    expect([for (final l in NormalizeLevel.values) unmeasuredGain(l)], [-12, -6, -2]);
     // Peaks already far over: not raised at all.
-    expect(songGain(const SongLoudness(-20, 3.5), NormalizeLevel.loud), 0);
+    expect(songGain(const SongLoudness(-20, 6), NormalizeLevel.loud), 0);
   });
 
   test("ffmpeg's ebur128 summary is read", () {

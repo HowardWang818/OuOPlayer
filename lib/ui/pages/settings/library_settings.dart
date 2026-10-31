@@ -5,10 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
+import '../../../data/models/track.dart';
 import '../../../providers/providers.dart';
+import '../../../services/cover_finder.dart';
 import '../../../services/file_trash.dart';
 import '../../../services/missing_files.dart';
 import '../../widgets/dialogs.dart';
+import '../../widgets/track_tile.dart' show removalLines;
 import '../../widgets/manage_media_tile.dart';
 import '../../widgets/missing_files_dialog.dart';
 import '../cover_fix_page.dart';
@@ -33,15 +36,11 @@ class LibrarySettingsPage extends ConsumerWidget {
           title: Text(d, maxLines: 2, overflow: TextOverflow.ellipsis),
           trailing: IconButton(
             icon: const Icon(Icons.close),
-            onPressed: () async {
-              if (await confirmDelete(context,
-                  title: '移除音樂資料夾？', message: '$d\n\n資料夾和裡面的檔案不會被刪除，只是 OuOPlayer 不再掃描它。')) {
-                n.setMusicDirs([...s.musicDirs]..remove(d));
-              }
-            },
+            onPressed: () => removeMusicFolder(context, ref, d),
           ),
         ),
-      ListTile(
+      SettingTile(
+        action: '新增',
         leading: const Icon(Icons.create_new_folder_outlined),
         title: const Text('新增資料夾'),
         onTap: () async {
@@ -60,34 +59,36 @@ class LibrarySettingsPage extends ConsumerWidget {
           }
         },
       ),
-      SwitchListTile(
+      SettingSwitch(
         secondary: const Icon(Icons.manage_search),
         title: const Text('新增資料夾時自動掃描'),
         subtitle: const Text('並在音樂庫顯示該資料夾'),
         value: s.autoScanNewFolders,
         onChanged: n.setAutoScanNewFolders,
       ),
-      ListTile(
+      SettingTile(
+        action: '掃描',
         leading: const Icon(Icons.refresh),
         title: const Text('重新掃描音樂庫'),
         subtitle: scan != null && scan.running ? Text(scan.total == 0 ? '搜尋中…' : '${scan.done}/${scan.total}') : null,
         onTap: scan?.running == true ? null : () => rescanLibrary(context, ref),
       ),
       settingsSubheader(context, '維護'),
-      SwitchListTile(
+      SettingSwitch(
         secondary: const Icon(Icons.cleaning_services_outlined),
         title: const Text('自動檢查已不存在的歌曲'),
         subtitle: const Text('開啟 App 和切回 App 時檢查；發現檔案已不存在的歌曲時，先問你再從音樂庫移除'),
         value: s.autoCleanMissing,
         onChanged: n.setAutoCleanMissing,
       ),
-      ListTile(
+      SettingTile(
+        action: '檢查',
         leading: const Icon(Icons.search),
         title: const Text('立即檢查已不存在的歌曲'),
         onTap: () => checkMissingFiles(context, ref, manual: true),
       ),
       if (Platform.isAndroid) const ManageMediaTile(),
-      SwitchListTile(
+      SettingSwitch(
         secondary: const Icon(Icons.delete_forever_outlined),
         title: const Text('刪除檔案時直接永久刪除'),
         subtitle: Text(s.deletePermanently
@@ -97,14 +98,17 @@ class LibrarySettingsPage extends ConsumerWidget {
         onChanged: n.setDeletePermanently,
       ),
       if (s.homeHidden.isNotEmpty)
-        ListTile(
+        SettingTile(
+          action: '還原',
           leading: const Icon(Icons.restore),
           title: const Text('還原首頁捷徑'),
           subtitle: Text('從首頁移除了 ${s.homeHidden.length} 個捷徑，選要放回首頁的'),
           onTap: () => restoreHomeShortcuts(context, ref),
         ),
+      const _OrphanSongsTile(),
       settingsSubheader(context, '封面與歌手圖片'),
-      ListTile(
+      SettingTile(
+        action: '整理',
         leading: const Icon(Icons.image_search_outlined),
         title: const Text('整理音樂庫的封面'),
         subtitle: const Text('替沒有封面、或封面是影片截圖的歌，從 iTunes 找正式的正方形封面（會先預覽）'),
@@ -113,7 +117,19 @@ class LibrarySettingsPage extends ConsumerWidget {
           if (context.mounted) await findCovers(context, ref, all);
         },
       ),
-      ListTile(
+      SettingTile(
+        action: '替換',
+        leading: const Icon(Icons.hd_outlined),
+        title: const Text('替換太小的封面'),
+        subtitle: const Text('小於 500×500、在電腦上看起來糊的封面，也從 iTunes 找正式封面（會先預覽）'),
+        onTap: () async {
+          final all = await ref.read(dbProvider).tracks();
+          if (context.mounted) await findCovers(context, ref, all, small: true);
+        },
+      ),
+      const _CoverSizeTile(),
+      SettingTile(
+        action: '尋找',
         leading: const Icon(Icons.translate),
         title: const Text('找原文歌名'),
         subtitle: const Text('羅馬拼音或英文的歌名（例如 YouTube Music 下載的「Yoru ni Kakeru」）改回日文或中文的原名（會先預覽）'),
@@ -122,7 +138,7 @@ class LibrarySettingsPage extends ConsumerWidget {
           if (context.mounted) await findNativeNames(context, ref, all);
         },
       ),
-      SwitchListTile(
+      SettingSwitch(
         secondary: const Icon(Icons.person_search_outlined),
         title: const Text('自動上網找歌手圖片'),
         subtitle: Text('從 Deezer 下載歌手照片（免費，只會送出歌手名字），存在${Platform.isAndroid ? '手機' : '電腦'}上'),
@@ -158,7 +174,7 @@ Future<void> restoreHomeShortcuts(BuildContext context, WidgetRef ref) async {
           width: 400,
           child: ListView(shrinkWrap: true, children: [
             for (final k in hidden)
-              CheckboxListTile(
+              SettingCheck(
                 value: picked.contains(k),
                 onChanged: (v) => setState(() => v == true ? picked.add(k) : picked.remove(k)),
                 title: Text(label(k), maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -178,4 +194,141 @@ Future<void> restoreHomeShortcuts(BuildContext context, WidgetRef ref) async {
     n.setHomeHidden(k, false);
   }
   toast(context, '已還原 ${picked.length} 個首頁捷徑');
+}
+
+/// 移除音樂資料夾: no longer scanned, and its songs leave the library (and the
+/// playlists / likes they were in: the same warning as 從音樂庫隱藏). Songs
+/// another music folder or the download folder still covers stay.
+Future<void> removeMusicFolder(BuildContext context, WidgetRef ref, String dir) async {
+  final s = ref.read(settingsProvider);
+  final db = ref.read(dbProvider);
+  final keepDirs = [...s.musicDirs.where((x) => x != dir), s.downloadDir];
+  bool inside(String path, String folder) {
+    final a = p.normalize(path).toLowerCase(), b = p.normalize(folder).toLowerCase();
+    return a == b || p.isWithin(b, a);
+  }
+
+  final songs = [
+    for (final t in await db.folderTracks(dir))
+      if (!keepDirs.any((k) => inside(t.uri, k)) && t.source != TrackSource.missing) t,
+  ];
+  final where = songs.isEmpty ? <String>[] : await removalLines(ref, songs);
+  if (!context.mounted) return;
+  final ok = await confirmDelete(context,
+      title: '移除音樂資料夾？',
+      message: '$dir\n\n資料夾和裡面的檔案不會被刪除，OuOPlayer 不再掃描它'
+          '${songs.isEmpty ? '。' : '，已經掃描的 ${songs.length} 首也會從音樂庫移除。會從以下地方移除：\n${where.map((l) => '• $l').join('\n')}'}',
+      action: '移除');
+  if (!ok) return;
+  ref.read(settingsProvider.notifier).setMusicDirs([...s.musicDirs]..remove(dir));
+  if (songs.isEmpty) return;
+  final handler = ref.read(audioHandlerProvider);
+  for (final t in songs) {
+    await handler.removeTrack(t.id);
+  }
+  await db.deleteTracks(songs.map((t) => t.id));
+  if (context.mounted) toast(context, '已移除資料夾和 ${songs.length} 首歌');
+}
+
+/// Scanned songs no music folder covers any more (their folder was removed
+/// before v1.9.0 took its songs along).
+Future<List<Track>> orphanSongs(WidgetRef ref) async {
+  final s = ref.read(settingsProvider);
+  final dirs = [...s.musicDirs, s.downloadDir];
+  bool inside(String path, String folder) {
+    final a = p.normalize(path).toLowerCase(), b = p.normalize(folder).toLowerCase();
+    return a == b || p.isWithin(b, a);
+  }
+
+  return [
+    for (final t in await ref.read(dbProvider).tracks())
+      if (t.source == TrackSource.local && !t.isRemote && t.uri.isNotEmpty && !dirs.any((d) => inside(t.uri, d))) t,
+  ];
+}
+
+/// 封面大小: the size 找封面 takes from iTunes.
+class _CoverSizeTile extends ConsumerStatefulWidget {
+  const _CoverSizeTile();
+
+  @override
+  ConsumerState<_CoverSizeTile> createState() => _CoverSizeTileState();
+}
+
+class _CoverSizeTileState extends ConsumerState<_CoverSizeTile> {
+  static const _labels = {600: '小（600×600，檔案最小）', 1200: '中（1200×1200，電腦上也清楚）', 3000: '大（3000×3000，最清楚，檔案較大）'};
+
+  @override
+  void initState() {
+    super.initState();
+    CoverFinder.loadSize(ref.read(dbProvider)).then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => SettingTile(
+    action: '更改',
+        leading: const Icon(Icons.photo_size_select_large_outlined),
+        title: const Text('封面大小'),
+        subtitle: Text('找封面時從 iTunes 取用的大小：${_labels[CoverFinder.size]}'),
+        onTap: () async {
+          final picked = await showDialog<int>(
+            context: context,
+            builder: (c) => SimpleDialog(
+              title: const Text('封面大小'),
+              children: [
+                for (final e in _labels.entries)
+                  ListTile(
+                    leading: Icon(e.key == CoverFinder.size ? Icons.radio_button_checked : Icons.radio_button_unchecked),
+                    title: Text(e.value),
+                    onTap: () => Navigator.pop(c, e.key),
+                  ),
+              ],
+            ),
+          );
+          if (picked == null) return;
+          await ref.read(dbProvider).setSetting('cover_size', '$picked');
+          setState(() => CoverFinder.size = picked);
+        },
+      );
+}
+
+class _OrphanSongsTile extends ConsumerWidget {
+  const _OrphanSongsTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(settingsProvider.select((s) => s.musicDirs));
+    ref.watch(dbRevisionProvider);
+    return FutureBuilder<List<Track>>(
+      future: orphanSongs(ref),
+      builder: (context, snap) {
+        final songs = snap.data ?? const [];
+        if (songs.isEmpty) return const SizedBox.shrink();
+        return SettingTile(
+          action: '移除',
+          leading: const Icon(Icons.folder_off_outlined),
+          title: Text('移除不在音樂資料夾裡的歌（${songs.length} 首）'),
+          subtitle: const Text('它們的資料夾已經從清單移除，但歌還留在音樂庫'),
+          onTap: () async {
+            final folders = {for (final t in songs) p.dirname(t.uri)}.toList()..sort();
+            final where = await removalLines(ref, songs);
+            if (!context.mounted) return;
+            final ok = await confirmDelete(context,
+                title: '從音樂庫移除 ${songs.length} 首？',
+                message: '檔案不會被刪除。這些歌來自：\n${folders.take(8).map((f) => '• $f').join('\n')}${folders.length > 8 ? '\n…' : ''}'
+                    '\n\n會從以下地方移除：\n${where.map((l) => '• $l').join('\n')}',
+                action: '移除');
+            if (!ok) return;
+            final handler = ref.read(audioHandlerProvider);
+            for (final t in songs) {
+              await handler.removeTrack(t.id);
+            }
+            await ref.read(dbProvider).deleteTracks(songs.map((t) => t.id));
+            if (context.mounted) toast(context, '已移除 ${songs.length} 首');
+          },
+        );
+      },
+    );
+  }
 }

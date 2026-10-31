@@ -66,6 +66,18 @@ class JustAudioMediaKit extends JustAudioPlatform {
 
   static Timer? _filterTimer;
 
+  static double _volumeGain = 0;
+
+  /// OuOPlayer patch: mpv's `volume-gain` (dB), applied after [audioFilter].
+  /// It rebuilds nothing and carries over from file to file. Changing `af`
+  /// in a song's last moments instead can leave mpv sitting at the end of it.
+  static double get volumeGain => _volumeGain;
+  static void setVolumeGain(double db) {
+    if (db == _volumeGain) return;
+    _volumeGain = db;
+    MediaKitPlayer.applyVolumeGain(db);
+  }
+
   /// OuOPlayer patch: live values for the filters in [audioFilter], sent with
   /// mpv's `af-command` (no rebuild of the audio chain, so no dropout).
   /// Key: `target|command`; the latest value of each is kept so it can be

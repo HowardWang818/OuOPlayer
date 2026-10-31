@@ -8,6 +8,7 @@ import '../pages/queue_page.dart';
 import 'art_image.dart';
 import 'output_device_chip.dart';
 import 'player_controls.dart';
+import 'song_font.dart';
 import 'track_links.dart';
 
 void openNowPlaying(BuildContext context) => Navigator.of(context, rootNavigator: true).push(PageRouteBuilder(
@@ -82,9 +83,10 @@ class DesktopPlayerBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final track = ref.watch(currentTrackProvider);
     final cs = Theme.of(context).colorScheme;
+    final font = ref.watch(songFontProvider);
     return Container(
       height: 88,
-      color: cs.surfaceContainer,
+      color: AppTheme.playerBar(context),
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(children: [
         Expanded(
@@ -98,10 +100,10 @@ class DesktopPlayerBar extends ConsumerWidget {
                     const SizedBox(width: 12),
                     Flexible(
                       child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: font.title(const TextStyle(fontWeight: FontWeight.w600))),
                         LinkText(track.artist,
                             onTap: hasPages(track) ? () => openArtist(context, track) : null,
-                            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                            style: font.artist(TextStyle(fontSize: 12, color: cs.onSurfaceVariant))),
                       ]),
                     ),
                     const FavoriteButton(),

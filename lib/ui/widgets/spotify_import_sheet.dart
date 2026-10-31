@@ -14,6 +14,7 @@ import '../../services/song_matcher.dart';
 import '../../services/spotify_import.dart';
 import '../pages/missing_songs_page.dart';
 import 'dialogs.dart';
+import '../../config/device_words.dart';
 
 /// 匯入 Spotify 歌單: pick Spotify's export files (Playlist*.json,
 /// YourLibrary.json) or Exportify CSVs, preview what is in the library,
@@ -58,7 +59,7 @@ Future<void> importSpotify(BuildContext context, WidgetRef ref) async {
         content: SizedBox(
           width: 460,
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('會用你手機上已經有的歌；還沒有的歌會以灰色留在清單裡，之後下載或加入音樂庫時自動補上。不會自動下載。'),
+            Text('會用你$thisDevice上已經有的歌；還沒有的歌會以灰色留在清單裡，之後下載或加入音樂庫時自動補上。不會自動下載。'),
             const SizedBox(height: 8),
             Flexible(
               child: ListView(shrinkWrap: true, children: [
@@ -68,7 +69,7 @@ Future<void> importSpotify(BuildContext context, WidgetRef ref) async {
                     value: chosen.contains(i),
                     onChanged: (v) => setState(() => v == true ? chosen.add(i) : chosen.remove(i)),
                     title: Text(playlists[i].name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    subtitle: Text('${playlists[i].songs.length} 首，手機上找到 ${found[i].whereType<Track>().length} 首'
+                    subtitle: Text('${playlists[i].songs.length} 首，$thisDevice上找到 ${found[i].whereType<Track>().length} 首'
                         '${!playlists[i].liked && existing.containsKey(playlists[i].name) ? ' • 已有同名清單' : ''}'),
                   ),
               ]),
@@ -134,7 +135,7 @@ Future<void> importSpotify(BuildContext context, WidgetRef ref) async {
                       value: accept.contains(m),
                       onChanged: (v) => setState(() => v == true ? accept.add(m) : accept.remove(m)),
                       title: Text('Spotify：${playlists[m.$1].songs[m.$2].label}', maxLines: 2, overflow: TextOverflow.ellipsis),
-                      subtitle: Text('手機上：${matched[m.$1][m.$2].$1!.title} - ${matched[m.$1][m.$2].$1!.artist}',
+                      subtitle: Text('$thisDevice上：${matched[m.$1][m.$2].$1!.title} - ${matched[m.$1][m.$2].$1!.artist}',
                           maxLines: 2, overflow: TextOverflow.ellipsis),
                     ),
                 ]),
@@ -183,7 +184,7 @@ Future<void> importSpotify(BuildContext context, WidgetRef ref) async {
           added++;
         }
       }
-      report.add('已按讚的歌曲：新增 $added 首（其中 ${pl.songs.length - onDevice} 首手機上還沒有）');
+      report.add('已按讚的歌曲：新增 $added 首（其中 ${pl.songs.length - onDevice} 首$thisDevice上還沒有）');
       continue;
     }
     int id;
@@ -194,7 +195,7 @@ Future<void> importSpotify(BuildContext context, WidgetRef ref) async {
     }
     // A fresh playlist keeps Spotify's order and repeats.
     final added = await db.addToPlaylist(id, tracks, allowDuplicates: !existing.containsKey(pl.name) || allowDup || !mergeExisting);
-    report.add('${pl.name}：手機上有 $onDevice / ${pl.songs.length} 首${added < tracks.length ? '（$added 首加入）' : ''}');
+    report.add('${pl.name}：$thisDevice上有 $onDevice / ${pl.songs.length} 首${added < tracks.length ? '（$added 首加入）' : ''}');
   }
   if (!context.mounted) return;
   await showDialog(
@@ -208,7 +209,7 @@ Future<void> importSpotify(BuildContext context, WidgetRef ref) async {
           for (final r in report) Text('• $r'),
           if (missing.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text('有 ${missing.length} 首手機上還沒有，已用灰色留在清單裡，之後有了會自動補上：'),
+            Text('有 ${missing.length} 首$thisDevice上還沒有，已用灰色留在清單裡，之後有了會自動補上：'),
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 220),
               child: ListView(shrinkWrap: true, children: [for (final m in missing) Text(m, style: const TextStyle(fontSize: 13))]),

@@ -59,7 +59,24 @@ class _SelectionInherited extends InheritedNotifier<TrackSelection> {
 /// Wraps a page with a track list. While rows are selected, an action bar
 /// slides over the top of the page.
 class TrackSelectionScope extends StatefulWidget {
-  const TrackSelectionScope({super.key, required this.tracks, required this.child, this.onRemove, this.removeLabel});
+  const TrackSelectionScope({super.key, required this.tracks, required this.child, this.onRemove, this.removeLabel, this.onFilter});
+
+  /// Pages with a song list, newest last, for the shortcuts below.
+  static final _open = <_TrackSelectionScopeState>[];
+
+  static _TrackSelectionScopeState? get _front => _open.reversed.where((s) => s.mounted && ModalRoute.of(s.context)?.isCurrent == true).firstOrNull;
+
+  /// 全選 on the list page in front, if there is one.
+  static void selectAllInFront() {
+    final s = _front;
+    s?._selection.selectAll(s.widget.tracks.length);
+  }
+
+  /// Opens or closes the search box of the list page in front, if it has one.
+  static void filterInFront() => _front?.widget.onFilter?.call();
+
+  /// Opens or closes this page's search box.
+  final VoidCallback? onFilter;
 
   /// The list the row indexes refer to.
   final List<Track> tracks;
@@ -77,6 +94,12 @@ class _TrackSelectionScopeState extends State<TrackSelectionScope> {
   final _selection = TrackSelection();
 
   @override
+  void initState() {
+    super.initState();
+    TrackSelectionScope._open.add(this);
+  }
+
+  @override
   void didUpdateWidget(TrackSelectionScope old) {
     super.didUpdateWidget(old);
     // The list changed under us (e.g. songs removed): drop stale indexes.
@@ -85,6 +108,7 @@ class _TrackSelectionScopeState extends State<TrackSelectionScope> {
 
   @override
   void dispose() {
+    TrackSelectionScope._open.remove(this);
     _selection.dispose();
     super.dispose();
   }

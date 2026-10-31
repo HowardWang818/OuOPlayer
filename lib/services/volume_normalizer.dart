@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 
+import '../data/models/track.dart';
 import '../providers/providers.dart';
 import 'equalizer.dart';
 import 'loudness.dart';
@@ -50,6 +51,12 @@ List<(String, String, String)> windowsFilterValues(
   ];
 }
 
+/// A song's gain on Windows, in two parts. Lowering goes to mpv's
+/// `volume-gain` (after the chain), which holds from song to song, so a new
+/// song starts no louder than it should without rebuilding the chain. Raising
+/// stays in the chain, ahead of the limiter that rounds off the raised peaks.
+({double chain, double output}) windowsGain(double gain) => (chain: max(gain, 0.0), output: min(gain, 0.0));
+
 /// The mpv `af` text for the chain, starting at [values].
 String windowsFilterChain(List<(String, String, String)> values) {
   String v(String target, String option) => values.firstWhere((x) => x.$1 == target && x.$2 == option).$3;
@@ -78,8 +85,16 @@ class SongGainNotifier extends Notifier<double?> {
     var alive = true;
     ref.onDispose(() => alive = false);
     () async {
-      final l = await service.get(track, urgent: true);
-      if (alive && l != null) state = songGain(l, level);
+      // Without ffmpeg (Windows), the adaptive normalizer stays.
+      if (!await service.available) return;
+      final saved = await service.saved(track);
+      if (saved != null) {
+        if (alive) state = songGain(saved, level);
+      } else {
+        if (alive) state = unmeasuredGain(level);
+        final l = await service.get(track, urgent: true);
+        if (alive && l != null) state = songGain(l, level);
+      }
       // The next song gets measured before it comes up.
       final handler = ref.read(audioHandlerProvider);
       final next = handler.nextTrack;
@@ -118,28 +133,89 @@ class _GainRamp {
 
 final _ramp = _GainRamp();
 
+/// How long before a song ends the next song's gain is prepared.
+const gainLead = Duration(seconds: 1);
+
+/// The gain to play with just before a song change: never more than either
+/// song's. The new song starts no louder than it should, and is raised (if
+/// at all) once it has begun, so its first moment can't blast.
+double gainBeforeSwitch(double current, double next) => min(current, next);
+
+/// Whether a song is about to end by itself.
+bool endingSoon(Duration position, Duration? duration) => duration != null && duration > gainLead && duration - position <= gainLead;
+
+/// Prepared for this song; `from` is the gain before that. Near a song's end
+/// ([byHand] false), seeking back out of the last moments undoes it.
+({String id, double from, bool byHand})? _held;
+
 final volumeNormalizationProvider = Provider<void>((ref) {
   final on = ref.watch(settingsProvider.select((s) => s.normalizeVolume));
   final level = ref.watch(settingsProvider.select((s) => s.normalizeLevel));
   final gain = ref.watch(songGainProvider);
   // A new song's gain applies at once; one measured mid-song glides in.
   final position = ref.read(audioHandlerProvider).player.position;
-  final instant = position < const Duration(seconds: 1);
+  // The first seconds of a song still count as its start (its loudness may
+  // be looked up a moment after it began).
+  final instant = position < const Duration(seconds: 3);
+  // In the middle of a song the volume only ever goes down (a song measured
+  // late as quiet is raised from its next play, never with a sudden blast).
+  double? capped(double? g) => g == null || instant ? g : min(g, _ramp.current);
+  final handler = ref.read(audioHandlerProvider);
+  late void Function(double) sendGain;
+
+  /// Lowers the gain now if [next] needs less (see [gainBeforeSwitch]).
+  Future<void> prepare(Track next, {bool byHand = false}) async {
+    if (!on || !LoudnessService.measurable(next) || _held?.id == next.id) return;
+    final service = ref.read(loudnessProvider);
+    if (!await service.available) return;
+    final saved = await service.saved(next);
+    final g = saved != null ? songGain(saved, level) : unmeasuredGain(level);
+    _held = (id: next.id, from: _ramp.current, byHand: byHand);
+    _ramp.to(gainBeforeSwitch(_ramp.current, g), sendGain, instant: true);
+  }
+
+  /// In the last moments of a song, gets the next one ready; seeking back
+  /// out of them puts the gain back.
+  void follow() {
+    handler.beforeSwitch = (next) => prepare(next, byHand: true);
+    final sub = handler.player.positionStream.listen((pos) {
+      final held = _held;
+      if (held != null && handler.currentTrack?.id == held.id) {
+        _held = null;
+      } else if (endingSoon(pos, handler.player.duration)) {
+        final next = handler.nextTrack;
+        if (next != null && handler.player.playing) prepare(next);
+      } else if (held != null && !held.byHand) {
+        _held = null;
+        _ramp.to(held.from, sendGain);
+      }
+    });
+    ref.onDispose(sub.cancel);
+  }
   if (Platform.isWindows || Platform.isLinux) {
     final eqOn = ref.watch(settingsProvider.select((s) => s.eqEnabled));
     final preset = ref.watch(settingsProvider.select((s) => s.eqPreset));
     final custom = ref.watch(settingsProvider.select((s) => s.eqCustom));
     final eq = eqOn ? eqGains(EqPreset.byName(preset), custom) : null;
-    final values = windowsFilterValues(normalize: on, level: level, eq: eq, songGainDb: gain);
-    // The chain once (with the current values); after that only values change.
-    if (JustAudioMediaKit.audioFilter.isEmpty) JustAudioMediaKit.audioFilter = windowsFilterChain(values);
+    final values = windowsFilterValues(normalize: on, level: level, eq: eq, songGainDb: capped(gain));
+    // The chain once, with no song's gain in it; after that only values change.
+    if (JustAudioMediaKit.audioFilter.isEmpty) {
+      JustAudioMediaKit.audioFilter = windowsFilterChain(windowsFilterValues(normalize: on, level: level, eq: eq, songGainDb: 0));
+    }
+    sendGain = (g) {
+      final parts = windowsGain(g);
+      JustAudioMediaKit.sendFilterCommand('volume@level', 'volume', '${parts.chain.toStringAsFixed(1)}dB');
+      JustAudioMediaKit.setVolumeGain(parts.output);
+    };
     for (final (target, option, value) in values) {
-      if (target == 'volume@level' && gain != null) continue;
-      JustAudioMediaKit.sendFilterCommand(target, option, value);
+      if (target != 'volume@level') {
+        JustAudioMediaKit.sendFilterCommand(target, option, value);
+      } else if (gain == null) {
+        sendGain(double.parse(value.replaceFirst('dB', '')));
+      }
     }
-    if (gain != null) {
-      _ramp.to(gain, (g) => JustAudioMediaKit.sendFilterCommand('volume@level', 'volume', '${g.toStringAsFixed(1)}dB'), instant: instant);
-    }
+    if (gain != null) _ramp.to(capped(gain)!, sendGain, instant: instant);
+    follow();
     return;
   }
   if (!Platform.isAndroid) return;
@@ -151,7 +227,9 @@ final volumeNormalizationProvider = Provider<void>((ref) {
     channel.invokeMethod('gain', {'sessionId': session, 'enabled': on, 'gainDb': g}).catchError((_) => false);
   }
 
-  _ramp.to(on ? gain ?? 0 : 0, send, instant: instant);
+  sendGain = send;
+  _ramp.to(on ? capped(gain) ?? 0 : 0, send, instant: instant);
+  follow();
   final sub = player.androidAudioSessionIdStream.listen((id) {
     session = id;
     send(_ramp.current);

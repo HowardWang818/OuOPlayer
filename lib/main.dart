@@ -12,10 +12,12 @@ import 'config/demo.dart';
 import 'config/demo_seed.dart';
 import 'providers/providers.dart';
 import 'services/car_browser.dart';
+import 'services/desktop_tray.dart';
 import 'services/audio_handler.dart';
 import 'services/library_scanner.dart';
+import 'services/window_state.dart';
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   if (Platform.isWindows || Platform.isLinux) {
     JustAudioMediaKit.ensureInitialized(windows: true, linux: true);
@@ -38,6 +40,9 @@ Future<void> main() async {
   // The last queue loads in the background: a song that can't be opened
   // must never keep the window from showing.
   unawaited(handler.restoreSession());
+  // Windows: system tray (closing the window keeps playing and syncing).
+  await DesktopTray.init(handler, db, args).catchError((Object e) => debugPrint('tray: $e'));
+  await WindowState.init(db).catchError((Object e) => debugPrint('window: $e'));
 
   final container = ProviderContainer(overrides: [
     dbProvider.overrideWithValue(db),

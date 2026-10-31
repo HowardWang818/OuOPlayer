@@ -23,6 +23,10 @@ class AppDatabase {
   Stream<void> get changes => _changes.stream;
   void _notify() => _changes.add(null);
 
+  /// Playlist sync: told about the user's own playlist changes (never the
+  /// ones sync itself makes, which go through [setPlaylistRows]).
+  SyncHooks? syncHooks;
+
   /// For changes made straight on [db] (e.g. restoring a backup).
   void notifyChanged() => _notify();
 
@@ -54,7 +58,7 @@ class AppDatabase {
     return AppDatabase._(db);
   }
 
-  static const schemaVersion = 8;
+  static const schemaVersion = 12;
 
   /// Schema changes since version 1; existing data is kept.
   static Future<void> migrate(Database db, int from, int to) async {
@@ -112,6 +116,34 @@ class AppDatabase {
       // v1.5.0: each song's measured loudness (LUFS) and peak, for one fixed
       // 音量平衡 gain per song.
       await db.execute('CREATE TABLE track_loudness(track_id TEXT PRIMARY KEY, lufs REAL NOT NULL, peak REAL NOT NULL, at INTEGER)');
+    }
+    if (from < 9 && to >= 9) {
+      // v1.6.0: playlists and their folders get an id that is the same on
+      // every device, for Google Drive sync.
+      await db.execute('ALTER TABLE playlists ADD COLUMN uid TEXT');
+      await db.execute('ALTER TABLE playlist_folders ADD COLUMN uid TEXT');
+    }
+    if (from < 10 && to >= 10) {
+      // v1.7.0: plays brought in from another device (Google Drive sync) say
+      // which one; this device's own plays have none.
+      await db.execute('ALTER TABLE listening_log ADD COLUMN origin TEXT');
+    }
+    if (from < 11 && to >= 11) {
+      // v1.11.0 playlist sync: which playlists are synced, an id per playlist
+      // entry (the same on every device), and each synced list's state.
+      await db.execute('ALTER TABLE playlists ADD COLUMN synced INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE playlist_tracks ADD COLUMN item_id TEXT');
+      await db.execute('CREATE TABLE sync_lists(sid TEXT PRIMARY KEY, state TEXT NOT NULL)');
+    }
+    if (from < 12 && to >= 12) {
+      // v1.12.0 sync of song details and plays: the latest edit of each song
+      // (root: the song's first title|artist, the same on every device), a
+      // play's id on the device it came from, and songs only played there.
+      await db.execute('CREATE TABLE track_edits(track_id TEXT PRIMARY KEY, root TEXT NOT NULL, root_ms INTEGER, '
+          'title TEXT, artist TEXT, album TEXT, cover TEXT, at INTEGER NOT NULL, device TEXT NOT NULL)');
+      await db.execute('ALTER TABLE listening_log ADD COLUMN remote_id TEXT');
+      await db.execute('CREATE UNIQUE INDEX idx_listening_remote ON listening_log(remote_id)');
+      await db.execute('CREATE TABLE remote_songs(id TEXT PRIMARY KEY, title TEXT NOT NULL, artist TEXT, album TEXT, duration_ms INTEGER)');
     }
   }
 
@@ -192,7 +224,11 @@ class AppDatabase {
 
   /// Saves edited details (編輯資訊) of a song already in the library.
   Future<void> updateTrackInfo(Track t) async {
+    final before = await track(t.id);
     await db.update('tracks', {'title': t.title, 'artist': t.artist, 'album': t.album, 'art': t.art}, where: 'id = ?', whereArgs: [t.id]);
+    if (before != null && (before.title != t.title || before.artist != t.artist || before.album != t.album || before.art != t.art)) {
+      await syncHooks?.trackEdited(before, t);
+    }
     _notify();
   }
 
@@ -204,7 +240,7 @@ class AppDatabase {
       for (final e in moved.entries) {
         if (e.key == e.value) continue;
         await txn.update('tracks', {'id': e.value, 'uri': e.value}, where: 'id = ?', whereArgs: [e.key]);
-        for (final table in ['playlist_tracks', 'history', 'listening_log']) {
+        for (final table in ['playlist_tracks', 'history', 'listening_log', 'track_edits']) {
           await txn.update(table, {'track_id': e.value}, where: 'track_id = ?', whereArgs: [e.key]);
         }
         for (final table in ['favorites', 'plays']) {
@@ -220,11 +256,17 @@ class AppDatabase {
     final list = ids.toList();
     if (list.isEmpty) return;
     final marks = List.filled(list.length, '?').join(',');
+    final gone = [for (final r in await db.query('tracks', columns: ['title', 'artist'], where: 'id IN ($marks)', whereArgs: list)) (r['title'] as String, (r['artist'] as String?) ?? '')];
     await db.delete('tracks', where: 'id IN ($marks)', whereArgs: list);
     await db.delete('playlist_tracks', where: 'track_id IN ($marks)', whereArgs: list);
     await db.delete('favorites', where: 'track_id IN ($marks)', whereArgs: list);
+    await db.delete('track_edits', where: 'track_id IN ($marks)', whereArgs: list);
+    // Songs leaving this device's library isn't a playlist action: synced
+    // playlists keep them (greyed), and sync doesn't fetch them back.
+    await syncHooks?.songsRemoved(gone);
     _notify();
   }
+
 
   /// Where removing these songs from the library takes them out of: the
   /// playlists holding them (name → rows), how many are liked, and the albums
@@ -364,6 +406,7 @@ class AppDatabase {
     } else {
       await db.delete('favorites', where: 'track_id = ?', whereArgs: [t.id]);
     }
+    await syncHooks?.likesEdited();
     _notify();
   }
 
@@ -402,6 +445,14 @@ class AppDatabase {
   Future<Map<String, int>> playCounts() async {
     final rows = await db.query('plays', columns: ['track_id', 'count']);
     return {for (final r in rows) r['track_id'] as String: r['count'] as int};
+  }
+
+  /// Ids of the songs really listened to: 30 seconds in one play, or 90% of a
+  /// shorter song. A song skipped straight away stays unheard.
+  Future<Set<String>> heardTracks() async {
+    final rows = await db.rawQuery('SELECT DISTINCT l.track_id AS id FROM listening_log l LEFT JOIN tracks t ON t.id = l.track_id '
+        'WHERE l.listened_ms >= MIN(30000, COALESCE(NULLIF(t.duration_ms, 0) * 9 / 10, 30000))');
+    return {for (final r in rows) r['id'] as String};
   }
 
   // ---------- clearing play data ----------
@@ -447,6 +498,21 @@ class AppDatabase {
         ),
     ];
   }
+
+  /// Songs only played on another device (sync): id → a stand-in song.
+  Future<Map<String, Track>> remoteSongs() async => {
+        for (final r in await db.query('remote_songs'))
+          r['id'] as String: Track(
+            id: r['id'] as String,
+            uri: '',
+            title: r['title'] as String,
+            artist: (r['artist'] as String?) ?? '未知演出者',
+            album: (r['album'] as String?) ?? '未知專輯',
+            durationMs: r['duration_ms'] as int?,
+            source: TrackSource.missing,
+            addedAt: 0,
+          ),
+      };
 
   // ---------- podcast progress ----------
   /// [notify] refreshes the episode lists; the periodic saves while playing
@@ -576,12 +642,33 @@ class AppDatabase {
 
   Future<void> renamePlaylist(int id, String name) async {
     await db.update('playlists', {'name': name}, where: 'id = ?', whereArgs: [id]);
+    await syncHooks?.playlistEdited(id);
     _notify();
   }
 
   Future<void> deletePlaylist(int id) async {
+    final row = await db.query('playlists', columns: ['uid', 'synced'], where: 'id = ?', whereArgs: [id]);
     await db.delete('playlists', where: 'id = ?', whereArgs: [id]);
     await db.delete('playlist_tracks', where: 'playlist_id = ?', whereArgs: [id]);
+    if (row.isNotEmpty && row.first['synced'] == 1) await syncHooks?.playlistDeleted(row.first['uid'] as String?);
+    _notify();
+  }
+
+  /// A playlist's rows in order: (song id, entry id or null).
+  Future<List<(String, String?)>> playlistRows(int id) async {
+    final rows = await db.query('playlist_tracks', columns: ['track_id', 'item_id'], where: 'playlist_id = ?', whereArgs: [id], orderBy: 'position');
+    return [for (final r in rows) (r['track_id'] as String, r['item_id'] as String?)];
+  }
+
+  /// Sync: the playlist becomes exactly [rows] (song id, entry id). Not a
+  /// user action, so not reported to [syncHooks].
+  Future<void> setPlaylistRows(int id, List<(String, String?)> rows) async {
+    await db.transaction((txn) async {
+      await txn.delete('playlist_tracks', where: 'playlist_id = ?', whereArgs: [id]);
+      for (var i = 0; i < rows.length; i++) {
+        await txn.insert('playlist_tracks', {'playlist_id': id, 'track_id': rows[i].$1, 'item_id': rows[i].$2, 'position': i});
+      }
+    });
     _notify();
   }
 
@@ -607,6 +694,7 @@ class AppDatabase {
       added++;
     }
     await batch.commit(noResult: true);
+    if (added > 0) await syncHooks?.playlistEdited(id);
     _notify();
     return added;
   }
@@ -620,17 +708,20 @@ class AppDatabase {
   /// occurrence and the order. Returns how many rows were removed.
   Future<int> removePlaylistDuplicates(int id) async {
     final tracks = await playlistTracks(id);
-    final unique = withoutDuplicates(tracks);
-    final removed = tracks.length - unique.length;
-    if (removed > 0) await _rewritePlaylist(id, unique);
+    final unique = withoutDuplicates(tracks).map((t) => t.id).toSet();
+    final rows = await playlistRows(id);
+    final seen = <String>{};
+    final kept = [for (final r in rows) if (unique.contains(r.$1) && seen.add(r.$1)) r];
+    final removed = rows.length - kept.length;
+    if (removed > 0) await _rewritePlaylist(id, kept);
     return removed;
   }
 
   Future<void> removeFromPlaylist(int id, int index) async {
-    final tracks = await playlistTracks(id);
-    if (index < 0 || index >= tracks.length) return;
-    tracks.removeAt(index);
-    await _rewritePlaylist(id, tracks);
+    final rows = await playlistRows(id);
+    if (index < 0 || index >= rows.length) return;
+    rows.removeAt(index);
+    await _rewritePlaylist(id, rows);
   }
 
   /// Position after the last song of a playlist.
@@ -649,31 +740,45 @@ class AppDatabase {
     if (have.isNotEmpty) return false;
     await db.insert('tracks', track.toMap(), conflictAlgorithm: ConflictAlgorithm.ignore);
     await db.insert('playlist_tracks', {'playlist_id': id, 'track_id': track.id, 'position': position});
+    await syncHooks?.playlistEdited(id);
     _notify();
     return true;
   }
 
   /// Removes several rows (by position) from a playlist at once.
   Future<void> removeFromPlaylistAt(int id, List<int> indexes) async {
-    final tracks = await playlistTracks(id);
+    final rows = await playlistRows(id);
     final drop = indexes.toSet();
-    await _rewritePlaylist(id, [for (var i = 0; i < tracks.length; i++) if (!drop.contains(i)) tracks[i]]);
+    await _rewritePlaylist(id, [for (var i = 0; i < rows.length; i++) if (!drop.contains(i)) rows[i]]);
+  }
+
+  /// The playlist becomes exactly [trackIds], in order (sync).
+  Future<void> replacePlaylistTracks(int id, List<String> trackIds) async {
+    await db.transaction((txn) async {
+      await txn.delete('playlist_tracks', where: 'playlist_id = ?', whereArgs: [id]);
+      for (var i = 0; i < trackIds.length; i++) {
+        await txn.insert('playlist_tracks', {'playlist_id': id, 'track_id': trackIds[i], 'position': i});
+      }
+    });
+    _notify();
   }
 
   Future<void> reorderPlaylist(int id, int oldIndex, int newIndex) async {
-    final tracks = await playlistTracks(id);
-    final t = tracks.removeAt(oldIndex);
-    tracks.insert(newIndex.clamp(0, tracks.length), t);
-    await _rewritePlaylist(id, tracks);
+    final rows = await playlistRows(id);
+    final t = rows.removeAt(oldIndex);
+    rows.insert(newIndex.clamp(0, rows.length), t);
+    await _rewritePlaylist(id, rows);
   }
 
-  Future<void> _rewritePlaylist(int id, List<Track> tracks) async {
+  /// A user change to the rows (entry ids kept), reported to [syncHooks].
+  Future<void> _rewritePlaylist(int id, List<(String, String?)> rows) async {
     await db.transaction((txn) async {
       await txn.delete('playlist_tracks', where: 'playlist_id = ?', whereArgs: [id]);
-      for (var i = 0; i < tracks.length; i++) {
-        await txn.insert('playlist_tracks', {'playlist_id': id, 'track_id': tracks[i].id, 'position': i});
+      for (var i = 0; i < rows.length; i++) {
+        await txn.insert('playlist_tracks', {'playlist_id': id, 'track_id': rows[i].$1, 'item_id': rows[i].$2, 'position': i});
       }
     });
+    await syncHooks?.playlistEdited(id);
     _notify();
   }
 
@@ -748,4 +853,15 @@ enum PlayData {
   const PlayData(this.label, this.description);
   final String label;
   final String description;
+}
+
+/// What playlist sync wants to hear from the library (see AppDatabase.syncHooks).
+abstract class SyncHooks {
+  Future<void> playlistEdited(int playlistId);
+  Future<void> playlistDeleted(String? uid);
+  Future<void> likesEdited();
+  /// (title, artist) of the songs that left this device's library.
+  Future<void> songsRemoved(List<(String, String)> songs);
+  /// The user changed a song's details (編輯資訊, 找封面, 找原文歌名…).
+  Future<void> trackEdited(Track before, Track after);
 }

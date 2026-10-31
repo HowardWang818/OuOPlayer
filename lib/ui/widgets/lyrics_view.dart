@@ -43,7 +43,13 @@ class LyricsInk extends InheritedWidget {
 /// Lyrics of the current song: synced ones follow playback (current line
 /// lit, tap a line to jump there), plain ones just scroll.
 class LyricsView extends ConsumerStatefulWidget {
-  const LyricsView({super.key});
+  const LyricsView({super.key, this.tools = true, this.size = 1});
+
+  /// The line under the lyrics: where they came from, search again.
+  final bool tools;
+
+  /// On top of 歌詞字體大小: the full player has more room than a side panel.
+  final double size;
 
   @override
   ConsumerState<LyricsView> createState() => _LyricsViewState();
@@ -68,12 +74,14 @@ class _LyricsViewState extends ConsumerState<LyricsView> {
   @override
   Widget build(BuildContext context) {
     _keepAwake(ref.watch(settingsProvider.select((s) => s.lyricsKeepAwake)));
-    return const _LyricsBody();
+    return _LyricsBody(tools: widget.tools, size: widget.size);
   }
 }
 
 class _LyricsBody extends ConsumerWidget {
-  const _LyricsBody();
+  const _LyricsBody({required this.tools, required this.size});
+  final bool tools;
+  final double size;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -106,13 +114,14 @@ class _LyricsBody extends ConsumerWidget {
               retry: true,
               message: ref.watch(settingsProvider.select((s) => s.lyricsOnline)) ? '找不到歌詞' : '找不到歌詞（自動上網找歌詞已關閉）')
           : Column(children: [
-              Expanded(child: l.synced ? _SyncedLyrics(lyrics: l) : _PlainLyrics(lyrics: l)),
-              Row(children: [
-                Expanded(child: Text('來源：${l.source}${l.synced ? '' : '（未同步）'}', style: TextStyle(fontSize: 12, color: muted))),
-                if (l.source == 'LRCLIB')
-                  TextButton(onPressed: () => refreshLyrics(ref, track), child: const Text('重新查詢')),
-                TextButton(onPressed: () => showLyricsSearch(context, ref, track), child: const Text('不對？手動搜尋')),
-              ]),
+              Expanded(child: l.synced ? _SyncedLyrics(lyrics: l, size: size) : _PlainLyrics(lyrics: l, size: size)),
+              if (tools)
+                Row(children: [
+                  Expanded(child: Text('來源：${l.source}${l.synced ? '' : '（未同步）'}', style: TextStyle(fontSize: 12, color: muted))),
+                  if (l.source == 'LRCLIB')
+                    TextButton(onPressed: () => refreshLyrics(ref, track), child: const Text('重新查詢')),
+                  TextButton(onPressed: () => showLyricsSearch(context, ref, track), child: const Text('不對？手動搜尋')),
+                ]),
             ]),
     );
   }
@@ -149,12 +158,13 @@ class _Empty extends ConsumerWidget {
 }
 
 class _PlainLyrics extends StatelessWidget {
-  const _PlainLyrics({required this.lyrics});
+  const _PlainLyrics({required this.lyrics, required this.size});
   final Lyrics lyrics;
+  final double size;
 
   @override
   Widget build(BuildContext context) => Consumer(builder: (context, ref, _) {
-        final scale = ref.watch(settingsProvider.select((s) => s.lyricsScale));
+        final scale = ref.watch(settingsProvider.select((s) => s.lyricsScale)) * size;
         return ListView(
           padding: const EdgeInsets.symmetric(vertical: 16),
           children: [
@@ -169,8 +179,9 @@ class _PlainLyrics extends StatelessWidget {
 }
 
 class _SyncedLyrics extends ConsumerStatefulWidget {
-  const _SyncedLyrics({required this.lyrics});
+  const _SyncedLyrics({required this.lyrics, required this.size});
   final Lyrics lyrics;
+  final double size;
 
   @override
   ConsumerState<_SyncedLyrics> createState() => _SyncedLyricsState();
@@ -196,7 +207,7 @@ class _SyncedLyricsState extends ConsumerState<_SyncedLyrics> {
   @override
   Widget build(BuildContext context) {
     final pos = ref.watch(positionProvider).value ?? Duration.zero;
-    final scale = ref.watch(settingsProvider.select((s) => s.lyricsScale));
+    final scale = ref.watch(settingsProvider.select((s) => s.lyricsScale)) * widget.size;
     final current = widget.lyrics.indexAt(pos);
     _follow(current);
     final ink = LyricsInk.maybeOf(context);

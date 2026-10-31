@@ -15,7 +15,7 @@ class HistorySettingsPage extends ConsumerWidget {
     final s = ref.watch(settingsProvider);
     final n = ref.read(settingsProvider.notifier);
     return SettingsSectionPage(title: '播放紀錄與統計', children: [
-      SwitchListTile(
+      SettingSwitch(
         secondary: const Icon(Icons.history),
         title: const Text('記錄播放紀錄'),
         subtitle: Text(s.recordPlays
@@ -24,14 +24,16 @@ class HistorySettingsPage extends ConsumerWidget {
         value: s.recordPlays,
         onChanged: n.setRecordPlays,
       ),
-      ListTile(
+      SettingTile(
+        action: '查看',
         leading: const Icon(Icons.insights_outlined),
         title: const Text('收聽統計'),
         subtitle: const Text('最常聽的歌、歌手、收聽時間和年度回顧'),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StatsPage())),
       ),
-      ListTile(
+      SettingTile(
+        action: '清除',
         leading: const Icon(Icons.delete_sweep_outlined),
         title: const Text('清除播放資料'),
         subtitle: const Text('可以選擇清除收聽統計、播放次數、最近播放或 Podcast 進度'),

@@ -10,13 +10,14 @@ import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../services/tag_editor.dart';
 import 'dialogs.dart';
+import '../../config/device_words.dart';
 
 /// 批次編輯資訊: the same artist / album / cover for several songs. Empty
 /// fields are left as they are; titles stay each song's own.
 Future<void> showBatchEdit(BuildContext context, WidgetRef ref, List<Track> tracks) async {
   final songs = [for (final t in tracks) if (t.source == TrackSource.local || t.source == TrackSource.download) t];
   if (songs.isEmpty) {
-    toast(context, '只能編輯手機上的歌曲');
+    toast(context, '只能編輯$thisDevice上的歌曲');
     return;
   }
   final artist = TextEditingController();

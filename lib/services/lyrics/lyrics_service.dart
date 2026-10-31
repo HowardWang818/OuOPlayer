@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -67,6 +68,9 @@ double scriptShare(String text) {
   return native + latin == 0 ? 0 : native / (native + latin);
 }
 
+/// Hiragana or katakana: [text] is Japanese (kanji alone could be Chinese).
+bool hasKana(String text) => RegExp(r'[぀-ヿ]').hasMatch(text);
+
 /// Whether a song's title or artist is written in CJK / kana / hangul.
 bool hasNativeScript(Track t) => _nativeChar.hasMatch(t.title) || _nativeChar.hasMatch(t.artist);
 
@@ -110,12 +114,12 @@ class LyricsService {
   /// and then, more often during a batch) or slow.
   static const retryDelays = [Duration(seconds: 2), Duration(seconds: 6), Duration(seconds: 15)];
 
-  Future<Response<T>> _get<T>(String path, Map<String, dynamic> query) async {
+  Future<Response<T>> _get<T>(String path, Map<String, dynamic> query, {bool retry = true}) async {
     for (var attempt = 0;; attempt++) {
       try {
         return await _dio.get<T>('$_api/$path', queryParameters: query);
       } on DioException catch (e) {
-        if (attempt >= retryDelays.length || !isTemporary(e)) rethrow;
+        if (!retry || attempt >= retryDelays.length || !isTemporary(e)) rethrow;
         await Future.delayed(retryDelays[attempt]);
       }
     }
@@ -249,16 +253,65 @@ class LyricsService {
   void Function(Track)? onFetched;
 
   /// LRCLIB search for the manual 「手動搜尋」 dialog.
-  Future<List<LrclibResult>> search(String title, String artist) async {
-    final res = await _get<List<dynamic>>('search', {
-      'track_name': title,
-      if (artist.trim().isNotEmpty) 'artist_name': artist,
-    });
+  Future<List<LrclibResult>> search(String title, String artist, {bool retry = true}) async {
+    final res = await _get<List<dynamic>>(
+        'search',
+        {
+          'track_name': title,
+          if (artist.trim().isNotEmpty) 'artist_name': artist,
+        },
+        retry: retry);
     return [for (final j in res.data ?? const []) LrclibResult.fromJson(j)].whereType<LrclibResult>().where((r) => r.hasLyrics).toList();
   }
 
   /// Remembers the user's pick for this song (never replaced by a batch).
-  Future<void> choose(Track t, LrclibResult r) async => _save(await _cacheFile(t), r, manual: true);
+  Future<void> choose(Track t, LrclibResult r) async => _save(await _cacheFile(t), r, manual: true, track: t);
+
+  /// Lyrics picked by hand on another device (Google Drive sync).
+  Future<void> chooseText(Track t, String lrc) async => (await _cacheFile(t)).writeAsString(jsonEncode(
+      {'lrc': lrc, 'source': 'LRCLIB', 'manual': true, 'nativeChecked': true, 'title': t.title, 'artist': t.artist, 'durationMs': t.durationMs}));
+
+  /// The lyrics kept for [t] (found or picked by hand), for sync; null: none.
+  Future<({String lrc, bool manual, int at})?> entry(Track t) async {
+    final f = await _cacheFile(t);
+    if (!f.existsSync()) return null;
+    try {
+      final j = jsonDecode(await f.readAsString()) as Map;
+      final lrc = j['lrc'];
+      if (lrc is! String || lrc.trim().isEmpty) return null;
+      return (lrc: lrc, manual: j['manual'] == true, at: f.lastModifiedSync().millisecondsSinceEpoch);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Lyrics from another device (sync): picked by hand there stays so here.
+  Future<void> store(Track t, String lrc, bool manual) async => (await _cacheFile(t)).writeAsString(jsonEncode({
+        'lrc': lrc,
+        'source': 'LRCLIB',
+        if (manual) 'manual': true,
+        'nativeChecked': true,
+        'title': t.title,
+        'artist': t.artist,
+        'durationMs': t.durationMs,
+      }));
+
+  /// Every song's lyrics picked by hand (since v1.6.0, which notes the song):
+  /// (title, artist, length, lrc).
+  Future<List<(String, String, int?, String)>> manualChoices() async {
+    final dir = Directory(p.join((await getApplicationSupportDirectory()).path, 'lyrics'));
+    if (!dir.existsSync()) return const [];
+    final out = <(String, String, int?, String)>[];
+    for (final f in dir.listSync().whereType<File>()) {
+      try {
+        final j = jsonDecode(await f.readAsString()) as Map;
+        if (j['manual'] == true && j['title'] is String && j['lrc'] is String) {
+          out.add((j['title'] as String, j['artist'] as String? ?? '', j['durationMs'] as int?, j['lrc'] as String));
+        }
+      } catch (_) {}
+    }
+    return out;
+  }
 
   /// Forgets a cached result (e.g. to search again after a wrong match).
   Future<void> forget(Track t) async {
@@ -275,41 +328,65 @@ class LyricsService {
     final artist = t.artist == '未知演出者' ? '' : t.artist;
     final durationMs = t.source == TrackSource.preview ? null : t.durationMs;
     LrclibResult? exact;
+    // LRCLIB's exact lookup can stay busy (503) while its search answers, so
+    // that doesn't end the lookup; it only counts if nothing else is found.
+    DioException? busy;
     if (artist.isNotEmpty) {
       try {
-        final res = await _get<Map<String, dynamic>>('get', {
-          'track_name': title,
-          'artist_name': artist,
-          if (t.album != '未知專輯') 'album_name': t.album,
-          if (durationMs != null) 'duration': (durationMs / 1000).round(),
-        });
+        final res = await _get<Map<String, dynamic>>(
+            'get',
+            {
+              'track_name': title,
+              'artist_name': artist,
+              if (t.album != '未知專輯') 'album_name': t.album,
+              if (durationMs != null) 'duration': (durationMs / 1000).round(),
+            },
+            retry: false);
         exact = LrclibResult.fromJson(res.data);
         if (exact != null && (exact.synced ?? '').trim().isNotEmpty && !looksRomaji(exact.text)) return exact;
       } on DioException catch (e) {
-        if (e.response?.statusCode != 404) rethrow;
+        if (isTemporary(e)) {
+          busy = e;
+        } else if (e.response?.statusCode != 404) {
+          rethrow;
+        }
       }
     }
     // Upload titles (「YOASOBI「アイドル」Official Music Video」) and channel
     // names (「YOASOBI - Topic」) cleaned the same way as everywhere else.
     final clean = SongMatcher.searchTitle(title, artist);
     final cleanArtist = artist.isEmpty ? '' : SongMatcher.searchArtist(artist);
+    final cleaner = clean != title || cleanArtist != artist;
+    // A busy step (LRCLIB can keep refusing one query, such as several artists
+    // in one name) doesn't end the lookup either.
+    Future<List<LrclibResult>> step(Future<List<LrclibResult>> Function() ask) async {
+      try {
+        return await ask();
+      } on DioException catch (e) {
+        if (!isTemporary(e)) rethrow;
+        busy = e;
+        return const [];
+      }
+    }
+
     final found = <LrclibResult>[
-      ...await search(title, artist),
-      if (clean != title || cleanArtist != artist) ...await search(clean, cleanArtist),
+      // No waiting on the raw names when the cleaned ones come next.
+      ...await step(() => search(title, artist, retry: !cleaner)),
+      if (cleaner) ...await step(() => search(clean, cleanArtist)),
     ];
     if (found.isEmpty && artist.isNotEmpty) {
       // The title alone: the artist may be spelt another way on LRCLIB
       // (romaji, English name, several artists), so the same title and length
       // also count.
-      found.addAll((await search(clean, '')).where((r) => acceptLoose(r, title: clean, artist: artist, durationMs: durationMs)));
+      found.addAll((await step(() => search(clean, ''))).where((r) => acceptLoose(r, title: clean, artist: artist, durationMs: durationMs)));
     }
     if (found.isEmpty) {
       // LRCLIB's keyword search, which is fuzzier than the field search.
-      final res = await _get<List<dynamic>>('search', {'q': [clean, cleanArtist].where((s) => s.isNotEmpty).join(' ')});
-      found.addAll([
-        for (final j in res.data ?? const [])
-          if (LrclibResult.fromJson(j) case final r? when r.hasLyrics && acceptLoose(r, title: clean, artist: artist, durationMs: durationMs)) r,
-      ]);
+      final hits = await step(() async {
+        final res = await _get<List<dynamic>>('search', {'q': [clean, cleanArtist].where((s) => s.isNotEmpty).join(' ')});
+        return [for (final j in res.data ?? const []) LrclibResult.fromJson(j)].whereType<LrclibResult>().toList();
+      });
+      found.addAll(hits.where((r) => r.hasLyrics && acceptLoose(r, title: clean, artist: artist, durationMs: durationMs)));
     }
     final all = [if (exact != null && exact.hasLyrics) exact, ...found];
     final best = pickBest(all, durationMs: durationMs, preferNative: hasNativeScript(t));
@@ -317,14 +394,32 @@ class LyricsService {
     // Only romaji (or nothing) under a romaji name: LRCLIB files the original
     // under the Japanese name, so ask for that too.
     final native = nativeName == null || !NativeNames.wants(t) ? null : await nativeName!(t).catchError((_) => null);
-    if (native == null) return best;
+    if (native == null) {
+      if (best == null && busy != null) throw busy!;
+      return best;
+    }
     final title2 = SongMatcher.searchTitle(native.title, native.artist);
     final artist2 = SongMatcher.searchArtist(native.artist);
-    final more = (await search(title2, artist2))
+    final more = (await step(() => search(title2, artist2)))
         .where((r) => acceptLoose(r, title: title2, artist: native.artist, durationMs: durationMs))
         .toList();
-    return pickBest([...all, ...more], durationMs: durationMs, preferNative: true);
+    final found2 = pickBest([...all, ...more], durationMs: durationMs, preferNative: true);
+    if (found2 == null && busy != null) throw busy!;
+    return found2;
   }
+
+  /// Whether the lyrics kept for [t] (file, .lrc or saved) are Japanese.
+  Future<bool> japaneseLyrics(Track t) async {
+    try {
+      final l = await find(t, online: false);
+      return l != null && hasKana(l.lines.map((line) => line.text).join());
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @visibleForTesting
+  Future<LrclibResult?> lookup(Track t) => _lookup(t);
 
   /// A search hit counts when the title is the same after cleaning, and the
   /// artist is the same (any known spelling) or the length is within 3 s.
@@ -372,10 +467,17 @@ class LyricsService {
     return File(p.join(dir.path, '$key.json'));
   }
 
-  Future<void> _save(File f, LrclibResult? r, {bool manual = false}) async {
+  Future<void> _save(File f, LrclibResult? r, {bool manual = false, Track? track}) async {
     final lrc = r == null ? null : ((r.synced ?? '').trim().isNotEmpty ? r.synced : r.plain);
     await f.writeAsString(jsonEncode(lrc == null
         ? {'none': true, 'at': DateTime.now().millisecondsSinceEpoch}
-        : {'lrc': lrc, 'source': 'LRCLIB', if (manual) 'manual': true, 'nativeChecked': true}));
+        : {
+            'lrc': lrc,
+            'source': 'LRCLIB',
+            if (manual) 'manual': true,
+            'nativeChecked': true,
+            // Which song, so a choice made by hand can go to the other devices.
+            if (manual && track != null) ...{'title': track.title, 'artist': track.artist, 'durationMs': track.durationMs},
+          }));
   }
 }

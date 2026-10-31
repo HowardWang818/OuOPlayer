@@ -84,6 +84,51 @@ class MissingSongs {
     return done;
   }
 
+  /// A song sent from another device: it takes the place of every
+  /// placeholder with its exact title and artist (the names that device
+  /// shows), then of any it surely matches.
+  static Future<void> fillExact(AppDatabase app, Track song) async {
+    final key = '${foldText(song.title)}|${foldText(song.artist)}';
+    var swapped = <String>[];
+    for (final m in await all(app)) {
+      if ('${foldText(m.title)}|${foldText(m.artist)}' == key) swapped.addAll(await _swap(app, m.id, song));
+    }
+    if (swapped.isNotEmpty) {
+      app.notifyChanged();
+      _filled.add([FilledSong(song, swapped.toSet().toList())]);
+    }
+    await fill(app, [song]);
+  }
+
+  /// Songs sent before v1.8.1 kept the file's own names, so some missed their
+  /// playlists: a placeholder is filled by a downloaded song of the same
+  /// length (within 1 s) whose title or artist is the same.
+  static Future<List<FilledSong>> fillLoose(AppDatabase app) async {
+    final missing = await all(app);
+    if (missing.isEmpty) return const [];
+    final songs = (await app.tracks()).where((t) => t.source == TrackSource.download && t.durationMs != null).toList();
+    final usedSongs = <String>{};
+    final done = <FilledSong>[];
+    for (final m in missing) {
+      final ms = m.durationMs;
+      if (ms == null) continue;
+      final title = foldText(SongMatcher.searchTitle(m.title, m.artist));
+      final song = songs.where((t) {
+        if (usedSongs.contains(t.id) || (t.durationMs! - ms).abs() > 1000) return false;
+        return foldText(SongMatcher.searchTitle(t.title, t.artist)) == title ||
+            SongMatcher.sameArtist(SongKey(t.title, t.artist), SongKey(m.title, m.artist));
+      }).firstOrNull;
+      if (song == null) continue;
+      usedSongs.add(song.id);
+      done.add(FilledSong(song, await _swap(app, m.id, song)));
+    }
+    if (done.isNotEmpty) {
+      app.notifyChanged();
+      _filled.add(done);
+    }
+    return done;
+  }
+
   /// Puts [song] wherever the placeholder [missingId] is (playlists, likes)
   /// and drops the placeholder. Returns the list names it went into.
   static Future<List<String>> _swap(AppDatabase app, String missingId, Track song) async {

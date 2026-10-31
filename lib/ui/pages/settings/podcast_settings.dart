@@ -27,7 +27,7 @@ class PodcastSettingsPage extends ConsumerWidget {
         ),
       ),
       if (Platform.isAndroid)
-        SwitchListTile(
+        SettingSwitch(
           secondary: const Icon(Icons.content_cut),
           title: const Text('跳過靜音'),
           subtitle: const Text('自動略過沒有聲音的段落'),

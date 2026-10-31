@@ -7,6 +7,7 @@ import '../../services/auto_backup.dart';
 import '../../services/storage_usage.dart';
 import '../widgets/backup_actions.dart';
 import '../widgets/dialogs.dart';
+import 'settings/section_page.dart';
 
 const _weekdayNames = {
   DateTime.monday: '一',
@@ -55,26 +56,26 @@ class _BackupPageState extends ConsumerState<BackupPage> {
           child: Text(t, style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Theme.of(context).colorScheme.primary)),
         );
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('備份與還原')),
-      body: !st.loaded
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(children: [
+    return SettingsSectionPage(title: '備份與還原', children: !st.loaded
+          ? const [Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))]
+          : [
               header('手動'),
-              ListTile(
+              SettingTile(
+                action: '備份',
                 leading: const Icon(Icons.backup_outlined),
                 title: const Text('備份資料'),
                 subtitle: const Text('播放清單、資料夾、已按讚的歌曲、播放次數、Podcast 和設定，存成一個檔案（不含 YouTube 金鑰）'),
                 onTap: () => exportBackup(context, ref),
               ),
-              ListTile(
+              SettingTile(
+                action: '還原',
                 leading: const Icon(Icons.file_open_outlined),
                 title: const Text('從檔案還原'),
                 subtitle: const Text('選一個備份檔。會取代目前的資料，還原前會先確認'),
                 onTap: () => importBackup(context, ref),
               ),
               header('自動備份'),
-              SwitchListTile(
+              SettingSwitch(
                 secondary: const Icon(Icons.schedule),
                 title: const Text('自動備份'),
                 subtitle: Text(s.enabled
@@ -123,7 +124,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                     onChanged: (v) => n.setSchedule(s.copyWith(monthDay: v)),
                   ),
                 ),
-              ListTile(
+              SettingTile(
+                action: '更改',
                 leading: const Icon(Icons.access_time),
                 title: const Text('時間'),
                 subtitle: Text('${s.hour.toString().padLeft(2, '0')}:${s.minute.toString().padLeft(2, '0')}'),
@@ -132,7 +134,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                   if (t != null) await n.setSchedule(s.copyWith(hour: t.hour, minute: t.minute));
                 },
               ),
-              ListTile(
+              SettingTile(
+                action: '選擇',
                 leading: const Icon(Icons.folder_outlined),
                 title: const Text('備份資料夾'),
                 subtitle: Text(st.dir, style: TextStyle(color: muted)),
@@ -155,7 +158,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                   style: TextStyle(color: muted, fontSize: 12),
                 ),
               ),
-              ListTile(
+              SettingTile(
+                action: '備份',
                 leading: st.running
                     ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.save_outlined),
@@ -187,7 +191,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                   }
                   return Column(children: [
                     for (final f in files)
-                      ListTile(
+                      SettingTile(
+                        action: '還原',
                         leading: Icon(f.automatic ? Icons.history : Icons.description_outlined),
                         title: Text(_when(f.time)),
                         subtitle: Text('${f.automatic ? '自動備份' : '手動備份'} • ${formatBytes(f.bytes)}', style: TextStyle(color: muted)),
@@ -198,8 +203,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                 },
               ),
               const SizedBox(height: 24),
-            ]),
-    );
+            ]);
   }
 }
 
