@@ -372,6 +372,20 @@ class SyncEngine implements SyncHooks {
       } catch (_) {}
     }
 
+    // A device syncing for the first time (a new install): its lists of the
+    // same name are the same lists, not new ones beside them.
+    if (sentMarks == null) {
+      final theirNames = {
+        for (final dev in remote.values)
+          for (final l in dev.lists.values)
+            if (!l.isDeleted) _fold(l.name?.value),
+      };
+      for (final row in await db.db.query('playlists', where: 'synced = 0')) {
+        if (theirNames.contains(_fold('${row['name']}'))) await enable(row['id'] as int);
+      }
+      all = await states();
+    }
+
     // Merge.
     final fresh = await _set('sync2_fresh');
     final ignored = await _set('sync2_ignored');
@@ -542,6 +556,7 @@ class SyncEngine implements SyncHooks {
   Future<(int, int)> _syncEdits(String me, Map<String, ListState> all, List<DriveFile> files) async {
     final synced = {for (final st in all.values.where((st) => !st.isDeleted)) for (final e in st.shown) e.value.key};
     final library = await db.tracks();
+    await edits.adoptOldRenames((await _settings())['sync_names'], library, me);
     final covers = <String, File>{};
     final out = {...await edits.export(synced, library, covers), 'covers': await edits.coversHere()};
     // This device's own edits and its lyrics, as sent: what's new among them.

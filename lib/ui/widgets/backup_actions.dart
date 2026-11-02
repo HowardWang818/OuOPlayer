@@ -77,6 +77,7 @@ Future<void> restoreFromFile(BuildContext context, WidgetRef ref, String path) a
             Text(parts.contains(RestorePart.playlists)
                 ? '還原了 ${report.playlists} 個播放清單（共 ${report.songs} 首）。${parts.contains(RestorePart.settings) ? '部分設定在重新開啟 App 後生效。' : ''}'
                 : '還原完成。${parts.contains(RestorePart.settings) ? '部分設定在重新開啟 App 後生效。' : ''}'),
+            if (report.renamed > 0) ...[const SizedBox(height: 8), Text('${report.renamed} 首歌的歌名或封面已恢復。')],
             if (report.missing.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text('有 ${report.missing.length} 首在這台裝置的音樂庫裡找不到，已略過：'),
@@ -95,17 +96,22 @@ Future<void> restoreFromFile(BuildContext context, WidgetRef ref, String path) a
   }
 }
 
+/// What [data] holds for a part of a backup, shown beside it.
+String restorePartSummary(RestorePart part, Map<String, Object?> data) {
+  int n(String key) => (data[key] as List? ?? const []).length;
+  return switch (part) {
+    RestorePart.settings => '${(data['settings'] as Map? ?? const {}).length} 項',
+    RestorePart.songs => data.containsKey('library') ? '${n('library')} 首的歌名和歌詞' : '舊版備份：只恢復它記得的歌名',
+    RestorePart.playlists => '${n('playlists')} 個播放清單、${n('folders')} 個資料夾',
+    RestorePart.likes => '${n('favorites')} 首',
+    RestorePart.history => '${n('plays')} 首的播放次數',
+    RestorePart.podcasts => '${n('podcasts')} 個節目',
+  };
+}
+
 /// Which parts of the backup to restore (all ticked to start with), with
 /// what the backup holds for each.
 Future<Set<RestorePart>?> _chooseParts(BuildContext context, Map<String, Object?> data) {
-  int n(String key) => (data[key] as List? ?? const []).length;
-  final what = {
-    RestorePart.settings: '${(data['settings'] as Map? ?? const {}).length} 項',
-    RestorePart.playlists: '${n('playlists')} 個播放清單、${n('folders')} 個資料夾',
-    RestorePart.likes: '${n('favorites')} 首',
-    RestorePart.history: '${n('plays')} 首的播放次數',
-    RestorePart.podcasts: '${n('podcasts')} 個節目',
-  };
   final picked = {...RestorePart.values};
   return showDialog<Set<RestorePart>>(
     context: context,
@@ -120,7 +126,7 @@ Future<Set<RestorePart>?> _chooseParts(BuildContext context, Map<String, Object?
                 contentPadding: EdgeInsets.zero,
                 value: picked.contains(p),
                 title: Text(p.label),
-                subtitle: Text(what[p]!),
+                subtitle: Text(restorePartSummary(p, data)),
                 onChanged: (v) => setState(() => v == true ? picked.add(p) : picked.remove(p)),
               ),
           ]),

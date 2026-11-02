@@ -19,7 +19,16 @@ class WindowState with WindowListener {
 
   static const minimum = Size(800, 560);
 
-  static Future<void> init(AppDatabase db) async {
+  /// Maximizing shows the window, so with [hidden] it waits for that moment.
+  static bool _maximizeLater = false;
+
+  static Future<void> restoreMaximized() async {
+    if (!_maximizeLater) return;
+    _maximizeLater = false;
+    await windowManager.maximize();
+  }
+
+  static Future<void> init(AppDatabase db, {bool hidden = false}) async {
     if (!Platform.isWindows) return;
     await windowManager.ensureInitialized();
     await windowManager.setMinimumSize(minimum);
@@ -43,7 +52,8 @@ class WindowState with WindowListener {
         await windowManager.center();
       }
     } catch (_) {}
-    if (s['window_maximized'] == 'true') await windowManager.maximize();
+    _maximizeLater = hidden && s['window_maximized'] == 'true';
+    if (!hidden && s['window_maximized'] == 'true') await windowManager.maximize();
     windowManager.addListener(WindowState._(db));
   }
 

@@ -29,8 +29,10 @@ class PlaySync {
     if (plays.isEmpty) return 0;
     final rows = await db.db.query('listening_log', columns: ['remote_id', 'listened_ms', 'played_at'], where: 'origin = ?', whereArgs: [device]);
     final known = {for (final r in rows) if (r['remote_id'] != null) '${r['remote_id']}': r['listened_ms'] as int};
-    // Brought in by the older sync (v1.7.0–v1.10, no id): known by when.
-    final knownAt = {for (final r in rows) if (r['remote_id'] == null) r['played_at'] as int};
+    // A play is known by when it began, whoever sends it (v1.14.6): after a
+    // reinstall or a restored backup the same plays come again under other
+    // ids, from this device's old self or from another that restored them.
+    final knownAt = {for (final r in await db.db.query('listening_log', columns: ['played_at'])) r['played_at'] as int};
     final bySong = <String, List<Track>>{};
     for (final t in await db.tracks()) {
       bySong.putIfAbsent(songKey(t.title, t.artist), () => []).add(t);
@@ -49,7 +51,7 @@ class PlaySync {
         continue;
       }
       final at = (p['at'] as num).toInt();
-      if (knownAt.contains(at)) continue;
+      if (!knownAt.add(at)) continue;
       final key = songKey('${p['t']}', '${p['a']}');
       final ms = (p['ms'] as num?)?.toInt();
       final here = bySong[key]?.where((t) => ms == null || t.durationMs == null || (t.durationMs! - ms).abs() <= 3000).firstOrNull;
