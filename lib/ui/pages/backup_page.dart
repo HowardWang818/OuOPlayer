@@ -187,7 +187,15 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                     return const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()));
                   }
                   if (files.isEmpty) {
-                    return Padding(padding: const EdgeInsets.all(16), child: Text('這個資料夾裡還沒有備份', style: TextStyle(color: muted)));
+                    // Android hides files an earlier install of the app left.
+                    return Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('這裡沒有列出備份。重新安裝後，Android 可能不讓 App 看到之前的備份檔，檔案還在，請自己選擇：', style: TextStyle(color: muted)),
+                        const SizedBox(height: 8),
+                        OutlinedButton(onPressed: () => importBackup(context, ref), child: const Text('選擇備份檔')),
+                      ]),
+                    );
                   }
                   return Column(children: [
                     for (final f in files)

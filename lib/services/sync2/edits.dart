@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -56,6 +57,38 @@ class EditSync {
           'device': device,
         },
         conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// 找原文歌名 before v1.12.0 left no edit, only a line in 'sync_names': those
+  /// names become edits too, older than any real one. Each is done once.
+  Future<void> adoptOldRenames(String? raw, List<Track> library, String device) async {
+    if (raw == null || raw.isEmpty) return;
+    Map all;
+    try {
+      all = jsonDecode(raw) as Map;
+    } catch (_) {
+      return;
+    }
+    final edited = {for (final r in await db.db.query('track_edits', columns: ['track_id'])) r['track_id']};
+    final byName = {for (final t in library) songKey(t.title, t.artist): t};
+    for (final v in all.values.whereType<Map>()) {
+      final from = v['from'];
+      final t = byName[songKey('${v['title']}', '${v['artist']}')];
+      if (from is! Map || t == null || edited.contains(t.id)) continue;
+      await db.db.insert(
+          'track_edits',
+          {
+            'track_id': t.id,
+            'root': songKey('${from['title']}', '${from['artist']}'),
+            'root_ms': from['ms'] ?? t.durationMs,
+            'title': t.title,
+            'artist': t.artist,
+            'album': t.album,
+            'at': 1,
+            'device': device,
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
   }
 
   /// root → the song here it stands for (edited songs by their row,

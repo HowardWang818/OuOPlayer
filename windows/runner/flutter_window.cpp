@@ -2,10 +2,19 @@
 
 #include <optional>
 
+#include <flutter/standard_method_codec.h>
+
 #include "flutter/generated_plugin_registrant.h"
 
-FlutterWindow::FlutterWindow(const flutter::DartProject& project)
-    : project_(project) {}
+UINT FlutterWindow::ShowMessage() {
+  static const UINT message =
+      ::RegisterWindowMessageW(L"OuOPlayerShowWindow");
+  return message;
+}
+
+FlutterWindow::FlutterWindow(const flutter::DartProject& project,
+                             bool start_hidden)
+    : project_(project), start_hidden_(start_hidden) {}
 
 FlutterWindow::~FlutterWindow() {}
 
@@ -26,9 +35,12 @@ bool FlutterWindow::OnCreate() {
   }
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
+  instance_ = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+      flutter_controller_->engine()->messenger(), "ouoplayer/instance",
+      &flutter::StandardMethodCodec::GetInstance());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
-    this->Show();
+    if (!start_hidden_) this->Show();
   });
 
   // Flutter can complete the first frame before the "show window" callback is
@@ -40,6 +52,7 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  instance_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
@@ -59,6 +72,12 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     if (result) {
       return *result;
     }
+  }
+
+  if (message == ShowMessage()) {
+    // Dart shows it, so the tray and the saved window state stay right.
+    if (instance_) instance_->InvokeMethod("show", nullptr);
+    return 0;
   }
 
   switch (message) {

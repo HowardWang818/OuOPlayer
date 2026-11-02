@@ -42,7 +42,8 @@ Future<void> main(List<String> args) async {
   unawaited(handler.restoreSession());
   // Windows: system tray (closing the window keeps playing and syncing).
   await DesktopTray.init(handler, db, args).catchError((Object e) => debugPrint('tray: $e'));
-  await WindowState.init(db).catchError((Object e) => debugPrint('window: $e'));
+  await WindowState.init(db, hidden: DesktopTray.startedHidden).catchError((Object e) => debugPrint('window: $e'));
+  await DesktopTray.finishStart(args).catchError((Object e) => debugPrint('window: $e'));
 
   final container = ProviderContainer(overrides: [
     dbProvider.overrideWithValue(db),

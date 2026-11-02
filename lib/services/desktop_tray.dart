@@ -1,10 +1,12 @@
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../data/db/database.dart';
 import 'audio_handler.dart';
+import 'window_state.dart';
 
 /// Windows, when 關閉視窗時縮到系統匣 is on (設定 → 播放): closing the window
 /// keeps OuOPlayer in the system tray (music and sync go on); the tray icon
@@ -21,13 +23,29 @@ class DesktopTray with TrayListener, WindowListener {
     final tray = _instance = DesktopTray._(handler);
     windowManager.addListener(tray);
     trayManager.addListener(tray);
+    // Starting OuOPlayer again brings this one back (the runner lets only
+    // one run).
+    const MethodChannel('ouoplayer/instance').setMethodCallHandler((call) async {
+      if (call.method == 'show') await tray._show();
+    });
     final settings = await db.allSettings();
     final on = settings['close_to_tray'] == 'true';
     await tray._set(on);
     // The app may have moved since (the zip's folder, then the installed one).
     if (settings['start_with_windows'] == 'true') await setStartWithWindows(true);
-    // 開機時自動啟動 with the tray on: start in the tray.
-    if (on && args.contains('--tray')) await windowManager.hide();
+    startedHidden = startsHidden(args, trayOn: on);
+  }
+
+  /// 開機時自動啟動 with the tray on: the window stays hidden until asked for.
+  static bool startsHidden(List<String> args, {required bool trayOn}) => trayOn && args.contains('--tray');
+
+  /// This run began in the tray.
+  static bool startedHidden = false;
+
+  /// With `--tray` the runner leaves the window hidden: it appears here unless
+  /// this run really starts in the tray (the setting may be off).
+  static Future<void> finishStart(List<String> args) async {
+    if (Platform.isWindows && args.contains('--tray') && !startedHidden) await windowManager.show();
   }
 
   /// Saves where playback is and ends the app.
@@ -80,6 +98,8 @@ class DesktopTray with TrayListener, WindowListener {
   }
 
   Future<void> _show() async {
+    await WindowState.restoreMaximized();
+    if (await windowManager.isMinimized()) await windowManager.restore();
     await windowManager.show();
     await windowManager.focus();
   }

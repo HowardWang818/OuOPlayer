@@ -58,7 +58,7 @@ class AppDatabase {
     return AppDatabase._(db);
   }
 
-  static const schemaVersion = 12;
+  static const schemaVersion = 13;
 
   /// Schema changes since version 1; existing data is kept.
   static Future<void> migrate(Database db, int from, int to) async {
@@ -145,6 +145,36 @@ class AppDatabase {
       await db.execute('CREATE UNIQUE INDEX idx_listening_remote ON listening_log(remote_id)');
       await db.execute('CREATE TABLE remote_songs(id TEXT PRIMARY KEY, title TEXT NOT NULL, artist TEXT, album TEXT, duration_ms INTEGER)');
     }
+    if (from < 13 && to >= 13) {
+      // v1.14.6: restored backups sent the same plays again under new ids.
+      await dropRepeatedPlays(db);
+    }
+  }
+
+  /// One play, one entry: entries that began at the same moment are the same
+  /// play (sent again after a reinstall or a restored backup). This device's
+  /// own entry stays, else the first; each one dropped takes its play count
+  /// along, and recently played loses the repeats too.
+  static Future<int> dropRepeatedPlays(DatabaseExecutor db) async {
+    final rows = await db.rawQuery('SELECT id, track_id, played_at FROM listening_log ORDER BY played_at, origin IS NOT NULL, id');
+    final seen = <Object?>{};
+    final dropped = <int>[];
+    final less = <String, int>{};
+    for (final r in rows) {
+      if (seen.add(r['played_at'])) continue;
+      dropped.add(r['id'] as int);
+      less.update(r['track_id'] as String, (n) => n + 1, ifAbsent: () => 1);
+    }
+    for (var i = 0; i < dropped.length; i += 500) {
+      final ids = dropped.sublist(i, min(i + 500, dropped.length));
+      await db.delete('listening_log', where: 'id IN (${List.filled(ids.length, '?').join(',')})', whereArgs: ids);
+    }
+    for (final e in less.entries) {
+      await db.rawUpdate('UPDATE plays SET count = MAX(count - ?, 0) WHERE track_id = ?', [e.value, e.key]);
+    }
+    await db.delete('plays', where: 'count <= 0');
+    await db.execute('DELETE FROM history WHERE rowid NOT IN (SELECT MIN(rowid) FROM history GROUP BY played_at)');
+    return dropped.length;
   }
 
   // ---------- loudness ----------
