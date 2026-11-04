@@ -115,7 +115,7 @@ class CollectionPage extends ConsumerWidget {
     // An artist page shows the artist's photo when one was found.
     final photo = kind == CollectionKind.artist ? ref.watch(artistImageProvider(name)).value : null;
     final art = info?.cover ?? photo ?? tracks.where((t) => t.art != null).firstOrNull?.art;
-    final color = ref.watch(artColorProvider(art)).value ?? AppColors.accent.withValues(alpha: 0.5);
+    final color = ref.watch(artColorProvider(art)).value ?? AppTheme.accent(context).withValues(alpha: 0.5);
     final theme = Theme.of(context);
     final handler = ref.read(audioHandlerProvider);
     final db = ref.read(dbProvider);
@@ -344,7 +344,7 @@ class CollectionPage extends ConsumerWidget {
                         height: 160,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(4),
-                          gradient: const LinearGradient(colors: [Color(0xFF3A2FD8), AppColors.accent], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                          gradient: AppTheme.likedGradient(context, begin: Alignment.topLeft, end: Alignment.bottomRight),
                         ),
                         child: const Icon(Icons.favorite, size: 64, color: Colors.white),
                       )
@@ -386,7 +386,7 @@ class CollectionPage extends ConsumerWidget {
                   final lit = (snap.data ?? false) && handler.queueSource == pageKey;
                   return IconButton(
                     tooltip: lit ? '關閉隨機播放' : '隨機播放',
-                    icon: Icon(Icons.shuffle, color: lit ? AppColors.accent : null),
+                    icon: Icon(Icons.shuffle, color: lit ? AppTheme.accent(context) : null),
                     onPressed: tracks.isEmpty
                         ? null
                         : () => lit
@@ -434,7 +434,7 @@ class CollectionPage extends ConsumerWidget {
               const SizedBox(width: 8),
               IconButton.filled(
                 iconSize: 32,
-                style: IconButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: Colors.black, fixedSize: const Size(56, 56)),
+                style: IconButton.styleFrom(backgroundColor: AppTheme.accent(context), foregroundColor: Theme.of(context).colorScheme.onPrimary, fixedSize: const Size(56, 56)),
                 icon: const Icon(Icons.play_arrow),
                 // In the list's order, unless this list's shuffle is lit.
                 onPressed: tracks.isEmpty

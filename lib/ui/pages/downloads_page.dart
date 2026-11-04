@@ -161,7 +161,7 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Row(children: [
-                Icon(_version == null ? Icons.build_circle_outlined : Icons.check_circle, color: _version == null ? muted : AppColors.accent),
+                Icon(_version == null ? Icons.build_circle_outlined : Icons.check_circle, color: _version == null ? muted : AppTheme.accent(context)),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -187,7 +187,7 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
               const TextSpan(text: '如果平台不支援，可以使用 '),
               TextSpan(
                 text: 'Soundiiz',
-                style: const TextStyle(color: AppColors.accent, decoration: TextDecoration.underline),
+                style: TextStyle(color: AppTheme.accent(context), decoration: TextDecoration.underline),
                 recognizer: TapGestureRecognizer()..onTap = () => openExternal(context, 'https://soundiiz.com'),
               ),
               const TextSpan(text: ' 轉換歌單。'),
@@ -214,7 +214,7 @@ class _TaskTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final svc = ref.read(downloadServiceProvider);
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
-    final (icon, color) = downloadStatusIcon(task.status, muted);
+    final (icon, color) = downloadStatusIcon(task.status, muted, AppTheme.accent(context));
     final failed = task.status == DownloadStatus.failed;
     // Errors can be long; the list only hints, the detail page shows everything.
     final statusText = failed ? '失敗，點擊查看原因' : downloadStatusText(task);

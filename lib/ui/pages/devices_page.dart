@@ -118,8 +118,8 @@ class _DevicesPageState extends ConsumerState<DevicesPage> {
   Widget _deviceTile(BtDevice d) {
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     return ListTile(
-      leading: Icon(d.audio ? Icons.headphones : Icons.bluetooth, color: d.connected ? AppColors.accent : muted),
-      title: Text(d.name, style: TextStyle(color: d.connected ? AppColors.accent : null)),
+      leading: Icon(d.audio ? Icons.headphones : Icons.bluetooth, color: d.connected ? AppTheme.accent(context) : muted),
+      title: Text(d.name, style: TextStyle(color: d.connected ? AppTheme.accent(context) : null)),
       subtitle: Text(d.connected ? '已連線' : (d.bonded ? '已配對' : d.address), style: TextStyle(color: muted)),
       trailing: _busy == d.address
           ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
@@ -150,8 +150,8 @@ class _DevicesPageState extends ConsumerState<DevicesPage> {
               child: ListView(children: [
                 header('目前的裝置'),
                 ListTile(
-                  leading: Icon(outputIcon(out.kind), color: AppColors.accent, size: 32),
-                  title: Text(out.name, style: const TextStyle(color: AppColors.accent, fontWeight: FontWeight.bold)),
+                  leading: Icon(outputIcon(out.kind), color: AppTheme.accent(context), size: 32),
+                  title: Text(out.name, style: TextStyle(color: AppTheme.accent(context), fontWeight: FontWeight.bold)),
                   subtitle: const Text('音訊輸出'),
                 ),
                 if (!_granted)

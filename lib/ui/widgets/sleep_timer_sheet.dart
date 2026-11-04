@@ -40,8 +40,8 @@ Future<void> showSleepTimerSheet(BuildContext context, WidgetRef ref) {
           ),
           if (active)
             ListTile(
-              leading: const Icon(Icons.timer_off_outlined, color: AppColors.accent),
-              title: const Text('關閉計時器', style: TextStyle(color: AppColors.accent)),
+              leading: Icon(Icons.timer_off_outlined, color: AppTheme.accent(context)),
+              title: Text('關閉計時器', style: TextStyle(color: AppTheme.accent(context))),
               onTap: () => pick(timer.cancel),
             ),
         ]),
@@ -57,12 +57,12 @@ class SleepTimerButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(sleepTimerProvider);
-    final icon = Icon(Icons.bedtime_outlined, color: s == null ? null : AppColors.accent);
+    final icon = Icon(Icons.bedtime_outlined, color: s == null ? null : AppTheme.accent(context));
     if (s == null) return IconButton(tooltip: '睡眠計時器', icon: icon, onPressed: () => showSleepTimerSheet(context, ref));
     return TextButton.icon(
       onPressed: () => showSleepTimerSheet(context, ref),
       icon: icon,
-      label: Text(s.endOfTrack ? '本首結束' : formatDuration(s.remaining), style: const TextStyle(color: AppColors.accent)),
+      label: Text(s.endOfTrack ? '本首結束' : formatDuration(s.remaining), style: TextStyle(color: AppTheme.accent(context))),
     );
   }
 }

@@ -8,7 +8,6 @@ import '../../../services/desktop_tray.dart';
 import '../../../services/equalizer.dart';
 import '../../../services/sleep_timer.dart';
 import '../../widgets/sleep_timer_sheet.dart';
-import '../../widgets/song_font.dart';
 import '../equalizer_page.dart';
 import 'section_page.dart';
 
@@ -35,20 +34,6 @@ class PlaybackSettingsPage extends ConsumerWidget {
           title: '開機時自動啟動',
           subtitle: '登入 Windows 時打開 OuOPlayer（系統匣選項開著時，直接縮在系統匣）',
           onChanged: DesktopTray.setStartWithWindows,
-        ),
-        const SettingTile(
-          leading: Icon(Icons.font_download_outlined),
-          title: Text('歌名字體'),
-          subtitle: Text('播放條、右側欄、佇列和播放頁的歌名與歌手'),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(72, 0, 16, 8),
-          child: SegmentedButton<SongFont>(
-            showSelectedIcon: false,
-            segments: [for (final f in SongFont.values) ButtonSegment(value: f, label: Text(f.label))],
-            selected: {ref.watch(songFontProvider)},
-            onSelectionChanged: (v) => ref.read(songFontProvider.notifier).set(v.first),
-          ),
         ),
       ],
       SettingTile(

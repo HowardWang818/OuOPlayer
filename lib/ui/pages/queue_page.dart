@@ -67,8 +67,9 @@ class QueueList extends ConsumerWidget {
           : ReorderableListView.builder(
               itemCount: queue.length - skip,
               itemExtent: extent,
-              // Windows: the row's own handle instead of the one the list adds.
-              buildDefaultDragHandles: !Platform.isWindows,
+              // The row's own handle drags at once (phone too since v1.16.0);
+              // on the phone a long press on the row still works.
+              buildDefaultDragHandles: false,
               onReorderItem: (from, to) {
                 // The song playing stays at the top.
                 if (from == 0) return;
@@ -84,18 +85,22 @@ class QueueList extends ConsumerWidget {
                   background: Container(color: Colors.red.shade700, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete)),
                   confirmDismiss: (_) => confirmDelete(context, title: '從佇列移除「${t.title}」？'),
                   onDismissed: (_) => handler.removeAt(i),
-                  child: ListTile(
+                  child: _longPressDrag(row, ListTile(
                     leading: ArtImage(t.art, size: 44),
                     title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis,
                         style: font.title(TextStyle(color: current ? AppTheme.accent(context) : null, fontWeight: current ? FontWeight.bold : null))),
                     subtitle: Text(handler.isQueuedAt(i) ? '插播 • ${t.artist}' : t.artist, maxLines: 1, style: font.artist(TextStyle(color: muted))),
-                    trailing: Platform.isWindows
-                        ? ReorderableDragStartListener(index: row, child: const Icon(Icons.menu))
-                        : const Icon(Icons.menu),
+                    trailing: ReorderableDragStartListener(
+                      index: row,
+                      child: const Padding(padding: EdgeInsets.all(8), child: Icon(Icons.menu)),
+                    ),
                     onTap: () => handler.skipToQueueItem(i),
-                  ),
+                  )),
                 );
               },
             );
   }
 }
+
+/// Phone: a long press anywhere on the row drags it too.
+Widget _longPressDrag(int index, Widget row) => Platform.isWindows ? row : ReorderableDelayedDragStartListener(index: index, child: row);

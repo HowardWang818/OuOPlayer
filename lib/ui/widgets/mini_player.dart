@@ -139,5 +139,5 @@ class AccentDot extends StatelessWidget {
   const AccentDot({super.key});
   @override
   Widget build(BuildContext context) =>
-      Container(width: 6, height: 6, decoration: const BoxDecoration(color: AppColors.accent, shape: BoxShape.circle));
+      Container(width: 6, height: 6, decoration: BoxDecoration(color: AppTheme.accent(context), shape: BoxShape.circle));
 }

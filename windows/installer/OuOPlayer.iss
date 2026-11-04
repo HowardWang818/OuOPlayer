@@ -1,4 +1,4 @@
-; OuOPlayer's Windows installer (Inno Setup). scripts\release.ps1 builds it:
+﻿; OuOPlayer's Windows installer (Inno Setup). scripts\release.ps1 builds it:
 ;   ISCC /DAppVersion=0.23.0 /DSourceDir=<the app's folder> /O<output> OuOPlayer.iss
 ; AppId must never change: updates find the installed copy by it.
 
@@ -7,6 +7,13 @@ AppId={{8F3A6C52-4B1E-4D7A-9C20-6E51D0B7A3F4}
 AppName=OuOPlayer
 AppVersion={#AppVersion}
 AppPublisher=OuOPlayer
+; 設定 → 應用程式 shows just the name; the version has its own column.
+AppVerName=OuOPlayer {#AppVersion}
+UninstallDisplayName=OuOPlayer
+AppPublisherURL=https://github.com/HowardWang818/OuOPlayer
+AppSupportURL=https://github.com/HowardWang818/OuOPlayer/issues
+AppUpdatesURL=https://github.com/HowardWang818/OuOPlayer/releases
+AppCopyright=© 2026 OuOPlayer 開發者，以 GPL-3.0 授權
 VersionInfoVersion={#AppVersion}
 DefaultDirName={autopf}\OuOPlayer
 DefaultGroupName=OuOPlayer
@@ -22,6 +29,9 @@ UninstallDisplayIcon={app}\OuOPlayer.exe
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+; From make_images.py: OuOPlayer's icon instead of Inno Setup's pictures.
+WizardSmallImageFile=small100.bmp,small200.bmp
+WizardImageFile=large100.bmp,large200.bmp
 CloseApplications=force
 RestartApplications=no
 

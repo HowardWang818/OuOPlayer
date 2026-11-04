@@ -41,14 +41,14 @@ class HomePage extends ConsumerWidget {
     final all = <String, (Widget, String, VoidCallback)>{
       'liked': (
         Container(
-          decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF3A2FD8), AppColors.accent])),
+          decoration: BoxDecoration(gradient: AppTheme.likedGradient(context)),
           child: const Icon(Icons.favorite, color: Colors.white),
         ),
         '已按讚的歌曲',
         () => push(CollectionPage.favorites()),
       ),
       'podcast': (
-        Container(color: AppColors.accent.withValues(alpha: 0.25), child: const Icon(Icons.podcasts, color: AppColors.accent)),
+        Container(color: AppTheme.accent(context).withValues(alpha: 0.25), child: Icon(Icons.podcasts, color: AppTheme.accent(context))),
         'Podcast',
         () => push(const PodcastsPage()),
       ),
@@ -94,7 +94,7 @@ class HomePage extends ConsumerWidget {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.center,
-            colors: [AppColors.accent.withValues(alpha: 0.22), Theme.of(context).scaffoldBackgroundColor],
+            colors: [AppTheme.accent(context).withValues(alpha: 0.22), Theme.of(context).scaffoldBackgroundColor],
           ),
         ),
         child: SafeArea(

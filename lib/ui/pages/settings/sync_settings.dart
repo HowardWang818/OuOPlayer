@@ -82,6 +82,28 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
           leading: const Icon(Icons.account_circle_outlined),
           title: Text(sync.email?.isNotEmpty == true ? sync.email! : '已登入 Google'),
           subtitle: Text(sync.last == null ? '還沒同步過' : '上次同步：${_when(sync.last!)}${sync.message == null ? '' : '（${sync.message}）'}'),
+          // Beside the account, where it is looked for (it was at the very bottom).
+          trailing: OutlinedButton.icon(
+            icon: const Icon(Icons.logout, size: 18),
+            label: const Text('登出'),
+            onPressed: () async {
+              final ok = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('登出 Google？'),
+                  content: const Text('這台之後不會再同步，已經在這台的播放清單都會保留，雲端資料也不會被刪除。'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('登出')),
+                  ],
+                ),
+              );
+              if (ok == true) {
+                await n.signOut();
+                if (context.mounted) toast(context, '已登出 Google');
+              }
+            },
+          ),
         ),
         SettingTile(
           action: '同步',
@@ -117,6 +139,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
           ('sync_edits', '歌曲資料', '同步清單裡的歌：歌名、歌手、專輯、封面、歌詞的修改，另一台同一首歌也跟著改'),
           ('sync_plays', '收聽紀錄', '播放次數、最近播放、收聽統計與年度回顧算兩台加起來（只傳歌名和時間，不傳檔案）'),
           ('sync_now', '接續播放', '打開 App 時，另一台 12 小時內聽得比較新，會問要不要從那裡接著播'),
+          ('sync_theme', '外觀主題', '設定 → 外觀 選的顏色主題（含自訂顏色）：在一台換了，另一台同步後也跟著換；深色／淺色各自設定'),
         ])
           SettingSwitch(
             title: Text(title),
@@ -167,29 +190,6 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Text('還沒被另一台下載的歌最多佔用這麼多雲端空間；滿了就等另一台下載後再繼續傳。手機只在 Wi-Fi 下傳歌。',
               style: TextStyle(color: muted, fontSize: 13)),
-        ),
-        SettingTile(
-          action: '登出',
-          leading: const Icon(Icons.logout),
-          title: const Text('登出 Google'),
-          subtitle: const Text('這台不再同步；播放清單和雲端資料都不會被刪除'),
-          onTap: () async {
-            final ok = await showDialog<bool>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: const Text('登出 Google？'),
-                content: const Text('這台之後不會再同步，已經在這台的播放清單都會保留。'),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-                  FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('登出')),
-                ],
-              ),
-            );
-            if (ok == true) {
-              await n.signOut();
-              if (context.mounted) toast(context, '已登出 Google');
-            }
-          },
         ),
       ],
     ]);

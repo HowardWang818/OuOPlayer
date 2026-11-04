@@ -80,6 +80,15 @@ class _AndroidAuth implements GoogleAuth {
   }
 }
 
+/// What the browser shows once Google sends the user back (Windows).
+String signInPage(bool ok) => '<!doctype html><html lang="zh-Hant"><meta charset="utf-8">'
+    '<meta name="viewport" content="width=device-width,initial-scale=1"><title>OuOPlayer</title>'
+    '<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#10151C;color:#E6EDF3;'
+    'font-family:"Segoe UI","Microsoft JhengHei",sans-serif}main{text-align:center;padding:48px 40px;border-radius:20px;background:#182029;max-width:420px}'
+    'b{display:block;font-size:30px;color:#1DBEEF;margin-bottom:20px}h1{font-size:20px;margin:0 0 10px}p{margin:0;color:#9AA7B4;font-size:15px}</style>'
+    '<main><b>OuOPlayer</b><h1>${ok ? '已登入 Google 帳號' : '登入沒有完成'}</h1>'
+    '<p>${ok ? '可以關閉這個分頁，回到 OuOPlayer。' : '請回到 OuOPlayer 再試一次。'}</p></main></html>';
+
 class _DesktopAuth implements GoogleAuth {
   _DesktopAuth(this._db);
   final AppDatabase _db;
@@ -150,8 +159,7 @@ class _DesktopAuth implements GoogleAuth {
       request.response
         ..statusCode = 200
         ..headers.contentType = ContentType.html
-        ..write('<!doctype html><meta charset="utf-8"><body style="font-family:sans-serif;text-align:center;padding:48px">'
-            '<h2>${ok ? '已登入，可以回到 OuOPlayer 了' : '登入沒有完成'}</h2></body>');
+        ..write(signInPage(ok));
       await request.response.close();
       if (!ok) return null;
       final res = await _dio.post<Map<String, dynamic>>(_tokenUrl,

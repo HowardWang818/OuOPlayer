@@ -431,7 +431,7 @@ class _Sidebar extends ConsumerWidget {
             height: 44,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(4),
-              gradient: const LinearGradient(colors: [Color(0xFF3A2FD8), AppColors.accent]),
+              gradient: AppTheme.likedGradient(context),
             ),
             child: const Icon(Icons.favorite, color: Colors.white, size: 20),
           ),

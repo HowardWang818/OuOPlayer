@@ -136,7 +136,7 @@ void main() {
     expect(canWriteTags('/m/a.mp3'), isTrue);
     expect(canWriteTags('/m/a.M4A'), isTrue);
     expect(canWriteTags('/m/a.flac'), isTrue);
-    expect(canWriteTags('/m/a.opus'), isFalse);
+    expect(canWriteTags('/m/a.opus'), isTrue); // since v1.15.0
     expect(canWriteTags('/m/a.webm'), isFalse);
   });
 }

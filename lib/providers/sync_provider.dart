@@ -17,9 +17,11 @@ import '../services/sync/google_auth.dart';
 import '../services/sync2/engine.dart';
 import '../services/sync2/merge.dart' show songKey;
 import '../services/sync2/now_playing.dart';
+import '../services/tag_backlog.dart';
 import '../services/tag_editor.dart';
 import '../ui/widgets/dialogs.dart';
 import 'providers.dart';
+import 'theme_provider.dart';
 
 /// Playlist sync can sign in here (Windows builds need the OAuth client from the keys folder).
 bool get syncAvailable => Platform.isAndroid || (Platform.isWindows && googleDesktopClientId.isNotEmpty);
@@ -40,7 +42,7 @@ final syncEngineProvider = Provider<SyncEngine>((ref) {
     return made;
   }
 
-  return SyncEngine(
+  final engine = SyncEngine(
     db: db,
     drive: DriveClient(ref.watch(googleAuthProvider)),
     deviceId: deviceId,
@@ -50,15 +52,18 @@ final syncEngineProvider = Provider<SyncEngine>((ref) {
     downloadDir: () => ref.read(settingsProvider).downloadDir,
     lyricsOf: lyrics.entry,
     setLyrics: lyrics.store,
-    // Windows: another device's edits go into the file too. Android would ask
-    // about each file other apps made, in the middle of a sync: library only.
-    writeTags: Platform.isWindows
-        ? (t, cover) async {
-            if (t.source != TrackSource.local && t.source != TrackSource.download) return;
-            await writeTags(t.uri, TagEdit(title: t.title, artist: t.artist, album: t.album, cover: cover, coverMime: 'image/jpeg'));
-          }
-        : null,
+    // Another device's edits go into the file too. Android never asks in the
+    // middle of a sync: files it may not write wait in [TagBacklog].
+    writeTags: (t, cover) async {
+      if (t.source != TrackSource.local && t.source != TrackSource.download) return;
+      if (!canWriteTags(t.uri)) return;
+      final edit = TagEdit(title: t.title, artist: t.artist, album: t.album, cover: cover, coverMime: 'image/jpeg');
+      if (!await writeTagsQuietly(t.uri, edit)) await TagBacklog.add(db, [t.id]);
+    },
   );
+  // Another device's colour theme: repaint in it.
+  engine.onThemeChanged = () => ref.read(themeChoiceProvider.notifier).reload();
+  return engine;
 });
 
 /// What the 同步 page shows.
@@ -133,7 +138,10 @@ class SyncNotifier extends Notifier<SyncState> {
   /// while syncing: runs again right after. [retry]: the every-minute sync
   /// while songs are missing, which doesn't end a pause (the others do).
   Future<void> run({bool auto = false, bool retry = false}) async {
-    if (!syncAvailable || !state.signedIn) return;
+    if (!syncAvailable || !state.signedIn) {
+      unawaited(_tagBacklog());
+      return;
+    }
     if (state.running) {
       _again = true;
       return;
@@ -157,12 +165,45 @@ class SyncNotifier extends Notifier<SyncState> {
     }
     _endedAt = DateTime.now();
     state = state.copyWith(running: false, last: DateTime.now(), message: message);
+    unawaited(_tagBacklog());
     if (_again) {
       _again = false;
       unawaited(run(auto: true, retry: true));
       return;
     }
     unawaited(_transfers(then: downloads > 0));
+  }
+
+  bool _askedTags = false;
+
+  /// Names changed in OuOPlayer that aren't in the files yet: written without
+  /// asking where allowed; on Android the rest after one question per run.
+  Future<void> _tagBacklog() async {
+    final db = ref.read(dbProvider);
+    try {
+      await TagBacklog.findOld(db);
+      await TagBacklog.writeQuietly(db);
+      if (!Platform.isAndroid || _askedTags) return;
+      final songs = await TagBacklog.songs(db);
+      final ctx = rootNavigatorKey.currentContext;
+      if (songs.isEmpty || ctx == null || !ctx.mounted) return;
+      _askedTags = true;
+      final ok = await showDialog<bool>(
+        context: ctx,
+        builder: (c) => AlertDialog(
+          title: Text('把 ${songs.length} 首歌的歌名寫進檔案？'),
+          content: const Text('這些歌改過的歌名（自己改的或另一台同步來的）目前只存在 OuOPlayer 裡。寫進檔案後，重新安裝也不會不見。\n\nAndroid 會詢問一次是否允許修改這些檔案，聲音不會改變。'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('以後再說')),
+            FilledButton(autofocus: true, onPressed: () => Navigator.pop(c, true), child: const Text('寫入')),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      final n = await TagBacklog.write(db, songs);
+      final after = rootNavigatorKey.currentContext;
+      if (after != null && after.mounted) toast(after, n > 0 ? '已把 $n 首歌的歌名寫進檔案' : '沒有寫入檔案');
+    } catch (_) {}
   }
 
   Future<bool> _confirmDelete(String name) async {

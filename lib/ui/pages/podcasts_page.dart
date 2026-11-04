@@ -179,7 +179,7 @@ class PodcastEpisodesPage extends ConsumerWidget {
                   },
                 ),
                 IconButton(
-                  icon: const Icon(Icons.play_circle_fill, color: AppColors.accent, size: 32),
+                  icon: Icon(Icons.play_circle_fill, color: AppTheme.accent(context), size: 32),
                   onPressed: () => handler.playTracks(f.episodes, index: i),
                 ),
               ]),

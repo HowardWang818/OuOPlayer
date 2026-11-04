@@ -149,27 +149,40 @@ class TrashPlugin(private val context: Context, messenger: BinaryMessenger) : Me
     }
 
     /**
-     * Replaces a music file's contents with [temp] (edited tags). Files this
-     * app created are written directly; for the others Android asks first.
+     * Replaces music files' contents with edited copies (tags): "path" and
+     * "temp" for one, or "items" (path / temp pairs) for many. Files this app
+     * created are written directly; for the others Android asks once for all
+     * of them, unless "direct": then they are left as they are and the answer
+     * is false.
      */
     private fun overwrite(call: MethodCall, result: MethodChannel.Result) {
-        val path = call.argument<String>("path") ?: return result.error("args", "path missing", null)
-        val temp = call.argument<String>("temp") ?: return result.error("args", "temp missing", null)
-        try {
-            File(temp).copyTo(File(path), overwrite = true)
-            return result.success(true)
-        } catch (e: Exception) {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return result.error("write", e.message, null)
-        }
-        withUris(listOf(path)) { uris ->
-            val uri = uris.firstOrNull() ?: return@withUris result.error("notFound", "系統找不到這個檔案", null)
-            val act = activity ?: return@withUris result.error("noActivity", "無法顯示確認視窗", null)
+        val items = call.argument<List<Map<String, String>>>("items")?.map { it["path"]!! to it["temp"]!! }
+            ?: listOf((call.argument<String>("path") ?: return result.error("args", "path missing", null)) to
+                (call.argument<String>("temp") ?: return result.error("args", "temp missing", null)))
+        val direct = call.argument<Boolean>("direct") == true
+        val rest = items.filter { (path, temp) ->
             try {
-                val request = MediaStore.createWriteRequest(context.contentResolver, listOf(uri))
+                File(temp).copyTo(File(path), overwrite = true)
+                false
+            } catch (_: Exception) {
+                true
+            }
+        }
+        if (rest.isEmpty()) return result.success(true)
+        if (direct) return result.success(false)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return result.error("write", "無法寫入檔案", null)
+        withPathUris(rest.map { it.first }) { uris ->
+            val todo = rest.mapNotNull { (path, temp) -> uris[path]?.let { it to temp } }
+            if (todo.isEmpty()) return@withPathUris result.error("notFound", "系統找不到這個檔案", null)
+            val act = activity ?: return@withPathUris result.error("noActivity", "無法顯示確認視窗", null)
+            try {
+                val request = MediaStore.createWriteRequest(context.contentResolver, todo.map { it.first })
                 pending?.success(false)
                 pending = result
                 afterGrant = {
-                    context.contentResolver.openOutputStream(uri, "wt")!!.use { out -> File(temp).inputStream().use { it.copyTo(out) } }
+                    for ((uri, temp) in todo) {
+                        context.contentResolver.openOutputStream(uri, "wt")!!.use { out -> File(temp).inputStream().use { it.copyTo(out) } }
+                    }
                 }
                 act.startIntentSenderForResult(request.intentSender, REQUEST_CODE, null, 0, 0, 0)
             } catch (e: Exception) {

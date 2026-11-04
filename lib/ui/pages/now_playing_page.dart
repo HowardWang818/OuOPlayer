@@ -28,7 +28,7 @@ class NowPlayingPage extends ConsumerWidget {
     // A song without a cover gets a gradient in the app's colour.
     final noCover = track != null && (track.art == null || track.art!.isEmpty);
     final color = noCover
-        ? Color.alphaBlend(AppColors.accent.withValues(alpha: 0.55), bg)
+        ? Color.alphaBlend(AppTheme.accent(context).withValues(alpha: 0.55), bg)
         : ref.watch(artColorProvider(track?.art)).value ?? theme.colorScheme.surfaceContainerHigh;
     final wide = MediaQuery.sizeOf(context).width > 900;
     // What is behind the lyrics (the gradient a third of the way down) and
@@ -42,12 +42,12 @@ class NowPlayingPage extends ConsumerWidget {
     // Windows: the window has more room than the side panel's lyrics.
     final lyricsSize = Platform.isWindows ? 1.3 : 1.0;
     // Light theme: dark text stays readable all over the gradient.
-    final box = !AppTheme.lightDesktop(context)
+    final box = !AppTheme.colouredControls(context)
         ? null
         : BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.75),
+            color: AppTheme.palette(context).bg.withValues(alpha: 0.75),
             borderRadius: BorderRadius.circular(12),
-            // The gradient ends in white: this keeps the box's edges there.
+            // The gradient ends in the page colour: this keeps the box's edges there.
             border: Border.all(color: Colors.black.withValues(alpha: 0.1)),
             boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
           );
@@ -72,7 +72,7 @@ class NowPlayingPage extends ConsumerWidget {
     });
 
     final info = Theme(
-        data: AppTheme.playerControls(theme),
+        data: theme,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
       Row(children: [
         Expanded(

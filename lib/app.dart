@@ -21,6 +21,7 @@ import 'theme/app_theme.dart';
 import 'ui/shell/app_shell.dart';
 import 'providers/auto_backup_provider.dart';
 import 'providers/sync_provider.dart';
+import 'providers/theme_provider.dart';
 import 'ui/widgets/dialogs.dart';
 import 'ui/widgets/update_dialog.dart';
 import 'ui/widgets/missing_files_dialog.dart';
@@ -32,6 +33,7 @@ class OuoApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(settingsProvider.select((s) => s.themeMode));
+    final colors = ref.watch(themeChoiceProvider).theme;
     ref.watch(bluetoothAutomationProvider);
     ref.watch(shareIntentProvider);
     ref.watch(volumeNormalizationProvider);
@@ -48,8 +50,8 @@ class OuoApp extends ConsumerWidget {
       navigatorKey: rootNavigatorKey,
       title: 'OuOPlayer',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
+      theme: AppTheme.build(colors.light),
+      darkTheme: AppTheme.build(colors.dark),
       themeMode: mode,
       builder: Platform.isWindows ? (_, child) => Column(children: [const TitleBar(), Expanded(child: child!)]) : null,
       home: const UpdateWatcher(child: MissingFilesWatcher(child: AppShell())),

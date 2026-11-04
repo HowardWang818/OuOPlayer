@@ -12,6 +12,7 @@ import 'backup_page.dart';
 import '../../config/version.dart';
 import '../../services/updater.dart';
 import 'settings/about_settings.dart';
+import 'settings/appearance_settings.dart';
 import 'settings/devices_settings.dart';
 import 'settings/download_settings.dart';
 import 'settings/history_settings.dart';
@@ -50,6 +51,7 @@ Future<void> rescanLibrary(BuildContext context, WidgetRef ref) async {
 
 /// The categories of 設定 (the settings are inside each one).
 List<({IconData icon, String title, String subtitle, Widget page})> get _sections => [
+      (icon: Icons.palette_outlined, title: '外觀', subtitle: '深色／淺色、顏色主題、歌名字體', page: const AppearanceSettingsPage()),
       (icon: Icons.library_music_outlined, title: '音樂庫', subtitle: '音樂資料夾、掃描、檢查已不存在的歌曲、刪除方式、封面與歌手圖片', page: const LibrarySettingsPage()),
       (icon: Icons.play_circle_outline, title: '播放', subtitle: '等化器、淡入淡出、音量標準化、睡眠計時器', page: const PlaybackSettingsPage()),
       (icon: Icons.podcasts, title: 'Podcast', subtitle: '播放速度、跳過靜音、快轉秒數', page: const PodcastSettingsPage()),
