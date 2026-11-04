@@ -82,7 +82,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: Row(children: [
-                    Icon(icon, size: 20, color: AppColors.accent),
+                    Icon(icon, size: 20, color: AppTheme.accent(context)),
                     const SizedBox(width: 8),
                     Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
                   ]),
@@ -109,7 +109,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
               height: 56,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(4),
-                gradient: const LinearGradient(colors: [Color(0xFF3A2FD8), AppColors.accent]),
+                gradient: AppTheme.likedGradient(context),
               ),
               child: const Icon(Icons.favorite, color: Colors.white),
             ),
@@ -145,7 +145,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                   SmartList.recentlyAdded => Icons.new_releases_outlined,
                   SmartList.notPlayedLately => Icons.history_toggle_off,
                   SmartList.neverPlayed => Icons.fiber_new_outlined,
-                }, color: AppColors.accent),
+                }, color: AppTheme.accent(context)),
               ),
               title: Text(s.label),
               subtitle: Text('智慧播放清單 • ${s.description}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted)),
@@ -209,7 +209,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
           itemCount: tracks.length + 1,
           itemBuilder: (_, i) => i == 0
               ? ListTile(
-                  leading: const Icon(Icons.shuffle, color: AppColors.accent),
+                  leading: Icon(Icons.shuffle, color: AppTheme.accent(context)),
                   title: Text('隨機播放全部（${tracks.length} 首）'),
                   onTap: tracks.isEmpty ? null : () => handler.playTracks(tracks, shuffle: true),
                   trailing: TrackSortButton(
@@ -280,6 +280,6 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
 Widget folderIcon(BuildContext context, LibraryFolder f, double size) => Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(4), color: AppColors.accent.withValues(alpha: 0.18)),
-      child: Icon(f.path == null ? Icons.phone_android : Icons.folder, color: AppColors.accent, size: size * 0.45),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(4), color: AppTheme.accent(context).withValues(alpha: 0.18)),
+      child: Icon(f.path == null ? Icons.phone_android : Icons.folder, color: AppTheme.accent(context), size: size * 0.45),
     );

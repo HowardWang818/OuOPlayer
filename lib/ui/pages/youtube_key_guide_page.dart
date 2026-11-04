@@ -72,7 +72,7 @@ class _YouTubeKeyGuidePageState extends ConsumerState<YouTubeKeyGuidePage> {
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             CircleAvatar(
               radius: 14,
-              backgroundColor: AppColors.accent,
+              backgroundColor: AppTheme.accent(context),
               child: Text('$n', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
             ),
             const SizedBox(width: 12),
@@ -106,8 +106,8 @@ class _YouTubeKeyGuidePageState extends ConsumerState<YouTubeKeyGuidePage> {
               const Text('開始前', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 8),
               if (Platform.isAndroid) ...[
-                const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Icon(Icons.computer, size: 20, color: AppColors.accent),
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Icon(Icons.computer, size: 20, color: AppTheme.accent(context)),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text('建議在電腦上操作：Google Cloud 的網頁在手機上很難點。在電腦申請好後，把金鑰傳到手機（例如用 LINE 傳給自己），再貼到下面。',
@@ -156,7 +156,7 @@ class _YouTubeKeyGuidePageState extends ConsumerState<YouTubeKeyGuidePage> {
             ),
             const SizedBox(width: 12),
             if (_result != null)
-              Expanded(child: Text(_result!, style: TextStyle(color: _ok ? AppColors.accent : Colors.redAccent))),
+              Expanded(child: Text(_result!, style: TextStyle(color: _ok ? AppTheme.accent(context) : Colors.redAccent))),
           ]),
         ),
       ]),

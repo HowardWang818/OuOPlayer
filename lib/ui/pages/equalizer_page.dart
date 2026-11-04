@@ -56,7 +56,7 @@ class EqualizerPage extends ConsumerWidget {
                         min: -eqMaxDb,
                         max: eqMaxDb,
                         divisions: 24,
-                        activeColor: AppColors.accent,
+                        activeColor: AppTheme.accent(context),
                         value: gains[i].clamp(-eqMaxDb, eqMaxDb),
                         onChanged: s.eqEnabled ? (v) => n.setEqCustom([...gains]..[i] = v.roundToDouble()) : null,
                       ),

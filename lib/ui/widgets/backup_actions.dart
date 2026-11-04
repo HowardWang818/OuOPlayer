@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/auto_backup_provider.dart';
 import '../../providers/providers.dart';
+import '../../providers/theme_provider.dart';
 import '../../services/backup.dart';
 import 'dialogs.dart';
 
@@ -64,6 +65,7 @@ Future<void> restoreFromFile(BuildContext context, WidgetRef ref, String path) a
   try {
     final report = await restoreBackup(ref.read(dbProvider), ref.read(scannerProvider), data, parts: parts);
     await ref.read(settingsProvider.notifier).reload();
+    await ref.read(themeChoiceProvider.notifier).reload();
     ref.invalidate(autoBackupProvider);
     if (!context.mounted) return;
     await showDialog(

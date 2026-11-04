@@ -102,6 +102,11 @@ install(CODE "
 install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime)
 
+# The song-title font (設定 → 播放 → 歌名字體), loaded by loadSongFont(): only
+# here, so Android's APK doesn't carry it.
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../assets/fonts/NotoSansTC-VF.ttf" "${CMAKE_CURRENT_SOURCE_DIR}/../assets/fonts/OFL.txt"
+  DESTINATION "${INSTALL_BUNDLE_DATA_DIR}/fonts" COMPONENT Runtime)
+
 # Install the AOT library on non-Debug builds only.
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release

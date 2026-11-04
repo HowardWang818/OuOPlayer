@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app.dart' show rootNavigatorKey;
+
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../providers/sync_provider.dart' show offerSync;
@@ -110,11 +112,11 @@ class PlayerBarScope extends InheritedWidget {
 void _toast(BuildContext context, String msg) => toast(context, msg);
 
 /// Short message, always at the top of the screen with the same look on
-/// every page and dialog (a bottom snackbar only if there is no overlay).
+/// every page and dialog, never at the bottom (CLAUDE.md). A context above
+/// the app's overlay (sync's [rootNavigatorKey] one) uses the root
+/// navigator's overlay.
 void toast(BuildContext context, String msg) {
-  if (!_TopToast.show(context, msg)) {
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(msg)));
-  }
+  if (!_TopToast.show(context, msg)) debugPrint('toast with nowhere to show: $msg');
 }
 
 class _TopToast extends StatefulWidget {
@@ -126,7 +128,7 @@ class _TopToast extends StatefulWidget {
 
   /// False when there is no overlay to show it on.
   static bool show(BuildContext context, String msg) {
-    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    final overlay = Overlay.maybeOf(context, rootOverlay: true) ?? rootNavigatorKey.currentState?.overlay;
     if (overlay == null) return false;
     _current?.remove();
     late final OverlayEntry entry;

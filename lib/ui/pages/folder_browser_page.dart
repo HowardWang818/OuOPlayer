@@ -61,7 +61,7 @@ class _FolderBrowserPageState extends ConsumerState<FolderBrowserPage> {
         body: ListView(children: [
           for (final r in roots)
             ListTile(
-              leading: _folderBox(p.equals(r, s.downloadDir) ? Icons.download_for_offline_outlined : Icons.folder, 56),
+              leading: _folderBox(context, p.equals(r, s.downloadDir) ? Icons.download_for_offline_outlined : Icons.folder, 56),
               title: Text(p.basename(r).isEmpty ? r : p.basename(r)),
               subtitle: Text('${p.equals(r, s.downloadDir) ? '下載資料夾' : '音樂資料夾'} • ${tree.countIn(r)} 首歌曲\n$r',
                   style: TextStyle(color: muted)),
@@ -103,7 +103,7 @@ class _FolderBrowserPageState extends ConsumerState<FolderBrowserPage> {
             : ListView(children: [
                 for (final f in listing.folders)
                   ListTile(
-                    leading: f.art == null ? _folderBox(Icons.folder, 56) : ArtImage(f.art, size: 56),
+                    leading: f.art == null ? _folderBox(context, Icons.folder, 56) : ArtImage(f.art, size: 56),
                     title: Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis),
                     subtitle: Text('資料夾 • ${f.count} 首歌曲', style: TextStyle(color: muted)),
                     trailing: _menu(f.path, isThisPage: false),
@@ -122,10 +122,10 @@ class _FolderBrowserPageState extends ConsumerState<FolderBrowserPage> {
     );
   }
 
-  static Widget _folderBox(IconData icon, double size) => Container(
+  static Widget _folderBox(BuildContext context, IconData icon, double size) => Container(
         width: size,
         height: size,
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(4), color: AppColors.accent.withValues(alpha: 0.18)),
-        child: Icon(icon, color: AppColors.accent, size: size * 0.45),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(4), color: AppTheme.accent(context).withValues(alpha: 0.18)),
+        child: Icon(icon, color: AppTheme.accent(context), size: size * 0.45),
       );
 }

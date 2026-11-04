@@ -81,9 +81,9 @@ class PlayPauseButton extends ConsumerWidget {
             fixedSize: Size(size, size),
             overlayColor: Platform.isWindows ? Colors.transparent : null,
           ).copyWith(
-            backgroundColor: !AppTheme.lightDesktop(context)
+            backgroundColor: !AppTheme.colouredControls(context)
                 ? null
-                : WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.hovered) ? AppColors.desktopLightHover : onBg),
+                : WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.hovered) ? AppTheme.palette(context).hover : onBg),
           ),
           onPressed: playing ? handler.pause : handler.play,
           icon: icon,
@@ -104,7 +104,7 @@ class TransportControls extends ConsumerWidget {
     final loop = ref.watch(loopModeProvider).value ?? LoopMode.off;
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     final accent = AppTheme.accent(context);
-    final blue = AppTheme.lightDesktop(context);
+    final blue = AppTheme.colouredControls(context);
     final iconSize = big ? 36.0 : 24.0;
     return Row(mainAxisAlignment: big ? MainAxisAlignment.spaceBetween : MainAxisAlignment.center, children: [
       IconButton(
@@ -193,7 +193,7 @@ class PodcastSpeedButton extends ConsumerWidget {
                 for (final v in podcastSpeeds)
                   ListTile(
                     title: Text('${v}x'),
-                    trailing: v == speed ? const Icon(Icons.check, color: AppColors.accent) : null,
+                    trailing: v == speed ? Icon(Icons.check, color: AppTheme.accent(context)) : null,
                     onTap: () {
                       Navigator.pop(ctx);
                       notifier.setPodcastSpeed(v);

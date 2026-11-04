@@ -58,6 +58,9 @@ android {
         // youtubedl-android extracts its bundled Python/ffmpeg from the native lib dir.
         jniLibs {
             useLegacyPackaging = true
+            // Its two big archives (about 50 MB) are downloaded on first use
+            // instead (YtDlpPlugin.kt, ytdlp_android.dart).
+            excludes += setOf("**/libpython.zip.so", "**/libffmpeg.zip.so")
         }
     }
 }
@@ -65,6 +68,8 @@ android {
 dependencies {
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
+    // Its unzip and settings helpers, for unpacking the parts fetched on first use.
+    implementation("io.github.junkfood02.youtubedl-android:common:0.18.1")
     // Knowing when Android Auto is connected (lyrics in the car).
     implementation("androidx.car.app:app:1.4.0")
 }

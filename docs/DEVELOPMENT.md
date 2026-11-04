@@ -1,6 +1,6 @@
 # OuOPlayer 開發說明
 
-用 [Flutter](https://flutter.dev) 寫的音樂播放器，同一份程式碼可以建置 Android 和 Windows。目前以 Android 為主。
+用 [Flutter](https://flutter.dev) 寫的音樂播放器，同一份程式碼可以建置 Android 和 Windows。兩邊用同一個版本號（從 1.14.1 起）。
 
 ## 開發環境
 
@@ -10,6 +10,7 @@
 | Android SDK | compileSdk 37、minSdk 24（Android 7.0） |
 | JDK | 17（Gradle 不支援更新的版本） |
 | Windows 版（選用） | Visual Studio 2022 Build Tools，「使用 C++ 的桌面開發」 |
+| Windows 安裝檔（選用） | [Inno Setup 6](https://jrsoftware.org/isinfo.php)，`release.ps1` 預設找 `D:\dev\InnoSetup\ISCC.exe` |
 | 圖示（選用） | Python 3 + Pillow |
 
 **專案路徑不能有中文或其他非 ASCII 字元**，Flutter 分析器和 Gradle 會出錯。專案放在中文路徑時，請建一個英文路徑的連結資料夾，從那裡執行所有 flutter 指令：
@@ -31,6 +32,8 @@ flutter build windows --release                # → build/windows/x64/runner/Re
 
 Windows 版要把整個 `Release` 資料夾一起複製才能執行。
 
+**Windows 的 `windows/runner/Runner.rc` 不要改公司名稱、產品名稱，也不要改版本資訊的語言區塊**（必須是英文 `040904b0`）：Windows 版的資料放在 `%APPDATA%\com.ouo\OuOPlayer`，這個路徑就是從那裡讀出來的，改了 App 會打開一個空的音樂庫（1.15.0 發生過）。`test/v1151_test.dart` 會檢查。
+
 ## 版本規則
 
 從 0.0.0 起算，格式 `主.次.修`：
@@ -39,24 +42,36 @@ Windows 版要把整個 `Release` 資料夾一起複製才能執行。
 - **次**（第二位）：新功能或大更新。
 - **主**（第一位）：正式版才會用到。
 
-`pubspec.yaml` 的 `+` 後面是建置編號，每次發布都要加 1（Android 只接受編號更大的更新）。「關於與更新」頁顯示的版本字串在 `lib/ui/pages/settings_page.dart` 和 `lib/ui/pages/settings/about_settings.dart`，要和 `pubspec.yaml` 同步。
+`pubspec.yaml` 的 `+` 後面是建置編號，每次發布都要加 1（Android 只接受編號更大的更新）。「關於與更新」頁和 Windows 更新比對用的版本在 `lib/config/version.dart`（`release.ps1` 會用 `--dart-define=OUO_VERSION` 傳進去），預設值要和 `pubspec.yaml` 同步。
 
 ## 發布流程
 
-1. 改 `pubspec.yaml` 的版本和上面兩個版本字串。
+1. 改 `pubspec.yaml` 的版本和 `lib/config/version.dart` 的預設值。
 2. `flutter analyze`、`flutter test`。
-3. 建置（只建 Android；加 `-Windows` 才會一起建 Windows）：
+3. 建置兩邊（`-WindowsOnly` 只建 Windows；不加參數只建 Android）：
    ```powershell
-   powershell -ExecutionPolicy Bypass -File scripts/release.ps1
+   powershell -ExecutionPolicy Bypass -File scripts/release.ps1 -Windows
    ```
-   產出在 `release/android/v<版本>/OuOPlayer-<版本>-<abi>.apk`（Windows 在 `release/windows/v<版本>/`）。已經存在的版本資料夾不會被覆蓋。`release/` 不進 git。
-4. 在手機上測試。
+   產出：
+   - `release/android/v<版本>/OuOPlayer-<版本>-<abi>.apk`
+   - `release/windows/v<版本>/`：`OuOPlayer-<版本>-windows-setup.exe`（Inno Setup 安裝檔，`windows/installer/OuOPlayer.iss`）、`OuOPlayer-<版本>-windows-x64.zip`（解壓版）和 `OuOPlayer/` 資料夾
+
+   已經存在的版本資料夾不會被覆蓋（`-Force` 只在確定要覆蓋時用）。`release/` 不進 git。
+4. 在手機和電腦上測試。
 5. commit、打 `v<版本>` 標籤、推送。
-6. 寫更新內容到 `release/notes/v<版本>.md`，然後發布：
+6. 寫更新內容：手機 `release/notes/v<版本>.md`、GitHub `release/notes/github-v<版本>.md`、Windows App 內 `release/notes/windows-v<版本>.md`。
+7. 發布，依這個順序：
    ```powershell
-   powershell -ExecutionPolicy Bypass -File scripts/publish.ps1
+   powershell -ExecutionPolicy Bypass -File scripts/publish.ps1 -SkipR2       # GitHub Release（APK、安裝檔、zip）
+   powershell -ExecutionPolicy Bypass -File scripts/publish.ps1 -SkipGitHub   # 手機 App 內更新（R2 的 latest.json）
+   powershell -ExecutionPolicy Bypass -File scripts/publish.ps1 -Windows      # 電腦 App 內更新（R2 的 latest-windows.json）
    ```
-   會把 APK 上傳到更新伺服器（最後才上傳 `latest.json`，伺服器只保留最新 3 版），並建立 GitHub Release。`-SkipR2`、`-SkipGitHub` 可以只做其中一邊。
+   更新伺服器每個平台只保留最新 3 版；`latest*.json` 最後才上傳。
+8. 換 youtubedl-android 版本時，先上傳 APK 不再內含的下載元件（Python、ffmpeg），再發布那個 APK：
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts/publish.ps1 -Components
+   ```
+   並更新 `lib/services/ytdlp/ytdlp_android.dart` 裡的大小和 SHA-256。
 
 ## 簽章金鑰
 
@@ -68,7 +83,8 @@ Android 只接受用**同一把金鑰**簽的更新，所以 release 建置固�
 
 - App 端：`lib/services/updater.dart`、`lib/ui/widgets/update_dialog.dart`，伺服器網址在 `lib/config/update_config.dart`。App 讀 `latest.json`，下載適合手機 ABI 的 APK，比對 SHA-256 後交給 Android 安裝。
 - 伺服器端：`cloud/update-worker/`，是一個放在私人 Cloudflare R2 bucket 前面的 Cloudflare Worker。
-  - 只回應帶有 App 標頭的 `GET /latest.json` 和 `GET /v<版本>/OuOPlayer-<版本>-<abi>.apk`，其他一律 404。
+  - 只回應帶有 App 標頭的 `GET /latest.json`、`/v<版本>/OuOPlayer-<版本>-<abi>.apk`、`/latest-windows.json`、`/windows/v<版本>/OuOPlayer-<版本>-windows-setup.exe` 和 `/components/ytdlp-<版本>/<abi>/{python,ffmpeg}.zip`，其他一律 404。
+  - Windows 安裝版：App 讀 `latest-windows.json`，下載安裝檔、比對 SHA-256 後靜默安裝再重新開啟；解壓版會開啟 GitHub Releases。
   - 每個 IP 每分鐘的次數有限制。
   - 使用 Workers 免費方案：每天超過 10 萬次請求只會暫停，不會產生費用。
   - 部署：在 `cloud/update-worker/` 執行 `npx wrangler login`，再執行 `npx wrangler deploy`。

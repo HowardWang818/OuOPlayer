@@ -8,10 +8,10 @@ import '../../services/download_service.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/dialogs.dart';
 
-(IconData, Color) downloadStatusIcon(DownloadStatus s, Color muted) => switch (s) {
+(IconData, Color) downloadStatusIcon(DownloadStatus s, Color muted, Color accent) => switch (s) {
       DownloadStatus.queued => (Icons.schedule, muted),
-      DownloadStatus.running => (Icons.downloading, AppColors.accent),
-      DownloadStatus.done => (Icons.check_circle, AppColors.accent),
+      DownloadStatus.running => (Icons.downloading, accent),
+      DownloadStatus.done => (Icons.check_circle, accent),
       DownloadStatus.failed => (Icons.error_outline, Colors.redAccent),
       DownloadStatus.cancelled => (Icons.cancel_outlined, muted),
     };
@@ -40,7 +40,7 @@ class DownloadDetailPage extends ConsumerWidget {
     if (task == null) {
       return Scaffold(appBar: AppBar(), body: const Center(child: Text('這筆下載已移除')));
     }
-    final (icon, color) = downloadStatusIcon(task.status, muted);
+    final (icon, color) = downloadStatusIcon(task.status, muted, AppTheme.accent(context));
 
     Widget section(String title, {Widget? action}) => Padding(
           padding: const EdgeInsets.fromLTRB(16, 20, 8, 4),
@@ -113,7 +113,7 @@ class DownloadDetailPage extends ConsumerWidget {
           section('歌曲（${task.children.length}）'),
           for (final c in task.children)
             Builder(builder: (context) {
-              final (cIcon, cColor) = downloadStatusIcon(c.status, muted);
+              final (cIcon, cColor) = downloadStatusIcon(c.status, muted, AppTheme.accent(context));
               return ListTile(
                 dense: true,
                 leading: Icon(cIcon, color: cColor),

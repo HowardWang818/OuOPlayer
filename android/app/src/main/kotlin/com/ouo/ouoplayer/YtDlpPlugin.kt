@@ -6,16 +6,24 @@ import android.os.Looper
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
+import com.yausername.youtubedl_common.SharedPrefsHelper
+import com.yausername.youtubedl_common.utils.ZipUtils
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
 /**
- * Bridges youtubedl-android (bundled Python + yt-dlp + ffmpeg) to Dart.
- * Raw output lines are forwarded; parsing happens in ytdlp_downloader.dart.
+ * Bridges youtubedl-android (Python + yt-dlp + ffmpeg) to Dart. Raw output
+ * lines are forwarded; parsing happens in ytdlp_downloader.dart.
+ *
+ * Since v1.15.0 the APK leaves out the library's two big archives
+ * (libpython.zip.so, libffmpeg.zip.so, about 50 MB): ytdlp_android.dart
+ * downloads them on first use and [installComponent] unpacks them where the
+ * library would have, then marks them as unpacked so its init skips that.
  */
 class YtDlpPlugin(private val context: Context, messenger: BinaryMessenger) :
     MethodChannel.MethodCallHandler, EventChannel.StreamHandler {
@@ -33,6 +41,44 @@ class YtDlpPlugin(private val context: Context, messenger: BinaryMessenger) :
     init {
         method.setMethodCallHandler(this)
         events.setStreamHandler(this)
+    }
+
+    private val nativeDir get() = File(context.applicationInfo.nativeLibraryDir)
+    private val packages get() = File(File(context.noBackupFilesDir, "youtubedl-android"), "packages")
+
+    /** name → (folder under packages, the library's archive, its preference key). */
+    private val components = mapOf(
+        "python" to Triple("python", "libpython.zip.so", "pythonLibVersion"),
+        "ffmpeg" to Triple("ffmpeg", "libffmpeg.zip.so", "ffmpegLibVersion"),
+    )
+
+    /**
+     * Whether a component is unpacked. The library re-unpacks whenever the
+     * archive's size differs from what it noted; with the archive gone that
+     * size is 0, so an install from an older version (unpacked by the
+     * library itself) gets the new size noted instead of being wiped.
+     */
+    private fun ready(name: String): Boolean {
+        val (dir, archive, key) = components.getValue(name)
+        val noted = SharedPrefsHelper.get(context, key) ?: return false
+        if (!File(packages, dir).isDirectory) return false
+        val now = File(nativeDir, archive).length().toString()
+        if (noted != now) SharedPrefsHelper.update(context, key, now)
+        return true
+    }
+
+    private fun installComponent(name: String, zip: File) {
+        val (dir, archive, key) = components.getValue(name)
+        val target = File(packages, dir)
+        target.deleteRecursively()
+        target.mkdirs()
+        try {
+            ZipUtils.unzip(zip, target)
+        } catch (e: Exception) {
+            target.deleteRecursively()
+            throw e
+        }
+        SharedPrefsHelper.update(context, key, File(nativeDir, archive).length().toString())
     }
 
     private fun ensureInit() {
@@ -61,6 +107,13 @@ class YtDlpPlugin(private val context: Context, messenger: BinaryMessenger) :
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "init" -> background(result) { ensureInit(); true }
+            "components" -> result.success(components.keys.filter { !ready(it) })
+            // The installed APK's (…/lib/arm64), not the phone's first choice.
+            "abi" -> result.success(mapOf("arm64" to "arm64-v8a", "arm" to "armeabi-v7a", "x86_64" to "x86_64")[nativeDir.name])
+            "installComponent" -> background(result) {
+                installComponent(call.argument<String>("name")!!, File(call.argument<String>("zip")!!))
+                true
+            }
             "version" -> background(result) { ensureInit(); YoutubeDL.getInstance().version(context) }
             "update" -> background(result) {
                 ensureInit()

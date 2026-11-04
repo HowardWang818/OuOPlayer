@@ -185,7 +185,7 @@ class _DailyChart extends StatelessWidget {
                     height: 110 * values[i].inMilliseconds / maxMs + 2,
                     margin: const EdgeInsets.symmetric(horizontal: 1.5),
                     decoration: BoxDecoration(
-                      color: values[i] == Duration.zero ? muted.withValues(alpha: 0.2) : AppColors.accent,
+                      color: values[i] == Duration.zero ? muted.withValues(alpha: 0.2) : AppTheme.accent(context),
                       borderRadius: BorderRadius.circular(3),
                     ),
                   ),

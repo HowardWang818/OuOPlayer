@@ -23,15 +23,21 @@
   (windows/v<version>/, then latest-windows.json last; newest 3 kept). Notes:
   release\notes\windows-v<version>.md.
 
+  With -Components, uploads the download parts the APK leaves out (v1.15.0):
+  youtubedl-android's libpython.zip.so and libffmpeg.zip.so for each ABI, as
+  components/ytdlp-<library version>/<abi>/python.zip and ffmpeg.zip. Needed
+  once per library version, before an APK without them is published.
+
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\publish.ps1
   powershell -ExecutionPolicy Bypass -File scripts\publish.ps1 -SkipGitHub
   powershell -ExecutionPolicy Bypass -File scripts\publish.ps1 -Windows
+  powershell -ExecutionPolicy Bypass -File scripts\publish.ps1 -Components
 #>
 # -Replace: publish the same version again (only when the user asked to
 # overwrite it): the APKs and latest.json are replaced, the GitHub Release
 # gets the new APKs and notes.
-param([switch]$SkipGitHub, [switch]$SkipR2, [switch]$Replace, [switch]$Windows, [string]$WindowsVersion)
+param([switch]$SkipGitHub, [switch]$SkipR2, [switch]$Replace, [switch]$Windows, [string]$WindowsVersion, [switch]$Components)
 
 $ErrorActionPreference = 'Stop'
 $project = Split-Path -Parent $PSScriptRoot
@@ -46,6 +52,29 @@ function Wrangler {
     if ($LASTEXITCODE -ne 0) { throw "wrangler $($args -join ' ') failed" }
 }
 function Put($key, $file, $type) { Wrangler r2 object put "$bucket/$key" --file $file --content-type $type --remote }
+
+if ($Components) {
+    # The library version the app uses (android/app/build.gradle.kts).
+    $lib = (Select-String -Path (Join-Path $root 'android\app\build.gradle.kts') -Pattern 'youtubedl-android:library:([\d.]+)').Matches[0].Groups[1].Value
+    $cache = Join-Path $env:USERPROFILE '.gradle\caches\modules-2\files-2.1\io.github.junkfood02.youtubedl-android'
+    $tmp = Join-Path $env:TEMP "ouo-components-$lib"
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    foreach ($part in @(@{ name = 'python'; aar = 'library'; file = 'libpython.zip.so' }, @{ name = 'ffmpeg'; aar = 'ffmpeg'; file = 'libffmpeg.zip.so' })) {
+        $aar = Get-ChildItem (Join-Path $cache "$($part.aar)\$lib") -Recurse -Filter '*.aar' | Select-Object -First 1
+        if (-not $aar) { throw "youtubedl-android $($part.aar) $lib is not in the Gradle cache: build the APK once first" }
+        $dir = Join-Path $tmp $part.aar
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($aar.FullName, $dir)
+        foreach ($abi in $abis) {
+            $file = Join-Path $dir "jni\$abi\$($part.file)"
+            $key = "components/ytdlp-$lib/$abi/$($part.name).zip"
+            Write-Host "== $key ($((Get-Item $file).Length) bytes, $((Get-FileHash $file -Algorithm SHA256).Hash.ToLower()))"
+            Put $key $file 'application/zip'
+        }
+    }
+    Write-Host "== Uploaded the download parts for youtubedl-android $lib"
+    exit 0
+}
 
 if ($Windows) {
     if (-not $WindowsVersion) {

@@ -1,7 +1,7 @@
 name: ouoplayer
-description: "OuOPlayer - a Spotify-style music player for Android and Windows."
+description: "OuOPlayer - a music player for Android and Windows, with playlist sync."
 publish_to: 'none'
-version: 1.14.6+83
+version: 1.16.0+86
 
 environment:
   sdk: ^3.6.0
@@ -59,11 +59,8 @@ flutter:
     - assets/icon/app_icon_dark.png
     - assets/icon/app_icon_light.png
     - assets/icon/tray.ico
-  fonts:
-    # Windows: song titles and artists (設定 → 播放 → 歌名字體).
-    - family: NotoSansTC
-      fonts:
-        - asset: assets/fonts/NotoSansTC-VF.ttf
+  # The Noto font for song titles (Windows only) isn't an asset: the Windows
+  # build puts it in dataonts (windows/CMakeLists.txt), so the APK stays small.
 
 flutter_launcher_icons:
   android: true

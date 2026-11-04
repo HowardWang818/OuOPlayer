@@ -2,72 +2,33 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-class AppColors {
-  static const accent = Color(0xFF1DBEEF);
-  static const darkBg = Color(0xFF121212);
-  static const darkSurface = Color(0xFF181818);
-  static const darkCard = Color(0xFF242424);
-  static const lightBg = Color(0xFFFFFFFF);
-  static const lightSurface = Color(0xFFF4F6F8);
-  static const lightCard = Color(0xFFE9EDF0);
+import 'themes.dart';
 
-  // Windows: more contrast in the dark theme.
-  static const desktopDarkBg = Color(0xFF0E0E0E);
-  static const desktopDarkSurface = Color(0xFF151515);
-  static const desktopDarkCard = Color(0xFF2E2E2E);
-
-  /// Windows, light theme: the player bar.
-  static const desktopLightBar = Color(0xFFF1F8FE);
-
-  // Windows, light theme: [accent] made darker for a light background: the
-  // main colour (bars, active icons, chosen items),
-  // the play button, under the mouse, icons not in use, the bars' empty part.
-  static const desktopLightMain = Color(0xFF0B93C4);
-  static const desktopLightPlay = Color(0xFF0B7FAE);
-  static const desktopLightHover = accent;
-  static const desktopLightIcon = Color(0xFF64748B);
-  static const desktopLightTrack = Color(0xFFE2E8F0);
-}
-
-/// Marks a theme that uses the light blues.
-class _LightBlues extends ThemeExtension<_LightBlues> {
-  const _LightBlues();
+/// The palette a theme was built from, for the colours Material has no slot
+/// for (the play button, the player bar, icons not in use).
+class PaletteExtension extends ThemeExtension<PaletteExtension> {
+  const PaletteExtension(this.palette);
+  final Palette palette;
 
   @override
-  _LightBlues copyWith() => this;
+  PaletteExtension copyWith({Palette? palette}) => PaletteExtension(palette ?? this.palette);
 
   @override
-  _LightBlues lerp(_LightBlues? other, double t) => this;
+  PaletteExtension lerp(PaletteExtension? other, double t) => t < 0.5 || other == null ? this : other;
 }
 
 class AppTheme {
   static bool get _desktop => Platform.isWindows;
 
-  /// Windows, light theme (its own blues), and the phone's light player.
-  static bool lightDesktop(BuildContext context) => Theme.of(context).extension<_LightBlues>() != null;
+  /// The palette here (晴空's for a theme not built by [build], e.g. tests).
+  static Palette palette(BuildContext context) {
+    final theme = Theme.of(context);
+    return theme.extension<PaletteExtension>()?.palette ?? presets.first.of(theme.brightness);
+  }
 
-  /// The phone's light player has the same controls as Windows; everything
-  /// else stays as it is.
-  static ThemeData playerControls(ThemeData theme) => _desktop || theme.brightness != Brightness.light ? theme : blueControls(theme);
-
-  /// [theme] with Windows' light blues on its buttons and bars.
-  @visibleForTesting
-  static ThemeData blueControls(ThemeData theme) => theme.copyWith(
-        extensions: const [_LightBlues()],
-        colorScheme: theme.colorScheme.copyWith(primary: AppColors.desktopLightMain, onPrimary: Colors.white, secondary: AppColors.desktopLightMain),
-        iconButtonTheme: IconButtonThemeData(
-          style: ButtonStyle(
-            foregroundColor: WidgetStateProperty.resolveWith(
-                (s) => s.contains(WidgetState.disabled) || s.contains(WidgetState.selected) ? null : AppColors.desktopLightIcon),
-          ),
-        ),
-        sliderTheme: theme.sliderTheme.copyWith(
-          activeTrackColor: AppColors.desktopLightMain,
-          inactiveTrackColor: AppColors.desktopLightTrack,
-          thumbColor: AppColors.desktopLightMain,
-        ),
-        chipTheme: theme.chipTheme.copyWith(selectedColor: AppColors.desktopLightMain),
-      );
+  /// Light themes colour their controls: a coloured play button with a white
+  /// symbol, coloured bars, grey icons not in use (v1.16.0: on the phone too).
+  static bool colouredControls(BuildContext context) => !palette(context).dark;
 
   /// White on a dark background, near-black on a light one.
   static Color inkOn(Color background) => ThemeData.estimateBrightnessForColor(background) == Brightness.dark ? Colors.white : const Color(0xFF111111);
@@ -75,152 +36,132 @@ class AppTheme {
   /// Like [inkOn], softer: text on a light background is dark grey.
   static Color textOn(Color background) => ThemeData.estimateBrightnessForColor(background) == Brightness.dark ? Colors.white : const Color(0xFF444444);
 
-  /// The app's colour here.
+  /// The theme's colour here.
   static Color accent(BuildContext context) => Theme.of(context).colorScheme.primary;
 
-  /// The play button's colour.
-  static Color control(BuildContext context) => lightDesktop(context) ? AppColors.desktopLightPlay : Theme.of(context).colorScheme.onSurface;
-
-  /// The play button's symbol.
-  static Color controlSymbol(BuildContext context) => lightDesktop(context) ? Colors.white : Theme.of(context).scaffoldBackgroundColor;
-
-  /// Windows, light theme: a player bar button that is [on] (or always blue),
-  /// lighter under the mouse. Null elsewhere.
-  static ButtonStyle? barButton(BuildContext context, {bool on = true}) => !lightDesktop(context)
-      ? null
-      : ButtonStyle(
-          foregroundColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.hovered)
-              ? AppColors.desktopLightHover
-              : on
-                  ? AppColors.desktopLightMain
-                  : AppColors.desktopLightIcon),
-        );
-
-  /// The player bar's background.
-  static Color playerBar(BuildContext context) {
-    final theme = Theme.of(context);
-    return _desktop && theme.brightness == Brightness.light ? AppColors.desktopLightBar : theme.colorScheme.surfaceContainer;
+  /// Liked songs' tile: from the theme's colour, a little round the colour wheel.
+  static LinearGradient likedGradient(BuildContext context, {Alignment begin = Alignment.centerLeft, Alignment end = Alignment.centerRight}) {
+    final main = accent(context);
+    final hsl = HSLColor.fromColor(main);
+    final from = hsl.withHue((hsl.hue + 50) % 360).withLightness((hsl.lightness * 0.85).clamp(0.0, 1.0));
+    return LinearGradient(colors: [from.toColor(), main], begin: begin, end: end);
   }
 
-  static ThemeData dark() => _build(
-        brightness: Brightness.dark,
-        bg: _desktop ? AppColors.desktopDarkBg : AppColors.darkBg,
-        surface: _desktop ? AppColors.desktopDarkSurface : AppColors.darkSurface,
-        card: _desktop ? AppColors.desktopDarkCard : AppColors.darkCard,
-        onBg: Colors.white,
-        muted: const Color(0xFFB3B3B3),
-      );
+  /// The play button's colour.
+  static Color control(BuildContext context) => palette(context).play;
 
-  static ThemeData light() => _build(
-        brightness: Brightness.light,
-        bg: AppColors.lightBg,
-        surface: AppColors.lightSurface,
-        card: AppColors.lightCard,
-        onBg: const Color(0xFF111111),
-        muted: const Color(0xFF5E6A73),
-      );
+  /// The play button's symbol.
+  static Color controlSymbol(BuildContext context) => palette(context).onPlay;
 
-  static ThemeData _build({
-    required Brightness brightness,
-    required Color bg,
-    required Color surface,
-    required Color card,
-    required Color onBg,
-    required Color muted,
-  }) {
-    final lightDesktop = _desktop && brightness == Brightness.light;
-    final main = lightDesktop ? AppColors.desktopLightMain : AppColors.accent;
-    final onMain = lightDesktop ? Colors.white : Colors.black;
-    final scheme = ColorScheme.fromSeed(
-      seedColor: AppColors.accent,
-      brightness: brightness,
-    ).copyWith(
-      primary: main,
-      onPrimary: onMain,
-      secondary: main,
-      surface: bg,
-      onSurface: onBg,
-      onSurfaceVariant: muted,
-      surfaceContainer: surface,
-      surfaceContainerHigh: card,
-      surfaceContainerHighest: card,
+  /// Light themes: a player bar button that is [on] (or always coloured),
+  /// lighter under the mouse. Null in dark themes.
+  static ButtonStyle? barButton(BuildContext context, {bool on = true}) {
+    if (!colouredControls(context)) return null;
+    final p = palette(context);
+    return ButtonStyle(
+      foregroundColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.hovered)
+          ? p.hover
+          : on
+              ? p.main
+              : p.icon),
+    );
+  }
+
+  /// The player bar's background.
+  static Color playerBar(BuildContext context) => palette(context).bar;
+
+  /// The app's theme for [p] (one mode of a [ColorTheme]).
+  static ThemeData build(Palette p) {
+    final brightness = p.dark ? Brightness.dark : Brightness.light;
+    final coloured = !p.dark;
+    final scheme = ColorScheme.fromSeed(seedColor: p.main, brightness: brightness).copyWith(
+      primary: p.main,
+      onPrimary: p.onMain,
+      secondary: p.main,
+      onSecondary: p.onMain,
+      surface: p.bg,
+      onSurface: p.text,
+      onSurfaceVariant: p.muted,
+      surfaceContainer: p.surface,
+      surfaceContainerHigh: p.card,
+      surfaceContainerHighest: p.card,
     );
     return ThemeData(
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
-      extensions: lightDesktop ? const [_LightBlues()] : null,
+      extensions: [PaletteExtension(p)],
       // Windows: buttons have no background under the mouse; their symbol
-      // gets brighter and a little bigger.
-      iconButtonTheme: !_desktop
+      // gets brighter and a little bigger. Light themes: grey when not in use.
+      iconButtonTheme: !_desktop && !coloured
           ? null
           : IconButtonThemeData(
               style: ButtonStyle(
-                overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+                overlayColor: _desktop ? const WidgetStatePropertyAll(Colors.transparent) : null,
                 // A fixed box: the symbol growing under the mouse moves nothing around it.
-                fixedSize: const WidgetStatePropertyAll(Size.square(40)),
-                padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+                fixedSize: _desktop ? const WidgetStatePropertyAll(Size.square(40)) : null,
+                padding: _desktop ? const WidgetStatePropertyAll(EdgeInsets.zero) : null,
                 foregroundColor: WidgetStateProperty.resolveWith((s) {
                   if (s.contains(WidgetState.disabled) || s.contains(WidgetState.selected)) return null;
-                  if (s.contains(WidgetState.hovered)) return lightDesktop ? AppColors.desktopLightHover : onBg;
-                  return lightDesktop ? AppColors.desktopLightIcon : null;
+                  if (_desktop && s.contains(WidgetState.hovered)) return coloured ? p.hover : p.text;
+                  return coloured ? p.icon : null;
                 }),
-                iconSize: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.hovered) ? 26 : null),
+                iconSize: _desktop ? WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.hovered) ? 26 : null) : null,
               ),
             ),
-      scaffoldBackgroundColor: bg,
-      canvasColor: bg,
+      scaffoldBackgroundColor: p.bg,
+      canvasColor: p.bg,
       fontFamilyFallback: const ['Microsoft JhengHei', 'Noto Sans TC', 'sans-serif'],
       appBarTheme: AppBarTheme(
-        backgroundColor: bg,
-        foregroundColor: onBg,
+        backgroundColor: p.bg,
+        foregroundColor: p.text,
         elevation: 0,
         scrolledUnderElevation: 0,
-        titleTextStyle: TextStyle(color: onBg, fontSize: 22, fontWeight: FontWeight.bold),
+        titleTextStyle: TextStyle(color: p.text, fontSize: 22, fontWeight: FontWeight.bold),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: surface,
+        backgroundColor: p.surface,
         indicatorColor: Colors.transparent,
         iconTheme: WidgetStateProperty.resolveWith((s) => IconThemeData(
-              color: s.contains(WidgetState.selected) ? onBg : muted,
+              color: s.contains(WidgetState.selected) ? (coloured ? p.main : p.text) : p.muted,
             )),
         labelTextStyle: WidgetStateProperty.resolveWith((s) => TextStyle(
               fontSize: 11,
-              color: s.contains(WidgetState.selected) ? onBg : muted,
+              color: s.contains(WidgetState.selected) ? (coloured ? p.main : p.text) : p.muted,
             )),
       ),
       sliderTheme: SliderThemeData(
-        activeTrackColor: main,
-        inactiveTrackColor: lightDesktop ? AppColors.desktopLightTrack : muted.withValues(alpha: 0.3),
-        thumbColor: lightDesktop ? main : onBg,
+        activeTrackColor: p.main,
+        inactiveTrackColor: p.track,
+        thumbColor: coloured ? p.main : p.text,
         overlayShape: SliderComponentShape.noOverlay,
         trackHeight: 3,
         thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
       ),
-      listTileTheme: ListTileThemeData(iconColor: muted, textColor: onBg),
+      listTileTheme: ListTileThemeData(iconColor: p.muted, textColor: p.text),
       chipTheme: ChipThemeData(
-        backgroundColor: card,
-        selectedColor: main,
-        labelStyle: TextStyle(color: onBg),
+        backgroundColor: p.card,
+        selectedColor: p.main,
+        labelStyle: TextStyle(color: p.text),
         side: BorderSide.none,
         shape: const StadiumBorder(),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: card,
+        fillColor: p.card,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: main,
-          foregroundColor: onMain,
+          backgroundColor: p.main,
+          foregroundColor: p.onMain,
           shape: const StadiumBorder(),
           textStyle: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
-      progressIndicatorTheme: ProgressIndicatorThemeData(color: main),
-      dividerTheme: DividerThemeData(color: muted.withValues(alpha: 0.2)),
+      progressIndicatorTheme: ProgressIndicatorThemeData(color: p.main),
+      dividerTheme: DividerThemeData(color: p.muted.withValues(alpha: 0.2)),
     );
   }
 }

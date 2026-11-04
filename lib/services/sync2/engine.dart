@@ -498,6 +498,13 @@ class SyncEngine implements SyncHooks {
       received += got;
     }
 
+    // 外觀主題 (v1.16.0): the one chosen last, on every device that syncs it.
+    if (s['sync_theme'] != 'false') {
+      final (out, got) = await _syncTheme(me, files);
+      sent += out;
+      received += got;
+    }
+
     // Songs: tidy the relay (checked against what is really on Drive), plan.
     await _cleanRelay(me, remote);
     _plan = await _planTransfers(me, all, remote, await drive.list(), r, removed);
@@ -515,13 +522,55 @@ class SyncEngine implements SyncHooks {
     );
   }
 
-  String? _lastEdits, _lastPlays, _lastState, _seen;
+  String? _lastEdits, _lastPlays, _lastState, _lastTheme, _seen;
+
+  /// Told when another device's theme was taken here (the app repaints).
+  void Function()? onThemeChanged;
+
+  /// The colour theme as `v2-prefs-<device>.json`: {'theme': {id, c, at}}
+  /// from the settings color_theme / color_theme_custom / color_theme_at.
+  Future<(int, int)> _syncTheme(String me, List<DriveFile> files) async {
+    final s = await _settings();
+    final at = int.tryParse(s['color_theme_at'] ?? '') ?? 0;
+    final mine = {'id': s['color_theme'] ?? 'clear_sky', if (s['color_theme_custom'] != null) 'c': s['color_theme_custom'], 'at': at};
+    final name = 'v2-prefs-$me.json';
+    var sent = 0;
+    final body = jsonEncode({'device': me, 'theme': mine});
+    if (at > 0 && body != _lastTheme) {
+      final file = files.where((f) => f.name == name).firstOrNull;
+      String? before;
+      if (file != null) {
+        try {
+          before = utf8.decode(await drive.download(file.id));
+        } catch (_) {}
+      }
+      if (before != body) {
+        await drive.upload(name, utf8.encode(body), id: file?.id, mime: 'application/json');
+        sent = 1;
+      }
+      _lastTheme = body;
+    }
+    Map? newest;
+    for (final f in files.where((f) => f.name.startsWith('v2-prefs-') && f.name != name)) {
+      try {
+        final t = (jsonDecode(utf8.decode(await drive.download(f.id))) as Map)['theme'];
+        if (t is Map && t['id'] is String && ((t['at'] as num?)?.toInt() ?? 0) > ((newest?['at'] as num?)?.toInt() ?? at)) newest = t;
+      } catch (_) {}
+    }
+    if (newest == null) return (sent, 0);
+    await db.setSetting('color_theme', newest['id'] as String);
+    if (newest['c'] is String) await db.setSetting('color_theme_custom', newest['c'] as String);
+    await db.setSetting('color_theme_at', '${(newest['at'] as num).toInt()}');
+    _lastTheme = null;
+    onThemeChanged?.call();
+    return (sent, 1);
+  }
   int _stateAt = 0;
 
   /// The other devices' sync files as they are now.
   static String _signature(String me, List<DriveFile> files) => ([
         for (final f in files)
-          if (RegExp(r'^v2-(state|edits|plays|relay)-').hasMatch(f.name) && !f.name.endsWith('-$me.json')) '${f.name}@${f.modified.millisecondsSinceEpoch}',
+          if (RegExp(r'^v2-(state|edits|plays|relay|prefs)-').hasMatch(f.name) && !f.name.endsWith('-$me.json')) '${f.name}@${f.modified.millisecondsSinceEpoch}',
       ]..sort())
           .join('|');
 

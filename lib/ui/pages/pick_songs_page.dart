@@ -67,7 +67,7 @@ class _PickSongsPageState extends ConsumerState<PickSongsPage> {
                           ? null
                           : (v) => setState(() => v == true ? _picked.add(t.id) : _picked.remove(t.id)),
                       secondary: ArtImage(t.art, size: 44),
-                      activeColor: AppColors.accent,
+                      activeColor: AppTheme.accent(context),
                       title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
                       subtitle: Text(already ? '${t.artist} • 已在清單中' : t.artist,
                           maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted)),

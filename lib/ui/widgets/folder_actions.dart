@@ -115,7 +115,7 @@ class _FolderPickerPageState extends ConsumerState<FolderPickerPage> {
         body: Column(children: [
           if (here != null)
             ListTile(
-              leading: const Icon(Icons.folder_open, color: AppColors.accent),
+              leading: Icon(Icons.folder_open, color: AppTheme.accent(context)),
               title: Text(p.basename(here), style: const TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text(here, style: TextStyle(color: muted)),
             ),

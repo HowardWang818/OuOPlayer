@@ -69,7 +69,7 @@ class TrackTile extends ConsumerWidget {
     if (track.source == TrackSource.missing) {
       final tile = ListTile(
         selected: selected,
-        selectedTileColor: AppColors.accent.withValues(alpha: 0.15),
+        selectedTileColor: AppTheme.accent(context).withValues(alpha: 0.15),
         onTap: selecting ? select : () => showMissingSongMenu(context, ref, track, onRemove: onRemove, removeLabel: removeLabel),
         onLongPress: selection == null ? null : select,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16),
@@ -89,7 +89,7 @@ class TrackTile extends ConsumerWidget {
 
     final tile = ListTile(
       selected: selected,
-      selectedTileColor: AppColors.accent.withValues(alpha: 0.15),
+      selectedTileColor: AppTheme.accent(context).withValues(alpha: 0.15),
       // While selecting, a tap (or Ctrl/Shift+click on desktop) toggles the row.
       onTap: selection != null &&
               (selecting || HardwareKeyboard.instance.isControlPressed || HardwareKeyboard.instance.isShiftPressed)
@@ -105,24 +105,24 @@ class TrackTile extends ConsumerWidget {
                 width: 32,
                 child: Center(
                   child: Text('${index != null ? index! + 1 : ''}',
-                      style: TextStyle(color: playing ? AppColors.accent : cs.onSurfaceVariant)),
+                      style: TextStyle(color: playing ? AppTheme.accent(context) : cs.onSurfaceVariant)),
                 ),
               ),
         if (selected)
           Container(
             decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-            child: const Icon(Icons.check_circle, color: AppColors.accent, size: 28),
+            child: Icon(Icons.check_circle, color: AppTheme.accent(context), size: 28),
           ),
       ]),
       title: Text(track.title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: playing ? AppColors.accent : cs.onSurface, fontWeight: FontWeight.w500)),
+          style: TextStyle(color: playing ? AppTheme.accent(context) : cs.onSurface, fontWeight: FontWeight.w500)),
       subtitle: Row(children: [
         if (track.source == TrackSource.download)
-          const Padding(
-            padding: EdgeInsets.only(right: 4),
-            child: Icon(Icons.arrow_circle_down, size: 14, color: AppColors.accent),
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: Icon(Icons.arrow_circle_down, size: 14, color: AppTheme.accent(context)),
           ),
         Expanded(
           child: Text(track.artist, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: cs.onSurfaceVariant)),
@@ -209,7 +209,7 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
           ),
           const Divider(),
           ListTile(
-            leading: Icon(isFav ? Icons.favorite : Icons.favorite_border, color: isFav ? AppColors.accent : null),
+            leading: Icon(isFav ? Icons.favorite : Icons.favorite_border, color: isFav ? AppTheme.accent(context) : null),
             title: Text(isFav ? '從已按讚的歌曲移除' : '加到已按讚的歌曲'),
             onTap: () {
               Navigator.pop(ctx);

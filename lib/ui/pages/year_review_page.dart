@@ -42,7 +42,7 @@ class _YearReviewPageState extends ConsumerState<YearReviewPage> {
             return const Center(child: Text('今年還沒有收聽紀錄', style: TextStyle(color: Colors.white70)));
           }
           final top = s.topTracks.firstOrNull;
-          final color = ref.watch(artColorProvider(top?.track.art)).value ?? AppColors.accent.withValues(alpha: 0.6);
+          final color = ref.watch(artColorProvider(top?.track.art)).value ?? AppTheme.accent(context).withValues(alpha: 0.6);
           final cards = <Widget>[
             _Card(color: color, children: [
               const Text('今年你總共聽了', style: TextStyle(fontSize: 20)),

@@ -27,7 +27,7 @@ class OutputDeviceChip extends ConsumerWidget {
     final dev = ref.watch(outputDeviceProvider).value;
     if (dev == null) return const SizedBox.shrink();
     final external = dev.kind != 'speaker';
-    final color = this.color ?? (external ? AppColors.accent : Theme.of(context).colorScheme.onSurfaceVariant);
+    final color = this.color ?? (external ? AppTheme.accent(context) : Theme.of(context).colorScheme.onSurfaceVariant);
     void open() => Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => const DevicesPage()));
     if (dense) {
       return IconButton(icon: Icon(outputIcon(dev.kind), color: color, size: 20), tooltip: dev.name, onPressed: open);

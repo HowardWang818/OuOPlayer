@@ -11,14 +11,17 @@ import 'data/db/database.dart';
 import 'config/demo.dart';
 import 'config/demo_seed.dart';
 import 'providers/providers.dart';
+import 'providers/theme_provider.dart';
 import 'services/car_browser.dart';
 import 'services/desktop_tray.dart';
 import 'services/audio_handler.dart';
 import 'services/library_scanner.dart';
 import 'services/window_state.dart';
+import 'ui/widgets/song_font.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  await loadSongFont();
   if (Platform.isWindows || Platform.isLinux) {
     JustAudioMediaKit.ensureInitialized(windows: true, linux: true);
     JustAudioMediaKit.title = 'OuOPlayer';
@@ -49,6 +52,7 @@ Future<void> main(List<String> args) async {
     dbProvider.overrideWithValue(db),
     audioHandlerProvider.overrideWithValue(handler),
     initialSettingsProvider.overrideWithValue(settings),
+    initialThemeChoiceProvider.overrideWithValue(ThemeChoice.fromSettings(await db.allSettings())),
   ]);
 
   // Android Auto browsing; podcast episodes come from their feeds.

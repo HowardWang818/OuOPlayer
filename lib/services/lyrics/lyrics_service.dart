@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../../config/version.dart';
 import '../../data/models/track.dart';
 import '../native_names.dart';
 import '../song_matcher.dart';
@@ -96,7 +97,7 @@ class LyricsService {
             Dio(BaseOptions(
               connectTimeout: const Duration(seconds: 30),
               receiveTimeout: const Duration(seconds: 30),
-              headers: {'User-Agent': 'OuOPlayer (personal music player)'},
+              headers: {'User-Agent': 'OuOPlayer/$appVersion (https://github.com/HowardWang818/OuOPlayer)'},
             ));
 
   final LibraryScanner _scanner;

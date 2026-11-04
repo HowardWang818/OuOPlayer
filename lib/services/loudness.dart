@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 
 import 'package:flutter/services.dart';
@@ -9,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import '../data/db/database.dart';
 import '../data/models/track.dart';
 import '../providers/providers.dart' show NormalizeLevel;
+import 'replay_gain.dart';
 
 /// A song's integrated loudness (LUFS, EBU R128) and sample peak (dBFS).
 class SongLoudness {
@@ -77,7 +79,8 @@ class LoudnessService {
     return f.existsSync() ? f.path : null;
   }
 
-  /// Whether songs can be measured on this device.
+  /// Whether songs can be measured on this device (ReplayGain tags are read
+  /// everywhere).
   Future<bool> get available async => Platform.isAndroid || await _ffmpeg() != null;
 
   Future<SongLoudness?> saved(Track t) => _db.loudness(t.id);
@@ -86,6 +89,9 @@ class LoudnessService {
   Future<SongLoudness?> get(Track t, {bool urgent = false}) async {
     final known = await saved(t);
     if (known != null || !measurable(t)) return known;
+    // ReplayGain tags: no measuring needed.
+    final tagged = await _tagged(t);
+    if (tagged != null) return tagged;
     final waiting = _pending.remove(t.id);
     final done = waiting?.$2 ?? Completer<SongLoudness?>();
     final entry = (t, done);
@@ -104,7 +110,7 @@ class LoudnessService {
 
   /// Once per run: the library's songs not measured yet, in the background.
   Future<void> scanLibrary() async {
-    if (_scanned || !await available) return;
+    if (_scanned) return; // tags are read even where nothing can measure
     _scanned = true;
     final known = await _db.loudnessIds();
     for (final t in await _db.tracks()) {
@@ -124,7 +130,7 @@ class LoudnessService {
         final (t, done) = _pending.remove(id)!;
         SongLoudness? r;
         try {
-          r = await _measure(t.uri);
+          r = await _tagged(t) ?? await _measure(t.uri);
           if (r != null) await _db.setLoudness(t.id, r.lufs, r.peak);
         } catch (_) {}
         if (!done.isCompleted) done.complete(r);
@@ -134,6 +140,13 @@ class LoudnessService {
     } finally {
       _running = false;
     }
+  }
+
+  /// The song's ReplayGain tags (kept like a measurement).
+  Future<SongLoudness?> _tagged(Track t) async {
+    final r = await Isolate.run(() => replayGainOf(t.uri));
+    if (r != null) await _db.setLoudness(t.id, r.lufs, r.peak);
+    return r;
   }
 
   Future<SongLoudness?> _measure(String path) async {

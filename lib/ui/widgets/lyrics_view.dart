@@ -214,7 +214,7 @@ class _SyncedLyricsState extends ConsumerState<_SyncedLyrics> {
     final muted = ink?.soft ?? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45);
     // The line being sung: brightest (or darkest) and a little bigger, not the
     // accent colour, which disappears on blue covers.
-    final lit = ink?.strong ?? AppColors.accent;
+    final lit = ink?.strong ?? AppTheme.accent(context);
     final player = ref.read(audioHandlerProvider);
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(vertical: 120),
