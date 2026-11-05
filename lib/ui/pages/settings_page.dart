@@ -51,14 +51,13 @@ Future<void> rescanLibrary(BuildContext context, WidgetRef ref) async {
 
 /// The categories of 設定 (the settings are inside each one).
 List<({IconData icon, String title, String subtitle, Widget page})> get _sections => [
-      (icon: Icons.palette_outlined, title: '外觀', subtitle: '深色／淺色、顏色主題、歌名字體', page: const AppearanceSettingsPage()),
       (icon: Icons.library_music_outlined, title: '音樂庫', subtitle: '音樂資料夾、掃描、檢查已不存在的歌曲、刪除方式、封面與歌手圖片', page: const LibrarySettingsPage()),
       (icon: Icons.play_circle_outline, title: '播放', subtitle: '等化器、淡入淡出、音量標準化、睡眠計時器', page: const PlaybackSettingsPage()),
       (icon: Icons.podcasts, title: 'Podcast', subtitle: '播放速度、跳過靜音、快轉秒數', page: const PodcastSettingsPage()),
       (
         icon: Icons.lyrics_outlined,
         title: '歌詞',
-        subtitle: Platform.isAndroid ? '自動找歌詞、批次找歌詞、字體大小、車上和通知列顯示' : '自動找歌詞、批次找歌詞、字體大小',
+        subtitle: Platform.isAndroid ? '自動找歌詞、批次找歌詞、字體大小與對齊、車上和通知列顯示' : '自動找歌詞、批次找歌詞、字體大小與對齊',
         page: const LyricsSettingsPage()
       ),
       (icon: Icons.queue_music, title: '播放清單', subtitle: '智慧播放清單、允許重複', page: const PlaylistSettingsPage()),
@@ -74,6 +73,8 @@ List<({IconData icon, String title, String subtitle, Widget page})> get _section
       (icon: Icons.backup_outlined, title: '備份與還原', subtitle: '手動備份、自動備份、從備份清單還原', page: const BackupPage()),
       (icon: Icons.storage_outlined, title: '儲存空間', subtitle: '封面、歌手圖片、歌詞、下載暫存檔佔用的空間', page: const StoragePage()),
       if (Platform.isWindows) (icon: Icons.keyboard_outlined, title: '快捷鍵', subtitle: '自訂電腦快捷鍵', page: const ShortcutSettingsEntry()),
+      // After 快捷鍵 (Windows) / 儲存空間 (phone): set once, looked at now and then.
+      (icon: Icons.palette_outlined, title: '外觀', subtitle: '深色／淺色、顏色主題、播放頁、清單密度、圓角、歌名字體', page: const AppearanceSettingsPage()),
       (icon: Icons.info_outline, title: '關於與更新', subtitle: '版本 $appVersion${Updater.supported ? ' • 檢查更新' : ''}', page: const AboutSettingsPage()),
     ];
 

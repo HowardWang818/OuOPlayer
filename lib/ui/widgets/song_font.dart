@@ -76,3 +76,13 @@ class TitleBarTint extends Notifier<Color?> {
 }
 
 final titleBarTintProvider = NotifierProvider<TitleBarTint, Color?>(TitleBarTint.new);
+
+/// Windows: the blurred cover the title bar shows while the player has one
+/// (外觀 → 背景 → 模糊封面); null: just [titleBarTintProvider]'s colour.
+class TitleBarBackdrop extends Notifier<({String art, Color veil})?> {
+  @override
+  ({String art, Color veil})? build() => null;
+  void set(({String art, Color veil})? b) => state = b;
+}
+
+final titleBarBackdropProvider = NotifierProvider<TitleBarBackdrop, ({String art, Color veil})?>(TitleBarBackdrop.new);

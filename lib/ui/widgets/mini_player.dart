@@ -10,6 +10,7 @@ import 'output_device_chip.dart';
 import 'player_controls.dart';
 import 'song_font.dart';
 import 'track_links.dart';
+import '../../theme/looks.dart';
 
 void openNowPlaying(BuildContext context) => Navigator.of(context, rootNavigator: true).push(PageRouteBuilder(
       pageBuilder: (_, __, ___) => const NowPlayingPage(),
@@ -38,7 +39,7 @@ class MiniPlayer extends ConsumerWidget {
       padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
       child: Material(
         color: color,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(Looks.of(context).radius(8)),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: () => openNowPlaying(context),

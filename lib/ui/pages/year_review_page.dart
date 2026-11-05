@@ -7,7 +7,8 @@ import '../../theme/app_theme.dart';
 import '../../data/models/track.dart';
 import '../widgets/art_image.dart';
 import '../widgets/artist_avatar.dart';
-import 'stats_page.dart';
+import 'stats_page.dart';
+import '../../theme/looks.dart';
 
 /// 我的年度回顧: swipeable cards coloured after the year's top cover.
 class YearReviewPage extends ConsumerStatefulWidget {
@@ -125,7 +126,7 @@ class _YearReviewPageState extends ConsumerState<YearReviewPage> {
                     width: i == _page ? 18 : 8,
                     height: 8,
                     margin: const EdgeInsets.symmetric(horizontal: 3),
-                    decoration: BoxDecoration(color: i == _page ? Colors.white : Colors.white38, borderRadius: BorderRadius.circular(4)),
+                    decoration: BoxDecoration(color: i == _page ? Colors.white : Colors.white38, borderRadius: BorderRadius.circular(Looks.of(context).radius(4))),
                   ),
               ]),
             ),
@@ -151,7 +152,7 @@ class _Card extends StatelessWidget {
         margin: const EdgeInsets.all(16),
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(Looks.of(context).radius(24)),
           gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [color, Colors.black]),
         ),
         child: DefaultTextStyle(

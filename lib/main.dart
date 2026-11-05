@@ -12,6 +12,7 @@ import 'config/demo.dart';
 import 'config/demo_seed.dart';
 import 'providers/providers.dart';
 import 'providers/theme_provider.dart';
+import 'theme/looks.dart';
 import 'services/car_browser.dart';
 import 'services/desktop_tray.dart';
 import 'services/audio_handler.dart';
@@ -48,11 +49,13 @@ Future<void> main(List<String> args) async {
   await WindowState.init(db, hidden: DesktopTray.startedHidden).catchError((Object e) => debugPrint('window: $e'));
   await DesktopTray.finishStart(args).catchError((Object e) => debugPrint('window: $e'));
 
+  final saved = await db.allSettings();
   final container = ProviderContainer(overrides: [
     dbProvider.overrideWithValue(db),
     audioHandlerProvider.overrideWithValue(handler),
     initialSettingsProvider.overrideWithValue(settings),
-    initialThemeChoiceProvider.overrideWithValue(ThemeChoice.fromSettings(await db.allSettings())),
+    initialThemeChoiceProvider.overrideWithValue(ThemeChoice.fromSettings(saved)),
+    initialLooksProvider.overrideWithValue(Looks.fromSettings(saved)),
   ]);
 
   // Android Auto browsing; podcast episodes come from their feeds.

@@ -66,6 +66,7 @@ Future<void> restoreFromFile(BuildContext context, WidgetRef ref, String path) a
     final report = await restoreBackup(ref.read(dbProvider), ref.read(scannerProvider), data, parts: parts);
     await ref.read(settingsProvider.notifier).reload();
     await ref.read(themeChoiceProvider.notifier).reload();
+    await ref.read(looksProvider.notifier).reload();
     ref.invalidate(autoBackupProvider);
     if (!context.mounted) return;
     await showDialog(

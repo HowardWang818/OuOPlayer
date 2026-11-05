@@ -62,7 +62,10 @@ final syncEngineProvider = Provider<SyncEngine>((ref) {
     },
   );
   // Another device's colour theme: repaint in it.
-  engine.onThemeChanged = () => ref.read(themeChoiceProvider.notifier).reload();
+  engine.onThemeChanged = () {
+    ref.read(themeChoiceProvider.notifier).reload();
+    ref.read(looksProvider.notifier).reload();
+  };
   return engine;
 });
 

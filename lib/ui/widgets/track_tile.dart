@@ -9,6 +9,7 @@ import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../services/file_trash.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/looks.dart';
 import '../pages/collection_page.dart';
 import '../pages/cover_fix_page.dart';
 import '../pages/missing_songs_page.dart';
@@ -57,6 +58,10 @@ class TrackTile extends ConsumerWidget {
     final current = ref.watch(currentTrackProvider);
     final playing = current?.uri == track.uri;
     final cs = Theme.of(context).colorScheme;
+    // 外觀 → 清單密度.
+    final compact = Looks.of(context).compact;
+    final art = compact ? 38.0 : 48.0;
+    final density = compact ? const VisualDensity(vertical: -3) : null;
     final selection = selectIndex == null ? null : TrackSelection.maybeOf(context);
     final selecting = selection?.active ?? false;
     final selected = selecting && selection!.selected.contains(selectIndex);
@@ -73,10 +78,12 @@ class TrackTile extends ConsumerWidget {
         onTap: selecting ? select : () => showMissingSongMenu(context, ref, track, onRemove: onRemove, removeLabel: removeLabel),
         onLongPress: selection == null ? null : select,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        dense: compact,
+        visualDensity: density,
         leading: Opacity(
           opacity: 0.4,
           child: showArt
-              ? const SizedBox(width: 48, height: 48, child: Icon(Icons.music_off_outlined))
+              ? SizedBox(width: art, height: art, child: const Icon(Icons.music_off_outlined))
               : SizedBox(width: 32, child: Center(child: Text('${index != null ? index! + 1 : ''}'))),
         ),
         title: Text(track.title,
@@ -97,10 +104,12 @@ class TrackTile extends ConsumerWidget {
           : onTap,
       onLongPress: selection == null ? null : select,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+      dense: compact,
+      visualDensity: density,
       // Selected rows keep their cover (or track number) with a solid check on top.
       leading: Stack(alignment: Alignment.center, children: [
         showArt
-            ? ArtImage(track.art, size: 48)
+            ? ArtImage(track.art, size: art)
             : SizedBox(
                 width: 32,
                 child: Center(

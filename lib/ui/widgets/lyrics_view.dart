@@ -10,6 +10,7 @@ import '../../providers/providers.dart';
 import '../../services/lyrics/lrc.dart';
 import '../../services/lyrics/lyrics_service.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/looks.dart';
 import 'dialogs.dart';
 
 /// Text colours for lyrics on whatever is behind them (the player's cover
@@ -165,13 +166,16 @@ class _PlainLyrics extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Consumer(builder: (context, ref, _) {
         final scale = ref.watch(settingsProvider.select((s) => s.lyricsScale)) * size;
+        final centred = Looks.of(context).lyricsAlign == LyricsAlign.center;
         return ListView(
           padding: const EdgeInsets.symmetric(vertical: 16),
           children: [
             for (final l in lyrics.lines)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text(l.text, style: TextStyle(fontSize: 18 * scale, height: 1.4, color: LyricsInk.maybeOf(context)?.strong)),
+                child: Text(l.text,
+                    textAlign: centred ? TextAlign.center : TextAlign.start,
+                    style: TextStyle(fontSize: 18 * scale, height: 1.4, color: LyricsInk.maybeOf(context)?.strong)),
               ),
           ],
         );
@@ -216,13 +220,15 @@ class _SyncedLyricsState extends ConsumerState<_SyncedLyrics> {
     // accent colour, which disappears on blue covers.
     final lit = ink?.strong ?? AppTheme.accent(context);
     final player = ref.read(audioHandlerProvider);
+    // 外觀 → 歌詞對齊.
+    final centred = Looks.of(context).lyricsAlign == LyricsAlign.center;
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(vertical: 120),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: Column(crossAxisAlignment: centred ? CrossAxisAlignment.stretch : CrossAxisAlignment.start, children: [
         for (var i = 0; i < widget.lyrics.lines.length; i++)
           InkWell(
             key: _key(i),
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(Looks.of(context).radius(6)),
             onTap: () => player.seek(widget.lyrics.lines[i].time!),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
@@ -234,7 +240,8 @@ class _SyncedLyricsState extends ConsumerState<_SyncedLyrics> {
                   fontWeight: i == current ? FontWeight.w800 : FontWeight.bold,
                   color: i == current ? lit : muted,
                 ),
-                child: Text(widget.lyrics.lines[i].text.isEmpty ? '♪' : widget.lyrics.lines[i].text),
+                child: Text(widget.lyrics.lines[i].text.isEmpty ? '♪' : widget.lyrics.lines[i].text,
+                    textAlign: centred ? TextAlign.center : TextAlign.start),
               ),
             ),
           ),

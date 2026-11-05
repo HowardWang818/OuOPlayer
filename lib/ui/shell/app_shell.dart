@@ -25,6 +25,7 @@ import '../widgets/now_playing_panel.dart';
 import '../widgets/theme_button.dart';
 import '../widgets/track_selection.dart';
 import 'app_shortcuts.dart';
+import '../../theme/looks.dart';
 
 const _tabs = [
   (icon: Icons.home_outlined, active: Icons.home, label: '首頁'),
@@ -274,9 +275,11 @@ class _AppShellState extends ConsumerState<AppShell> {
       },
       // Pages in here sit above the player bar; toasts use this to move up.
       child: PlayerBarScope(
-        child: Navigator(
-          key: _navKey,
-          onGenerateRoute: (_) => MaterialPageRoute(builder: (_) => _tabPage(tab)),
+        child: _GestureBehindPlayer(
+          child: Navigator(
+            key: _navKey,
+            onGenerateRoute: (_) => MaterialPageRoute(builder: (_) => _tabPage(tab)),
+          ),
         ),
       ),
     );
@@ -298,12 +301,12 @@ class _AppShellState extends ConsumerState<AppShell> {
       );
     }
 
-    final cs = Theme.of(context).colorScheme;
     final desktop = Platform.isWindows;
     final layout = ref.watch(desktopLayoutProvider);
     final notifier = ref.read(desktopLayoutProvider.notifier);
     return Scaffold(
-      backgroundColor: Theme.of(context).brightness == Brightness.dark ? Colors.black : cs.surfaceContainer,
+      // Behind the panels: the theme's frame colour (it was black in dark themes).
+      backgroundColor: AppTheme.palette(context).frame,
       body: Column(children: [
         Expanded(
           child: Padding(
@@ -314,7 +317,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                 return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   SizedBox(width: 280, child: _Sidebar(tab: tab, onTab: _go, onPush: _push)),
                   const SizedBox(width: gap),
-                  Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(8), child: content)),
+                  Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(Looks.of(context).radius(8)), child: content)),
                 ]);
               }
               final total = c.maxWidth;
@@ -335,7 +338,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                   },
                   onEnd: notifier.save,
                 ),
-                Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(8), child: content)),
+                Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(Looks.of(context).radius(8)), child: content)),
                 if (showRight) ...[
                   PanelDivider(
                     value: right,
@@ -405,7 +408,7 @@ class _Sidebar extends ConsumerWidget {
     final playlistFolders = ref.watch(playlistFoldersProvider).value ?? const [];
     final folders = ref.watch(libraryFoldersProvider).value ?? const [];
     Widget panel(Widget child) => Container(
-          decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(8)),
+          decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(Looks.of(context).radius(8))),
           child: child,
         );
     final nav = <Widget>[
@@ -430,7 +433,7 @@ class _Sidebar extends ConsumerWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: BorderRadius.circular(Looks.of(context).radius(4)),
               gradient: AppTheme.likedGradient(context),
             ),
             child: const Icon(Icons.favorite, color: Colors.white, size: 20),
@@ -476,5 +479,33 @@ class _Sidebar extends ConsumerWidget {
         library,
       ]);
     });
+  }
+}
+
+/// Android: while the player (or another page on the root navigator) covers
+/// the shell, the pages in here don't take the predictive back gesture: they
+/// would go back under the player and leave it open (v1.17.4; the back key
+/// was fine). Their content keeps its state: only the transition around it
+/// changes.
+class _GestureBehindPlayer extends StatelessWidget {
+  const _GestureBehindPlayer({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final covered = !(ModalRoute.isCurrentOf(context) ?? true);
+    // Always a Theme, so the Navigator below keeps its place in the tree.
+    return Theme(
+      data: !covered
+          ? theme
+          : theme.copyWith(
+              pageTransitionsTheme: PageTransitionsTheme(builders: {
+                ...theme.pageTransitionsTheme.builders,
+                TargetPlatform.android: const FadeForwardsPageTransitionsBuilder(),
+              }),
+            ),
+      child: child,
+    );
   }
 }

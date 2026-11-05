@@ -35,8 +35,8 @@ void main() {
       expect(AppTheme.controlSymbol(context), Colors.white);
       expect(theme.colorScheme.primary, const Color(0xFF0B93C4));
       expect(theme.sliderTheme.activeTrackColor, const Color(0xFF0B93C4));
-      expect(theme.sliderTheme.inactiveTrackColor, const Color(0xFFE2E8F0));
-      expect(theme.iconButtonTheme.style?.foregroundColor?.resolve({}), const Color(0xFF64748B));
+      expect(theme.sliderTheme.inactiveTrackColor, presets.first.light.track);
+      expect(theme.iconButtonTheme.style?.foregroundColor?.resolve({}), presets.first.light.icon);
     });
 
     testWidgets('a dark theme keeps a light play button', (tester) async {

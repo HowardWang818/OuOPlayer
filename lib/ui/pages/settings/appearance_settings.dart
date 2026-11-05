@@ -5,11 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../providers/providers.dart';
 import '../../../providers/theme_provider.dart';
+import '../../../theme/looks.dart';
 import '../../../theme/themes.dart';
 import '../../widgets/song_font.dart';
 import 'section_page.dart';
 
-/// 外觀: light / dark, the colour theme, the song-title font.
+/// 外觀: light / dark, the colour theme, the player page, the lists'
+/// density and corners, the song-title font.
 class AppearanceSettingsPage extends ConsumerWidget {
   const AppearanceSettingsPage({super.key});
 
@@ -17,19 +19,21 @@ class AppearanceSettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(settingsProvider.select((s) => s.themeMode));
     final theme = ref.watch(themeChoiceProvider).theme;
+    final looks = ref.watch(looksProvider);
+    final set = ref.read(looksProvider.notifier).set;
     return SettingsSectionPage(title: '外觀', children: [
-      const SettingTile(leading: Icon(Icons.contrast), title: Text('深色／淺色'), subtitle: Text('每個主題都有深色和淺色')),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(72, 0, 16, 8),
-        child: SegmentedButton<ThemeMode>(
-          showSelectedIcon: false,
-          segments: const [
-            ButtonSegment(value: ThemeMode.dark, label: Text('深色'), icon: Icon(Icons.dark_mode_outlined)),
-            ButtonSegment(value: ThemeMode.light, label: Text('淺色'), icon: Icon(Icons.light_mode_outlined)),
-          ],
-          selected: {mode == ThemeMode.light ? ThemeMode.light : ThemeMode.dark},
-          onSelectionChanged: (v) => ref.read(settingsProvider.notifier).setTheme(v.first),
-        ),
+      const SettingTile(leading: Icon(Icons.contrast), title: Text('深色／淺色'), subtitle: Text('每個主題都有深色和淺色；跟隨系統會隨手機或 Windows 切換')),
+      _choices<ThemeMode>(
+        {ThemeMode.dark: '深色', ThemeMode.light: '淺色', ThemeMode.system: '跟隨系統'},
+        mode,
+        (v) => ref.read(settingsProvider.notifier).setTheme(v),
+      ),
+      SettingSwitch(
+        secondary: const Icon(Icons.brightness_2_outlined),
+        title: const Text('純黑深色'),
+        subtitle: const Text('深色模式的背景用純黑，OLED 螢幕比較省電'),
+        value: looks.pureBlack,
+        onChanged: (v) => set(looks.copyWith(pureBlack: v)),
       ),
       SettingTile(
         action: '選擇',
@@ -39,6 +43,21 @@ class AppearanceSettingsPage extends ConsumerWidget {
         trailing: const Icon(Icons.chevron_right),
         onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ThemePage())),
       ),
+      settingsSubheader(context, '播放頁'),
+      const SettingTile(leading: Icon(Icons.wallpaper_outlined), title: Text('背景')),
+      _choices<PlayerBackground>(
+        {PlayerBackground.gradient: '封面漸層', PlayerBackground.blur: '模糊封面', PlayerBackground.solid: '純色'},
+        looks.background,
+        (v) => set(looks.copyWith(background: v)),
+      ),
+      const SettingTile(leading: Icon(Icons.album_outlined), title: Text('封面'), subtitle: Text('黑膠：圓形，播放時慢慢轉')),
+      _choices<CoverStyle>({CoverStyle.square: '方形', CoverStyle.vinyl: '黑膠'}, looks.cover, (v) => set(looks.copyWith(cover: v))),
+      settingsSubheader(context, '版面'),
+      const SettingTile(leading: Icon(Icons.density_medium), title: Text('清單密度'), subtitle: Text('歌曲清單、佇列和搜尋結果；緊湊時每列較矮、封面較小')),
+      _choices<ListDensity>({ListDensity.standard: '標準', ListDensity.compact: '緊湊'}, looks.density, (v) => set(looks.copyWith(density: v))),
+      const SettingTile(leading: Icon(Icons.rounded_corner), title: Text('圓角'), subtitle: Text('封面、卡片、播放條、按鈕、輸入框和對話框')),
+      _choices<Corners>({Corners.round: '圓潤', Corners.standard: '標準', Corners.square: '方正'}, looks.corners, (v) => set(looks.copyWith(corners: v))),
+      settingsSubheader(context, '文字'),
       SettingTile(
         leading: const Icon(Icons.font_download_outlined),
         title: const Text('歌名字體'),
@@ -56,6 +75,20 @@ class AppearanceSettingsPage extends ConsumerWidget {
     ]);
   }
 }
+
+/// One choice of a few, under its setting's row.
+Widget _choices<T>(Map<T, String> labels, T value, ValueChanged<T> onChanged) => Padding(
+      padding: const EdgeInsets.fromLTRB(72, 0, 16, 8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: SegmentedButton<T>(
+          showSelectedIcon: false,
+          segments: [for (final e in labels.entries) ButtonSegment(value: e.key, label: Text(e.value))],
+          selected: {value},
+          onSelectionChanged: (v) => onChanged(v.first),
+        ),
+      ),
+    );
 
 /// 外觀 → 主題: every theme in both modes; tap one to use it.
 class ThemePage extends ConsumerWidget {
@@ -104,7 +137,7 @@ class ThemeCard extends StatelessWidget {
     return Material(
       color: cs.surfaceContainerHigh,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(Looks.of(context).radius(12)),
         side: BorderSide(color: selected ? cs.primary : Colors.transparent, width: 2),
       ),
       clipBehavior: Clip.antiAlias,
@@ -135,15 +168,15 @@ class _Preview extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(color: p.bg, borderRadius: BorderRadius.circular(8), border: Border.all(color: p.card)),
+        decoration: BoxDecoration(color: p.bg, borderRadius: BorderRadius.circular(Looks.of(context).radius(8)), border: Border.all(color: p.card)),
         child: Column(mainAxisAlignment: MainAxisAlignment.spaceBetween, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Container(
             padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(5)),
+            decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(Looks.of(context).radius(5))),
             child: Row(children: [
               Container(width: 12, height: 12, decoration: BoxDecoration(color: p.main, shape: BoxShape.circle)),
               const SizedBox(width: 4),
-              Expanded(child: Container(height: 4, decoration: BoxDecoration(color: p.text, borderRadius: BorderRadius.circular(2)))),
+              Expanded(child: Container(height: 4, decoration: BoxDecoration(color: p.text, borderRadius: BorderRadius.circular(Looks.of(context).radius(2))))),
             ]),
           ),
           Row(children: [
@@ -154,7 +187,7 @@ class _Preview extends StatelessWidget {
               child: Icon(Icons.play_arrow, size: 12, color: p.onPlay),
             ),
             const SizedBox(width: 4),
-            Expanded(child: Container(height: 3, decoration: BoxDecoration(color: p.main, borderRadius: BorderRadius.circular(2)))),
+            Expanded(child: Container(height: 3, decoration: BoxDecoration(color: p.main, borderRadius: BorderRadius.circular(Looks.of(context).radius(2))))),
           ]),
         ]),
       );

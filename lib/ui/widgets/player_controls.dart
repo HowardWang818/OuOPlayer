@@ -10,6 +10,7 @@ import '../../providers/providers.dart';
 import '../../theme/app_theme.dart';
 import 'art_image.dart';
 import 'hover.dart';
+import '../../theme/looks.dart';
 
 class SeekBar extends ConsumerStatefulWidget {
   const SeekBar({super.key, this.compact = false});
@@ -180,7 +181,7 @@ class PodcastSpeedButton extends ConsumerWidget {
     return Tooltip(
       message: '播放速度（點一下切換，長按選擇）',
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(Looks.of(context).radius(16)),
         onTap: () => notifier.setPodcastSpeed(next),
         onLongPress: () => showModalBottomSheet(
           context: context,

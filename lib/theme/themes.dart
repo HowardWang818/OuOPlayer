@@ -10,6 +10,7 @@ class Palette {
     required this.surface,
     required this.card,
     required this.bar,
+    required this.frame,
     required this.main,
     required this.onMain,
     required this.play,
@@ -33,6 +34,10 @@ class Palette {
   /// The player bar.
   final Color bar;
 
+  /// Windows: behind the panels and in the title bar (v1.17.2: in the theme's
+  /// colour, a step darker than the panels, instead of black).
+  final Color frame;
+
   /// The theme's colour: active icons, chosen items, sliders, buttons.
   final Color main;
   final Color onMain;
@@ -54,16 +59,64 @@ class Palette {
 
   bool get dark => ThemeData.estimateBrightnessForColor(bg) == Brightness.dark;
 
+  /// 純黑深色: the page black (OLED), the rest darkened to match.
+  Palette pureBlack() => !dark
+      ? this
+      : Palette(
+          bg: Colors.black,
+          surface: Color.lerp(Colors.black, surface, 0.55)!,
+          card: Color.lerp(Colors.black, card, 0.8)!,
+          bar: Color.lerp(Colors.black, bar, 0.55)!,
+          frame: Colors.black,
+          main: main,
+          onMain: onMain,
+          play: play,
+          onPlay: onPlay == bg ? Colors.black : onPlay,
+          hover: hover,
+          icon: icon,
+          track: track,
+          text: text,
+          muted: muted,
+        );
+
+  /// Light palettes with the theme's colour mixed into every background
+  /// (v1.17.2: near-white ones hid it), the frame a step deeper; muted text
+  /// and icons darkened as far as they need to stay readable.
+  Palette tinted() {
+    if (dark) return this;
+    final b = Color.lerp(bg, main, 0.06)!;
+    final s = Color.lerp(surface, main, 0.08)!;
+    final m = withContrast(main, b, 3);
+    return Palette(
+      bg: b,
+      surface: s,
+      card: Color.lerp(card, main, 0.12)!,
+      bar: Color.lerp(bar, main, 0.08)!,
+      frame: Color.lerp(s, main, 0.14)!,
+      main: m,
+      onMain: m == main ? onMain : inkOn(m),
+      play: play,
+      onPlay: onPlay,
+      hover: hover,
+      icon: withContrast(icon, b, 3),
+      track: Color.lerp(track, main, 0.15)!,
+      text: withContrast(text, b, 4.5),
+      muted: withContrast(muted, b, 4.5),
+    );
+  }
+
   /// The rest from [bg], [card], [main] and [text]. [main] is made lighter
-  /// or darker when it would be hard to see on [bg].
+  /// or darker when it would be hard to see on [bg]. Light ones are [tinted].
   factory Palette.derive({required Color bg, required Color card, required Color main, required Color text}) {
     final dark = ThemeData.estimateBrightnessForColor(bg) == Brightness.dark;
     final m = withContrast(main, bg, 3);
-    return Palette(
+    final p = Palette(
       bg: bg,
       surface: Color.lerp(bg, card, dark ? 0.35 : 0.45)!,
       card: card,
       bar: dark ? Color.lerp(bg, card, 0.35)! : Color.lerp(bg, m, 0.06)!,
+      // Dark: the page colour a step darker, still in the theme's hue.
+      frame: dark ? Color.lerp(bg, Colors.black, 0.45)! : bg,
       main: m,
       onMain: inkOn(m),
       // Dark: a light button with the page colour as its symbol; light: the theme's colour.
@@ -75,6 +128,7 @@ class Palette {
       text: text,
       muted: withContrast(Color.lerp(text, bg, 0.32)!, bg, 4.5),
     );
+    return p.tinted();
   }
 }
 
@@ -120,15 +174,16 @@ Palette _p(int bg, int card, int main, int text) =>
 /// before v1.16.0); then well-known open palettes that come in a dark and a
 /// light version; then four of OuOPlayer's own.
 final presets = <ColorTheme>[
-  const ColorTheme(
+  ColorTheme(
     ColorTheme.defaultId,
     '晴空',
     'OuOPlayer 預設',
-    Palette(
+    const Palette(
       bg: Color(0xFF0E0E0E),
       surface: Color(0xFF151515),
       card: Color(0xFF2E2E2E),
       bar: Color(0xFF151515),
+      frame: Color(0xFF070A0B),
       main: Color(0xFF1DBEEF),
       onMain: Colors.black,
       play: Colors.white,
@@ -139,11 +194,12 @@ final presets = <ColorTheme>[
       text: Colors.white,
       muted: Color(0xFFB3B3B3),
     ),
-    Palette(
+    const Palette(
       bg: Color(0xFFFFFFFF),
       surface: Color(0xFFF4F6F8),
       card: Color(0xFFE9EDF0),
       bar: Color(0xFFF1F8FE),
+      frame: Color(0xFFF4F6F8),
       main: Color(0xFF0B93C4),
       onMain: Colors.white,
       play: Color(0xFF0B7FAE),
@@ -153,7 +209,7 @@ final presets = <ColorTheme>[
       track: Color(0xFFE2E8F0),
       text: Color(0xFF111111),
       muted: Color(0xFF5E6A73),
-    ),
+    ).tinted(),
   ),
   ColorTheme('catppuccin', '貓布丁', 'Catppuccin Mocha／Latte', _p(0xFF1E1E2E, 0xFF313244, 0xFFCBA6F7, 0xFFCDD6F4),
       _p(0xFFEFF1F5, 0xFFCCD0DA, 0xFF8839EF, 0xFF4C4F69)),

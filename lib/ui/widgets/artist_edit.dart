@@ -7,7 +7,8 @@ import '../../services/artist_images.dart';
 import '../../services/artists.dart';
 import '../pages/collection_page.dart';
 import 'art_image.dart';
-import 'dialogs.dart';
+import 'dialogs.dart';
+import '../../theme/looks.dart';
 
 /// 歌手頁 ⋮ →「重新命名歌手」: only OuOPlayer's name changes, never the files.
 /// Naming it like another artist merges the two (after a warning).
@@ -104,7 +105,7 @@ Future<void> pickDeezerPhoto(BuildContext context, WidgetRef ref, String name) a
                   children: [
                     for (final (n, pic) in list)
                       InkWell(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(Looks.of(context).radius(8)),
                         onTap: () => Navigator.pop(ctx, pic),
                         child: Column(children: [
                           LayoutBuilder(builder: (_, c) => ArtImage(pic, size: c.maxWidth, circle: true, icon: Icons.person)),

@@ -6,7 +6,8 @@ import '../../app.dart' show rootNavigatorKey;
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../providers/sync_provider.dart' show offerSync;
-import 'art_image.dart';
+import 'art_image.dart';
+import '../../theme/looks.dart';
 
 Future<String?> promptText(BuildContext context, {required String title, String hint = '', String initial = '', String ok = '確定'}) {
   final ctrl = TextEditingController(text: initial);
@@ -188,7 +189,7 @@ class _TopToastState extends State<_TopToast> with SingleTickerProviderStateMixi
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: Material(
                   elevation: 6,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(Looks.of(context).radius(8)),
                   color: theme.snackBarTheme.backgroundColor ?? theme.colorScheme.inverseSurface,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),

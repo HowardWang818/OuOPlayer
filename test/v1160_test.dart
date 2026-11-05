@@ -34,7 +34,19 @@ void main() {
       expect(t.dark.main, const Color(0xFF1DBEEF));
       expect(t.light.main, const Color(0xFF0B93C4));
       expect(t.light.play, const Color(0xFF0B7FAE));
-      expect(t.light.bar, const Color(0xFFF1F8FE));
+      // Since v1.17.2 its light backgrounds carry a little blue too.
+      expect(t.light.bg, isNot(const Color(0xFFFFFFFF)));
+    });
+
+    test('light backgrounds carry the theme colour; the frame is a step deeper (v1.17.2)', () {
+      for (final t in all) {
+        final l = t.light, d = t.dark;
+        expect(l.bg, isNot(const Color(0xFFFFFFFF)), reason: t.name);
+        expect(l.frame.computeLuminance(), lessThan(l.bg.computeLuminance()), reason: '${t.name} light frame');
+        expect(d.frame.computeLuminance(), lessThan(d.bg.computeLuminance()), reason: '${t.name} dark frame');
+        expect(d.frame, isNot(Colors.black), reason: '${t.name}: no black frame');
+        expect(contrast(l.icon, l.bg), greaterThanOrEqualTo(3), reason: '${t.name} light icons');
+      }
     });
 
     test('ids are unique and unknown ones fall back to 晴空', () {

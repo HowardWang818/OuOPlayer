@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/looks.dart';
 import '../widgets/art_image.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/song_font.dart';
@@ -26,9 +27,12 @@ class QueueList extends ConsumerWidget {
 
   static const rowHeight = 64.0;
 
+  /// A row in 外觀 → 清單密度 → 緊湊.
+  static const compactRowHeight = 52.0;
+
   /// Windows: the height that fills [height] with whole rows, so none is cut
   /// off at the bottom.
-  static double wholeRows(double height) => height / max(1, (height / rowHeight).floor());
+  static double wholeRows(double height, {double row = rowHeight}) => height / max(1, (height / row).floor());
 
   /// How many songs at the head of a queue of [length] are already played.
   static int played(int? index, int length) => min(index ?? 0, max(0, length - 1));
@@ -50,7 +54,7 @@ class QueueList extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     if (!Platform.isWindows) return _list(context, ref, null);
     return LayoutBuilder(builder: (context, c) {
-      final extent = wholeRows(c.maxHeight);
+      final extent = wholeRows(c.maxHeight, row: Looks.of(context).compact ? compactRowHeight : rowHeight);
       return NotificationListener<ScrollEndNotification>(onNotification: (n) => _snap(n, extent), child: _list(context, ref, extent));
     });
   }
@@ -60,6 +64,7 @@ class QueueList extends ConsumerWidget {
     final index = ref.watch(playbackStateProvider).value?.queueIndex;
     final handler = ref.read(audioHandlerProvider);
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final compact = Looks.of(context).compact;
     final font = ref.watch(songFontProvider);
     final skip = played(index, queue.length);
     return queue.isEmpty
@@ -86,7 +91,9 @@ class QueueList extends ConsumerWidget {
                   confirmDismiss: (_) => confirmDelete(context, title: '從佇列移除「${t.title}」？'),
                   onDismissed: (_) => handler.removeAt(i),
                   child: _longPressDrag(row, ListTile(
-                    leading: ArtImage(t.art, size: 44),
+                    dense: compact,
+                    visualDensity: compact ? const VisualDensity(vertical: -3) : null,
+                    leading: ArtImage(t.art, size: compact ? 36 : 44),
                     title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis,
                         style: font.title(TextStyle(color: current ? AppTheme.accent(context) : null, fontWeight: current ? FontWeight.bold : null))),
                     subtitle: Text(handler.isQueuedAt(i) ? '插播 • ${t.artist}' : t.artist, maxLines: 1, style: font.artist(TextStyle(color: muted))),

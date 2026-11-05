@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/providers.dart';
 import '../../theme/app_theme.dart';
-import '../pages/devices_page.dart';
+import '../pages/devices_page.dart';
+import '../../theme/looks.dart';
 
 IconData outputIcon(String kind) => switch (kind) {
       'bluetooth' => Icons.bluetooth_audio,
@@ -34,7 +35,7 @@ class OutputDeviceChip extends ConsumerWidget {
     }
     return InkWell(
       onTap: open,
-      borderRadius: BorderRadius.circular(4),
+      borderRadius: BorderRadius.circular(Looks.of(context).radius(4)),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(mainAxisSize: MainAxisSize.min, children: [

@@ -14,6 +14,7 @@ import 'mini_player.dart';
 import 'player_controls.dart';
 import 'song_font.dart';
 import 'track_links.dart';
+import '../../theme/looks.dart';
 
 /// Windows: the blocks on the right of everything (settings too): the song
 /// playing with its lyrics on top, the queue from the next song below, with a
@@ -29,7 +30,7 @@ class NowPlayingPanel extends ConsumerWidget {
     final track = ref.watch(currentTrackProvider);
     final cs = Theme.of(context).colorScheme;
     Widget block(Widget child) => Container(
-          decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(8)),
+          decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(Looks.of(context).radius(8))),
           child: child,
         );
     if (track == null) {

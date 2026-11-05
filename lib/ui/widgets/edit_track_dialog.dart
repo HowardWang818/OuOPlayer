@@ -11,6 +11,7 @@ import '../../providers/providers.dart';
 import '../../services/tag_editor.dart';
 import 'art_image.dart';
 import 'dialogs.dart';
+import '../../theme/looks.dart';
 
 /// 編輯資訊: title, artist, album and cover, written into the file itself
 /// when its format allows (otherwise only inside OuOPlayer).
@@ -33,7 +34,7 @@ Future<void> showEditTrack(BuildContext context, WidgetRef ref, Track track) asy
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               Row(children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(Looks.of(context).radius(6)),
                   child: cover != null ? Image.memory(cover!, width: 88, height: 88, fit: BoxFit.cover) : ArtImage(track.art, size: 88),
                 ),
                 const SizedBox(width: 12),

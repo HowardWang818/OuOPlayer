@@ -34,6 +34,7 @@ class OuoApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(settingsProvider.select((s) => s.themeMode));
     final colors = ref.watch(themeChoiceProvider).theme;
+    final looks = ref.watch(looksProvider);
     ref.watch(bluetoothAutomationProvider);
     ref.watch(shareIntentProvider);
     ref.watch(volumeNormalizationProvider);
@@ -50,8 +51,8 @@ class OuoApp extends ConsumerWidget {
       navigatorKey: rootNavigatorKey,
       title: 'OuOPlayer',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.build(colors.light),
-      darkTheme: AppTheme.build(colors.dark),
+      theme: AppTheme.build(colors.light, looks: looks),
+      darkTheme: AppTheme.build(colors.dark, looks: looks),
       themeMode: mode,
       builder: Platform.isWindows ? (_, child) => Column(children: [const TitleBar(), Expanded(child: child!)]) : null,
       home: const UpdateWatcher(child: MissingFilesWatcher(child: AppShell())),
