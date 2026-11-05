@@ -27,6 +27,7 @@ import 'lyrics_batch_page.dart';
 import 'native_name_page.dart';
 import 'pick_songs_page.dart';
 import '../../config/device_words.dart';
+import '../../theme/looks.dart';
 
 enum CollectionKind { album, artist, playlist, favorites, allSongs, folder, smart }
 
@@ -197,7 +198,7 @@ class CollectionPage extends ConsumerWidget {
                     isDense: true,
                     filled: true,
                     fillColor: theme.colorScheme.surface.withValues(alpha: 0.85),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(Looks.of(context).radius(24)), borderSide: BorderSide.none),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     suffixText: search.isEmpty ? null : '${rows.length} 首',
                   ),
@@ -343,7 +344,7 @@ class CollectionPage extends ConsumerWidget {
                         width: 160,
                         height: 160,
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: BorderRadius.circular(Looks.of(context).radius(4)),
                           gradient: AppTheme.likedGradient(context, begin: Alignment.topLeft, end: Alignment.bottomRight),
                         ),
                         child: const Icon(Icons.favorite, size: 64, color: Colors.white),

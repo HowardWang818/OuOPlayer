@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'art_image.dart';
+import '../../theme/looks.dart';
 
 /// Square cover + title + subtitle card used in horizontal shelves and grids.
 class CoverCard extends StatelessWidget {
@@ -19,7 +20,7 @@ class CoverCard extends StatelessWidget {
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(Looks.of(context).radius(8)),
       child: Padding(
         padding: const EdgeInsets.all(8),
         child: SizedBox(
@@ -71,7 +72,7 @@ class QuickTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: Theme.of(context).colorScheme.surfaceContainerHigh,
-      borderRadius: BorderRadius.circular(4),
+      borderRadius: BorderRadius.circular(Looks.of(context).radius(4)),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,

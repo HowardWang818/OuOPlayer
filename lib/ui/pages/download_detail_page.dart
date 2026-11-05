@@ -6,7 +6,8 @@ import 'package:path/path.dart' as p;
 import '../../providers/providers.dart';
 import '../../services/download_service.dart';
 import '../../theme/app_theme.dart';
-import '../widgets/dialogs.dart';
+import '../widgets/dialogs.dart';
+import '../../theme/looks.dart';
 
 (IconData, Color) downloadStatusIcon(DownloadStatus s, Color muted, Color accent) => switch (s) {
       DownloadStatus.queued => (Icons.schedule, muted),
@@ -149,7 +150,7 @@ class DownloadDetailPage extends ConsumerWidget {
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 16),
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(Looks.of(context).radius(8))),
             child: SelectableText(task.log.join('\n'), style: const TextStyle(fontFamily: 'monospace', fontSize: 11, height: 1.4)),
           ),
         ],

@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../providers/providers.dart';
+import '../../../providers/theme_provider.dart';
+import '../../../theme/looks.dart';
 import '../lyrics_batch_page.dart';
 import 'section_page.dart';
 
-/// 歌詞: looking lyrics up, size, keeping the screen on, lyrics in the car.
+/// 歌詞: looking lyrics up, size and alignment, keeping the screen on, lyrics in the car.
 class LyricsSettingsPage extends ConsumerWidget {
   const LyricsSettingsPage({super.key});
 
@@ -15,6 +17,7 @@ class LyricsSettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(settingsProvider);
     final n = ref.read(settingsProvider.notifier);
+    final looks = ref.watch(looksProvider);
     return SettingsSectionPage(title: '歌詞', children: [
       SettingSwitch(
         secondary: const Icon(Icons.lyrics_outlined),
@@ -54,6 +57,23 @@ class LyricsSettingsPage extends ConsumerWidget {
           label: '${(s.lyricsScale * 100).round()}%',
           value: s.lyricsScale.clamp(0.8, 1.6),
           onChanged: (v) => n.setLyricsScale(double.parse(v.toStringAsFixed(1))),
+        ),
+      ),
+      // Kept with the 外觀 choices (and synced with them), shown here with the size.
+      const SettingTile(leading: Icon(Icons.format_align_left), title: Text('歌詞對齊'), subtitle: Text('播放頁和右側欄的歌詞')),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(72, 0, 16, 8),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: SegmentedButton<LyricsAlign>(
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(value: LyricsAlign.left, label: Text('靠左')),
+              ButtonSegment(value: LyricsAlign.center, label: Text('置中')),
+            ],
+            selected: {looks.lyricsAlign},
+            onSelectionChanged: (v) => ref.read(looksProvider.notifier).set(looks.copyWith(lyricsAlign: v.first)),
+          ),
         ),
       ),
       if (Platform.isAndroid)

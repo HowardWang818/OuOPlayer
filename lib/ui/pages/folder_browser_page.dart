@@ -9,6 +9,7 @@ import '../widgets/art_image.dart';
 import '../widgets/folder_actions.dart';
 import '../widgets/track_selection.dart';
 import '../widgets/track_tile.dart';
+import '../../theme/looks.dart';
 
 /// 瀏覽資料夾: the music folders and the download folder, then their
 /// sub-folders and songs. [folder] null lists the starting folders. Folders
@@ -125,7 +126,7 @@ class _FolderBrowserPageState extends ConsumerState<FolderBrowserPage> {
   static Widget _folderBox(BuildContext context, IconData icon, double size) => Container(
         width: size,
         height: size,
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(4), color: AppTheme.accent(context).withValues(alpha: 0.18)),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(Looks.of(context).radius(4)), color: AppTheme.accent(context).withValues(alpha: 0.18)),
         child: Icon(icon, color: AppTheme.accent(context), size: size * 0.45),
       );
 }

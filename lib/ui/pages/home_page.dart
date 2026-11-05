@@ -92,9 +92,11 @@ class HomePage extends ConsumerWidget {
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
+            // Faint, and only the top third (v1.17.3): below it the page has
+            // the same colour as the panels beside it.
             begin: Alignment.topCenter,
-            end: Alignment.center,
-            colors: [AppTheme.accent(context).withValues(alpha: 0.22), Theme.of(context).scaffoldBackgroundColor],
+            end: const Alignment(0, -0.33),
+            colors: [AppTheme.accent(context).withValues(alpha: 0.13), Theme.of(context).scaffoldBackgroundColor],
           ),
         ),
         child: SafeArea(

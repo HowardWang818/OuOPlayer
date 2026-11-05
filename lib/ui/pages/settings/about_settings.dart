@@ -8,6 +8,7 @@ import '../../../services/updater.dart';
 import '../../widgets/dialogs.dart';
 import '../../widgets/update_dialog.dart';
 import 'section_page.dart';
+import '../../../theme/looks.dart';
 
 /// 關於與更新: the version, the app icon and in-app updates.
 class AboutSettingsPage extends ConsumerStatefulWidget {
@@ -89,12 +90,12 @@ class _AboutSettingsPageState extends ConsumerState<AboutSettingsPage> {
   Widget _iconChoice(String label, Widget image, {required bool selected, required VoidCallback? onTap}) {
     final cs = Theme.of(context).colorScheme;
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(Looks.of(context).radius(12)),
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(Looks.of(context).radius(12)),
           border: Border.all(color: selected ? cs.primary : cs.outlineVariant, width: selected ? 2 : 1),
         ),
         child: Column(children: [

@@ -10,6 +10,7 @@ import '../widgets/artist_avatar.dart';
 import '../widgets/dialogs.dart';
 import 'collection_page.dart';
 import 'year_review_page.dart';
+import '../../theme/looks.dart';
 
 /// Listening statistics for a period, from the listening log.
 final statsProvider = FutureProvider.family<ListeningStats, StatsPeriod>((ref, period) async {
@@ -186,7 +187,7 @@ class _DailyChart extends StatelessWidget {
                     margin: const EdgeInsets.symmetric(horizontal: 1.5),
                     decoration: BoxDecoration(
                       color: values[i] == Duration.zero ? muted.withValues(alpha: 0.2) : AppTheme.accent(context),
-                      borderRadius: BorderRadius.circular(3),
+                      borderRadius: BorderRadius.circular(Looks.of(context).radius(3)),
                     ),
                   ),
                   const SizedBox(height: 4),

@@ -9,7 +9,8 @@ import '../../theme/app_theme.dart';
 import '../widgets/art_image.dart';
 import '../widgets/image_viewer.dart';
 import '../widgets/dialogs.dart';
-import 'podcast_search_page.dart';
+import 'podcast_search_page.dart';
+import '../../theme/looks.dart';
 
 Future<void> subscribePodcast(BuildContext context, WidgetRef ref) async {
   final url = await promptText(context, title: '訂閱 Podcast', hint: '貼上 RSS 網址', ok: '訂閱');
@@ -46,7 +47,7 @@ class PodcastList extends ConsumerWidget {
         leading: Container(
           width: 56,
           height: 56,
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(4), color: Theme.of(context).colorScheme.surfaceContainerHigh),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(Looks.of(context).radius(4)), color: Theme.of(context).colorScheme.surfaceContainerHigh),
           child: const Icon(Icons.add),
         ),
         title: const Text('以 RSS 網址訂閱 Podcast'),
@@ -56,7 +57,7 @@ class PodcastList extends ConsumerWidget {
         leading: Container(
           width: 56,
           height: 56,
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(4), color: Theme.of(context).colorScheme.surfaceContainerHigh),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(Looks.of(context).radius(4)), color: Theme.of(context).colorScheme.surfaceContainerHigh),
           child: const Icon(Icons.search),
         ),
         title: const Text('搜尋 Podcast'),

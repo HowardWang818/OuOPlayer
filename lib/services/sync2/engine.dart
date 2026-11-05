@@ -11,6 +11,7 @@ import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
 
 import '../../data/db/database.dart';
 import '../../data/models/track.dart';
+import '../../theme/looks.dart';
 import '../missing_songs.dart';
 import '../playlist_import.dart';
 import '../sync/drive_client.dart';
@@ -527,12 +528,18 @@ class SyncEngine implements SyncHooks {
   /// Told when another device's theme was taken here (the app repaints).
   void Function()? onThemeChanged;
 
-  /// The colour theme as `v2-prefs-<device>.json`: {'theme': {id, c, at}}
-  /// from the settings color_theme / color_theme_custom / color_theme_at.
+  /// The colour theme as `v2-prefs-<device>.json`: {'theme': {id, c, at,
+  /// look}} from the settings color_theme / color_theme_custom /
+  /// color_theme_at and the 外觀 choices ([Looks.keys], v1.17.0).
   Future<(int, int)> _syncTheme(String me, List<DriveFile> files) async {
     final s = await _settings();
     final at = int.tryParse(s['color_theme_at'] ?? '') ?? 0;
-    final mine = {'id': s['color_theme'] ?? 'clear_sky', if (s['color_theme_custom'] != null) 'c': s['color_theme_custom'], 'at': at};
+    final mine = {
+      'id': s['color_theme'] ?? 'clear_sky',
+      if (s['color_theme_custom'] != null) 'c': s['color_theme_custom'],
+      'at': at,
+      'look': {for (final k in Looks.keys) if (s[k] != null) k: s[k]},
+    };
     final name = 'v2-prefs-$me.json';
     var sent = 0;
     final body = jsonEncode({'device': me, 'theme': mine});
@@ -560,6 +567,12 @@ class SyncEngine implements SyncHooks {
     if (newest == null) return (sent, 0);
     await db.setSetting('color_theme', newest['id'] as String);
     if (newest['c'] is String) await db.setSetting('color_theme_custom', newest['c'] as String);
+    final look = newest['look'];
+    if (look is Map) {
+      for (final k in Looks.keys) {
+        if (look[k] is String) await db.setSetting(k, look[k] as String);
+      }
+    }
     await db.setSetting('color_theme_at', '${(newest['at'] as num).toInt()}');
     _lastTheme = null;
     onThemeChanged?.call();

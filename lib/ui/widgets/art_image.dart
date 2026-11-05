@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../theme/looks.dart';
+
 class ArtImage extends StatelessWidget {
   const ArtImage(this.art, {super.key, this.size = 48, this.radius = 4, this.icon = Icons.music_note, this.circle = false});
 
@@ -29,7 +31,8 @@ class ArtImage extends StatelessWidget {
           ? Image.network(a, width: size, height: size, fit: BoxFit.cover, cacheWidth: cache, errorBuilder: (_, __, ___) => placeholder)
           : Image.file(File(a), width: size, height: size, fit: BoxFit.cover, cacheWidth: cache, errorBuilder: (_, __, ___) => placeholder);
     }
-    return circle ? ClipOval(child: child) : ClipRRect(borderRadius: BorderRadius.circular(radius), child: child);
+    // 外觀 → 圓角.
+    return circle ? ClipOval(child: child) : ClipRRect(borderRadius: BorderRadius.circular(Looks.of(context).radius(radius)), child: child);
   }
 }
 

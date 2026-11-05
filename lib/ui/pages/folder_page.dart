@@ -11,6 +11,7 @@ import '../../providers/providers.dart';
 import '../widgets/art_image.dart';
 import '../widgets/dialogs.dart';
 import 'collection_page.dart';
+import '../../theme/looks.dart';
 
 /// The playlists inside one library folder.
 class FolderPage extends ConsumerWidget {
@@ -90,13 +91,13 @@ class PlaylistFolderArt extends StatelessWidget {
       return Container(
         width: size,
         height: size,
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(4), color: cs.surfaceContainerHigh),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(Looks.of(context).radius(4)), color: cs.surfaceContainerHigh),
         child: Icon(Icons.folder, size: size * 0.5, color: cs.onSurfaceVariant),
       );
     }
     final half = size / 2;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(4),
+      borderRadius: BorderRadius.circular(Looks.of(context).radius(4)),
       child: SizedBox(
         width: size,
         height: size,

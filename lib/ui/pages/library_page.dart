@@ -19,7 +19,8 @@ import 'collection_page.dart';
 import 'missing_songs_page.dart';
 import 'folder_browser_page.dart';
 import 'folder_page.dart';
-import 'podcasts_page.dart';
+import 'podcasts_page.dart';
+import '../../theme/looks.dart';
 
 enum _Filter { playlists, albums, artists, songs, podcasts }
 
@@ -75,9 +76,9 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
         final folders = ref.watch(libraryFoldersProvider).value ?? const [];
         Widget shortcut(IconData icon, String label, VoidCallback onTap) => Material(
               color: Theme.of(context).colorScheme.surfaceContainerHigh,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(Looks.of(context).radius(8)),
               child: InkWell(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(Looks.of(context).radius(8)),
                 onTap: onTap,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -108,7 +109,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
               width: 56,
               height: 56,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(Looks.of(context).radius(4)),
                 gradient: AppTheme.likedGradient(context),
               ),
               child: const Icon(Icons.favorite, color: Colors.white),
@@ -139,7 +140,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
               leading: Container(
                 width: 56,
                 height: 56,
-                decoration: BoxDecoration(borderRadius: BorderRadius.circular(4), color: Theme.of(context).colorScheme.surfaceContainerHigh),
+                decoration: BoxDecoration(borderRadius: BorderRadius.circular(Looks.of(context).radius(4)), color: Theme.of(context).colorScheme.surfaceContainerHigh),
                 child: Icon(switch (s) {
                   SmartList.mostPlayed => Icons.local_fire_department_outlined,
                   SmartList.recentlyAdded => Icons.new_releases_outlined,
@@ -280,6 +281,6 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
 Widget folderIcon(BuildContext context, LibraryFolder f, double size) => Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(4), color: AppTheme.accent(context).withValues(alpha: 0.18)),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(Looks.of(context).radius(4)), color: AppTheme.accent(context).withValues(alpha: 0.18)),
       child: Icon(f.path == null ? Icons.phone_android : Icons.folder, color: AppTheme.accent(context), size: size * 0.45),
     );

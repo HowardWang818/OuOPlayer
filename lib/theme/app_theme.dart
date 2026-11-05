@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import 'looks.dart';
 import 'themes.dart';
 
 /// The palette a theme was built from, for the colours Material has no slot
@@ -70,8 +71,10 @@ class AppTheme {
   /// The player bar's background.
   static Color playerBar(BuildContext context) => palette(context).bar;
 
-  /// The app's theme for [p] (one mode of a [ColorTheme]).
-  static ThemeData build(Palette p) {
+  /// The app's theme for [palette] (one mode of a [ColorTheme]) with [looks].
+  static ThemeData build(Palette palette, {Looks looks = const Looks()}) {
+    final p = looks.pureBlack ? palette.pureBlack() : palette;
+    double r(double v) => looks.radius(v);
     final brightness = p.dark ? Brightness.dark : Brightness.light;
     final coloured = !p.dark;
     final scheme = ColorScheme.fromSeed(seedColor: p.main, brightness: brightness).copyWith(
@@ -90,7 +93,15 @@ class AppTheme {
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
-      extensions: [PaletteExtension(p)],
+      extensions: [PaletteExtension(p), LooksExtension(looks)],
+      cardTheme: CardThemeData(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(r(12)))),
+      dialogTheme: DialogThemeData(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(r(28)))),
+      bottomSheetTheme: BottomSheetThemeData(shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(r(28))))),
+      popupMenuTheme: PopupMenuThemeData(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(r(8)))),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+          style: ButtonStyle(shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(r(20)))))),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(shape: looks.corners == Corners.standard ? const StadiumBorder() : RoundedRectangleBorder(borderRadius: BorderRadius.circular(r(20))))),
       // Windows: buttons have no background under the mouse; their symbol
       // gets brighter and a little bigger. Light themes: grey when not in use.
       iconButtonTheme: !_desktop && !coloured
@@ -144,19 +155,19 @@ class AppTheme {
         selectedColor: p.main,
         labelStyle: TextStyle(color: p.text),
         side: BorderSide.none,
-        shape: const StadiumBorder(),
+        shape: looks.corners == Corners.square ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(r(16))) : const StadiumBorder(),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: p.card,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(r(8)), borderSide: BorderSide.none),
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: p.main,
           foregroundColor: p.onMain,
-          shape: const StadiumBorder(),
+          shape: looks.corners == Corners.square ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(r(20))) : const StadiumBorder(),
           textStyle: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ),

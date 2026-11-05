@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../theme/looks.dart';
 import '../theme/themes.dart';
 import 'providers.dart';
 
@@ -58,3 +59,27 @@ class ThemeChoiceNotifier extends Notifier<ThemeChoice> {
 }
 
 final themeChoiceProvider = NotifierProvider<ThemeChoiceNotifier, ThemeChoice>(ThemeChoiceNotifier.new);
+
+/// The 外觀 choices saved when the app started (main.dart).
+final initialLooksProvider = Provider<Looks>((ref) => const Looks());
+
+/// 外觀: player background, cover, lyrics, list density, corners, pure black.
+class LooksNotifier extends Notifier<Looks> {
+  @override
+  Looks build() => ref.read(initialLooksProvider);
+
+  /// Saves [l]; synced with the colour theme, so its time moves too.
+  Future<void> set(Looks l) async {
+    state = l;
+    final db = ref.read(dbProvider);
+    for (final e in l.toSettings().entries) {
+      await db.setSetting(e.key, e.value);
+    }
+    await db.setSetting('color_theme_at', '${DateTime.now().millisecondsSinceEpoch}');
+  }
+
+  /// Settings changed under it (a restored backup, sync).
+  Future<void> reload() async => state = Looks.fromSettings(await ref.read(dbProvider).allSettings());
+}
+
+final looksProvider = NotifierProvider<LooksNotifier, Looks>(LooksNotifier.new);

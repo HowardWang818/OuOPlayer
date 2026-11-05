@@ -10,7 +10,8 @@ import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../services/tag_editor.dart';
 import 'dialogs.dart';
-import '../../config/device_words.dart';
+import '../../config/device_words.dart';
+import '../../theme/looks.dart';
 
 /// 批次編輯資訊: the same artist / album / cover for several songs. Empty
 /// fields are left as they are; titles stay each song's own.
@@ -40,7 +41,7 @@ Future<void> showBatchEdit(BuildContext context, WidgetRef ref, List<Track> trac
               TextField(controller: album, decoration: const InputDecoration(labelText: '專輯（不改就留空）')),
               const SizedBox(height: 12),
               Row(children: [
-                if (cover != null) ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.memory(cover!, width: 56, height: 56, fit: BoxFit.cover)),
+                if (cover != null) ClipRRect(borderRadius: BorderRadius.circular(Looks.of(context).radius(6)), child: Image.memory(cover!, width: 56, height: 56, fit: BoxFit.cover)),
                 const SizedBox(width: 8),
                 OutlinedButton.icon(
                   icon: const Icon(Icons.image_outlined),

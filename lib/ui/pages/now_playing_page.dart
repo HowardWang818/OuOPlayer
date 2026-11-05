@@ -6,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/looks.dart';
 import '../widgets/art_image.dart';
+import '../widgets/blurred_cover.dart';
 import '../widgets/image_viewer.dart';
 import '../widgets/lyrics_view.dart';
 import '../widgets/output_device_chip.dart';
@@ -14,7 +16,9 @@ import '../widgets/player_controls.dart';
 import '../widgets/song_font.dart';
 import '../widgets/sleep_timer_sheet.dart';
 import '../widgets/track_links.dart';
+import '../widgets/title_bar.dart';
 import '../widgets/track_tile.dart';
+import '../widgets/vinyl_cover.dart';
 import 'queue_page.dart';
 
 class NowPlayingPage extends ConsumerWidget {
@@ -27,9 +31,20 @@ class NowPlayingPage extends ConsumerWidget {
     final bg = theme.scaffoldBackgroundColor;
     // A song without a cover gets a gradient in the app's colour.
     final noCover = track != null && (track.art == null || track.art!.isEmpty);
-    final color = noCover
+    final looks = Looks.of(context);
+    final playing = ref.watch(playbackStateProvider).value?.playing ?? false;
+    final artColor = noCover
         ? Color.alphaBlend(AppTheme.accent(context).withValues(alpha: 0.55), bg)
         : ref.watch(artColorProvider(track?.art)).value ?? theme.colorScheme.surfaceContainerHigh;
+    // 外觀 → 背景: the blurred cover sits under a veil of the page colour,
+    // so text is read against about this colour.
+    final blurred = looks.background == PlayerBackground.blur && !noCover && track != null;
+    final veil = bg.withValues(alpha: theme.brightness == Brightness.dark ? 0.6 : 0.68);
+    final color = switch (looks.background) {
+      PlayerBackground.solid => bg,
+      PlayerBackground.blur when blurred => Color.alphaBlend(veil, artColor),
+      _ => artColor,
+    };
     final wide = MediaQuery.sizeOf(context).width > 900;
     // What is behind the lyrics (the gradient a third of the way down) and
     // behind the top bar (the cover's colour).
@@ -46,7 +61,7 @@ class NowPlayingPage extends ConsumerWidget {
         ? null
         : BoxDecoration(
             color: AppTheme.palette(context).bg.withValues(alpha: 0.75),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(Looks.of(context).radius(12)),
             // The gradient ends in the page colour: this keeps the box's edges there.
             border: Border.all(color: Colors.black.withValues(alpha: 0.1)),
             boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))],
@@ -62,11 +77,19 @@ class NowPlayingPage extends ConsumerWidget {
         );
 
     final cover = LayoutBuilder(builder: (context, c) {
-      final size = c.maxWidth.clamp(120.0, 520.0);
+      final vinyl = looks.cover == CoverStyle.vinyl;
+      // A record has to fit both ways to stay round.
+      final size = (vinyl && c.maxHeight.isFinite ? c.biggest.shortestSide : c.maxWidth).clamp(120.0, 520.0);
       return Center(
         child: Container(
-          decoration: BoxDecoration(boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 30, offset: const Offset(0, 12))]),
-          child: ZoomableArt(art: track?.art, child: ArtImage(track?.art, size: size, radius: 8)),
+          decoration: BoxDecoration(
+            shape: vinyl ? BoxShape.circle : BoxShape.rectangle,
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 30, offset: const Offset(0, 12))],
+          ),
+          child: ZoomableArt(
+            art: track?.art,
+            child: vinyl ? VinylCover(art: track?.art, size: size, playing: playing) : ArtImage(track?.art, size: size, radius: 8),
+          ),
         ),
       );
     });
@@ -115,11 +138,18 @@ class NowPlayingPage extends ConsumerWidget {
 
     return _TintTitleBar(
       color: color,
+      backdrop: blurred ? (art: track.art!, veil: veil) : null,
       child: Scaffold(
-      body: AnimatedContainer(
+      body: Stack(children: [
+        // Windows: the page starts below the title bar, which shows the top of
+        // the same picture.
+        if (blurred) Positioned.fill(child: BlurredCover(art: track.art!, veil: veil, offset: Platform.isWindows ? TitleBar.height : 0)),
+        AnimatedContainer(
         duration: const Duration(milliseconds: 500),
         decoration: BoxDecoration(
-          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [color, bg], stops: const [0, 0.85]),
+          gradient: blurred || looks.background == PlayerBackground.solid
+              ? null
+              : LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [color, bg], stops: const [0, 0.85]),
         ),
         child: SafeArea(
           child: Column(children: [
@@ -165,7 +195,7 @@ class NowPlayingPage extends ConsumerWidget {
                           Expanded(
                             child: sideBox(Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: LyricsInk.on(box == null ? lyricsBg : Colors.white, child: LyricsView(size: lyricsSize)),
+                              child: LyricsInk.on(box == null ? lyricsBg : AppTheme.palette(context).bg, child: LyricsView(size: lyricsSize)),
                             )),
                           )
                         else
@@ -191,15 +221,17 @@ class NowPlayingPage extends ConsumerWidget {
           ]),
         ),
       ),
+      ]),
     ));
   }
 }
 
 /// Windows: the title bar takes the top colour of the player's gradient
-/// while the player is open.
+/// (or the top of its blurred cover) while the player is open.
 class _TintTitleBar extends ConsumerStatefulWidget {
-  const _TintTitleBar({required this.color, required this.child});
+  const _TintTitleBar({required this.color, required this.backdrop, required this.child});
   final Color color;
+  final ({String art, Color veil})? backdrop;
   final Widget child;
 
   @override
@@ -208,24 +240,28 @@ class _TintTitleBar extends ConsumerStatefulWidget {
 
 class _TintTitleBarState extends ConsumerState<_TintTitleBar> {
   late final TitleBarTint _tint = ref.read(titleBarTintProvider.notifier);
+  late final TitleBarBackdrop _backdrop = ref.read(titleBarBackdropProvider.notifier);
 
-  void _send(Color? c) => WidgetsBinding.instance.addPostFrameCallback((_) => _tint.set(c));
+  void _send(Color? c, ({String art, Color veil})? b) => WidgetsBinding.instance.addPostFrameCallback((_) {
+        _tint.set(c);
+        _backdrop.set(b);
+      });
 
   @override
   void initState() {
     super.initState();
-    _send(widget.color);
+    _send(widget.color, widget.backdrop);
   }
 
   @override
   void didUpdateWidget(_TintTitleBar old) {
     super.didUpdateWidget(old);
-    if (old.color != widget.color) _send(widget.color);
+    if (old.color != widget.color || old.backdrop != widget.backdrop) _send(widget.color, widget.backdrop);
   }
 
   @override
   void dispose() {
-    _send(null);
+    _send(null, null);
     super.dispose();
   }
 
