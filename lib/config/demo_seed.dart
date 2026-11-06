@@ -57,11 +57,12 @@ Future<void> seedDemo(AppDatabase db) async {
   }
   await batch.commit(noResult: true);
 
-  // Artist photos (drawn silhouettes), pushed into the app's own folder
-  // (Android/data/…/files/artists): shared storage images need another permission.
-  final own = await getExternalStorageDirectory();
+  // Artist photos (drawn silhouettes). Phone: pushed into the app's own
+  // folder (Android/data/…/files/artists), shared storage images need another
+  // permission. Windows: next to the demo songs.
+  final own = Platform.isWindows ? demoFolderWindows : (await getExternalStorageDirectory())?.path;
   for (final (i, name) in demoArtists.indexed) {
-    final photo = File('${own?.path}/artists/$i.jpg');
+    final photo = File('$own/artists/$i.jpg');
     if (photo.existsSync()) await ArtistImages.setCustomFile(name, photo.path);
   }
   await db.setSetting('demo_seeded', 'true');

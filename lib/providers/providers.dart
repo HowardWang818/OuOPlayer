@@ -420,6 +420,7 @@ class AppSettings {
   }
 
   static Future<({List<String> music, String download})> _defaultDirs() async {
+    if (Platform.isWindows && isDemo) return (music: [demoFolderWindows], download: demoFolderWindows);
     if (Platform.isWindows) {
       final home = Platform.environment['USERPROFILE'] ?? '';
       final music = p.join(home, 'Music');

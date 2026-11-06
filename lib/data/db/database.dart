@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' show sqfliteFfiInit, databaseFactoryFfi;
 
+import '../../config/demo.dart';
 import '../../services/artists.dart';
 import '../../services/loudness.dart' show SongLoudness;
 import '../models/track.dart';
@@ -36,7 +37,8 @@ class AppDatabase {
       databaseFactory = databaseFactoryFfi;
     }
     final dir = await getApplicationSupportDirectory();
-    final path = p.join(dir.path, 'ouoplayer.db');
+    // The demo copy on Windows shares the app's folder, not its library.
+    final path = p.join(dir.path, isDemo ? 'ouoplayer_demo.db' : 'ouoplayer.db');
     final db = await openDatabase(path, version: schemaVersion, onUpgrade: migrate, onCreate: (db, _) async {
       await db.execute('''CREATE TABLE tracks(
         id TEXT PRIMARY KEY, uri TEXT NOT NULL, title TEXT NOT NULL, artist TEXT, album TEXT,
