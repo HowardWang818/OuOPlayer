@@ -17,16 +17,40 @@
 
 ## 截圖
 
+<p align="center">
+  <img src="docs/screenshots/pc_home.jpg" width="100%" alt="Windows 版首頁">
+</p>
+
+內建 13 組顏色主題，每組都有淺色和深色，也可以用自己選的顏色產生主題：
+
+<p align="center">
+  <img src="docs/screenshots/pc_theme_light_1.jpg" width="32%" alt="貓布丁（淺色）">
+  <img src="docs/screenshots/pc_theme_light_2.jpg" width="32%" alt="櫻花（淺色）">
+  <img src="docs/screenshots/pc_theme_light_3.jpg" width="32%" alt="常青林（淺色）">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/pc_theme_dark_1.jpg" width="32%" alt="薰衣草（深色）">
+  <img src="docs/screenshots/pc_theme_dark_2.jpg" width="32%" alt="東京夜（深色）">
+  <img src="docs/screenshots/pc_theme_dark_3.jpg" width="32%" alt="復古（深色）">
+</p>
+
+手機版：
+
 <table>
   <tr>
-    <td align="center"><img src="docs/screenshots/dark_home.jpg" width="250"><br>首頁</td>
-    <td align="center"><img src="docs/screenshots/dark_list.jpg" width="250"><br>音樂庫</td>
-    <td align="center"><img src="docs/screenshots/dark_lyrics.jpg" width="250"><br>同步歌詞</td>
+    <td align="center"><img src="docs/screenshots/phone_home.jpg" width="160" alt="首頁"><br><sub>首頁</sub></td>
+    <td align="center"><img src="docs/screenshots/phone_library.jpg" width="160" alt="音樂庫"><br><sub>音樂庫</sub></td>
+    <td align="center"><img src="docs/screenshots/phone_playlist.jpg" width="160" alt="播放清單"><br><sub>播放清單</sub></td>
+    <td align="center"><img src="docs/screenshots/phone_player_blur.jpg" width="160" alt="播放頁（模糊封面）"><br><sub>播放頁（模糊封面）</sub></td>
+    <td align="center"><img src="docs/screenshots/phone_player_vinyl.jpg" width="160" alt="播放頁（黑膠）"><br><sub>播放頁（黑膠）</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/screenshots/light_home.jpg" width="250"><br>首頁（淺色）</td>
-    <td align="center"><img src="docs/screenshots/light_list.jpg" width="250"><br>音樂庫（淺色）</td>
-    <td align="center"><img src="docs/screenshots/light_lyrics.jpg" width="250"><br>同步歌詞（淺色）</td>
+    <td align="center"><img src="docs/screenshots/phone_lyrics.jpg" width="160" alt="同步歌詞"><br><sub>同步歌詞</sub></td>
+    <td align="center"><img src="docs/screenshots/phone_queue.jpg" width="160" alt="佇列"><br><sub>佇列</sub></td>
+    <td align="center"><img src="docs/screenshots/phone_search.jpg" width="160" alt="搜尋"><br><sub>搜尋</sub></td>
+    <td align="center"><img src="docs/screenshots/phone_stats.jpg" width="160" alt="收聽統計"><br><sub>收聽統計</sub></td>
+    <td align="center"><img src="docs/screenshots/phone_themes.jpg" width="160" alt="主題"><br><sub>主題</sub></td>
   </tr>
 </table>
 
@@ -89,7 +113,7 @@
 - 收聽統計和年度回顧
 - 手動備份，或照你選的時間自動備份；還原時可以只挑一部分（例如只還原設定）
 - 桌面小工具（4x1 和 2x2，Android）
-- 深色、淺色主題，Android 的 App 圖示也可以換成淺色或跟著主題變
+- 13 組顏色主題（每組有深色和淺色，也可以自訂顏色）、跟隨系統、純黑深色；播放頁背景、黑膠封面、清單密度和圓角都能調；Android 的 App 圖示也可以換成淺色或跟著主題變
 - App 內直接更新（Android 和 Windows 安裝版）
 
 **下載**

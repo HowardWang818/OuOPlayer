@@ -19,16 +19,40 @@
 
 ## Screenshots
 
+<p align="center">
+  <img src="docs/screenshots/pc_home.jpg" width="100%" alt="Home on Windows">
+</p>
+
+13 built-in colour themes, each in light and dark, or one made from a colour you pick:
+
+<p align="center">
+  <img src="docs/screenshots/pc_theme_light_1.jpg" width="32%" alt="Catppuccin (light)">
+  <img src="docs/screenshots/pc_theme_light_2.jpg" width="32%" alt="Sakura (light)">
+  <img src="docs/screenshots/pc_theme_light_3.jpg" width="32%" alt="Everforest (light)">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/pc_theme_dark_1.jpg" width="32%" alt="Lavender (dark)">
+  <img src="docs/screenshots/pc_theme_dark_2.jpg" width="32%" alt="Tokyo Night (dark)">
+  <img src="docs/screenshots/pc_theme_dark_3.jpg" width="32%" alt="Gruvbox (dark)">
+</p>
+
+On the phone:
+
 <table>
   <tr>
-    <td align="center"><img src="docs/screenshots/dark_home.jpg" width="250"><br>Home</td>
-    <td align="center"><img src="docs/screenshots/dark_list.jpg" width="250"><br>Library</td>
-    <td align="center"><img src="docs/screenshots/dark_lyrics.jpg" width="250"><br>Synced lyrics</td>
+    <td align="center"><img src="docs/screenshots/phone_home.jpg" width="160" alt="Home"><br><sub>Home</sub></td>
+    <td align="center"><img src="docs/screenshots/phone_library.jpg" width="160" alt="Library"><br><sub>Library</sub></td>
+    <td align="center"><img src="docs/screenshots/phone_playlist.jpg" width="160" alt="Playlist"><br><sub>Playlist</sub></td>
+    <td align="center"><img src="docs/screenshots/phone_player_blur.jpg" width="160" alt="Player (blurred cover)"><br><sub>Player (blurred cover)</sub></td>
+    <td align="center"><img src="docs/screenshots/phone_player_vinyl.jpg" width="160" alt="Player (record)"><br><sub>Player (record)</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/screenshots/light_home.jpg" width="250"><br>Home (light)</td>
-    <td align="center"><img src="docs/screenshots/light_list.jpg" width="250"><br>Library (light)</td>
-    <td align="center"><img src="docs/screenshots/light_lyrics.jpg" width="250"><br>Synced lyrics (light)</td>
+    <td align="center"><img src="docs/screenshots/phone_lyrics.jpg" width="160" alt="Synced lyrics"><br><sub>Synced lyrics</sub></td>
+    <td align="center"><img src="docs/screenshots/phone_queue.jpg" width="160" alt="Queue"><br><sub>Queue</sub></td>
+    <td align="center"><img src="docs/screenshots/phone_search.jpg" width="160" alt="Search"><br><sub>Search</sub></td>
+    <td align="center"><img src="docs/screenshots/phone_stats.jpg" width="160" alt="Listening stats"><br><sub>Listening stats</sub></td>
+    <td align="center"><img src="docs/screenshots/phone_themes.jpg" width="160" alt="Themes"><br><sub>Themes</sub></td>
   </tr>
 </table>
 
@@ -91,7 +115,7 @@ Get it from [Releases](https://github.com/HowardWang818/OuOPlayer/releases/lates
 - Listening stats and a year in review
 - Manual backups, or automatic ones on a schedule you choose; restore only the parts you want (e.g. just the settings)
 - Home screen widgets (4x1 and 2x2, Android)
-- Dark and light themes; on Android the app icon can be light, dark, or follow the theme
+- 13 colour themes (each in dark and light, or your own colour), follow the system, pure black; the player background, a record-style cover, list density and corners can all be changed; on Android the app icon can be light, dark, or follow the theme
 - In-app updates (Android and the Windows installer)
 
 **Downloads**
