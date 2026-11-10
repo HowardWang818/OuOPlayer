@@ -1,16 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../config/links.dart';
+import '../../../config/update_config.dart';
 import '../../../config/version.dart';
 import '../../../providers/providers.dart';
 import '../../../services/app_icon.dart';
 import '../../../services/updater.dart';
+import '../../../services/bug_report.dart';
+import '../../../services/usage_stats.dart';
 import '../../widgets/dialogs.dart';
+import '../../widgets/links.dart';
+import '../onboarding_page.dart' show showWhatsNew;
+import '../privacy_page.dart';
 import '../../widgets/update_dialog.dart';
 import 'section_page.dart';
 import '../../../theme/looks.dart';
 
-/// 關於與更新: the version, the app icon and in-app updates.
+/// 關於與更新: what OuOPlayer is, its pages (GitHub, 回報問題, 隱私說明,
+/// licences), the app icon and in-app updates.
 class AboutSettingsPage extends ConsumerStatefulWidget {
   const AboutSettingsPage({super.key});
 
@@ -115,7 +123,63 @@ class _AboutSettingsPageState extends ConsumerState<AboutSettingsPage> {
     final s = ref.watch(settingsProvider);
     final n = ref.read(settingsProvider.notifier);
     return SettingsSectionPage(title: '關於與更新', children: [
-      const ListTile(leading: Icon(Icons.info_outline), title: Text('OuOPlayer'), subtitle: Text('版本 $appVersion')),
+      ListTile(
+        leading: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.asset(_dark, width: 40, height: 40)),
+        title: const Text('OuOPlayer'),
+        subtitle: const Text('版本 $appVersion\n$tagline'),
+        isThreeLine: true,
+      ),
+      SettingTile(
+        action: '開啟',
+        leading: const Icon(Icons.code),
+        title: const Text('GitHub'),
+        subtitle: const Text('原始碼、下載和討論'),
+        onTap: () => openExternal(context, repoUrl),
+      ),
+      SettingTile(
+        action: '回報',
+        leading: const Icon(Icons.bug_report_outlined),
+        title: const Text('回報問題'),
+        subtitle: const Text('在 GitHub 開一個問題，會先填好版本和裝置資訊（需要 GitHub 帳號）'),
+        onTap: () async {
+          final url = await BugReport.newIssueUrl();
+          if (context.mounted) await openExternal(context, url);
+        },
+      ),
+      SettingTile(
+        action: '查看',
+        leading: const Icon(Icons.new_releases_outlined),
+        title: const Text('這版新功能'),
+        onTap: () => showWhatsNew(context),
+      ),
+      SettingTile(
+        action: '開啟',
+        leading: const Icon(Icons.history),
+        title: const Text('更新紀錄'),
+        subtitle: const Text('每個版本改了什麼'),
+        onTap: () => openExternal(context, releasesPage),
+      ),
+      SettingTile(
+        action: '查看',
+        leading: const Icon(Icons.privacy_tip_outlined),
+        title: const Text('隱私說明'),
+        subtitle: const Text('不收集你的資料；同步只存在你自己的雲端硬碟'),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PrivacyPage())),
+      ),
+      const UsageStatsSwitch(),
+      SettingTile(
+        action: '查看',
+        leading: const Icon(Icons.gavel_outlined),
+        title: const Text('授權'),
+        subtitle: const Text('OuOPlayer 以 GPL-3.0 授權開源；也可以看用到的開源套件'),
+        onTap: () => showLicensePage(
+          context: context,
+          applicationName: 'OuOPlayer',
+          applicationVersion: appVersion,
+          applicationIcon: Padding(padding: const EdgeInsets.all(8), child: Image.asset(_dark, width: 48, height: 48)),
+          applicationLegalese: '© 2026 OuOPlayer 開發者，以 GPL-3.0 授權',
+        ),
+      ),
       if (AppIcon.supported) ...[
         const ListTile(leading: Icon(Icons.palette_outlined), title: Text('App 圖示'), subtitle: Text('桌面和 App 清單上的圖示')),
         Padding(

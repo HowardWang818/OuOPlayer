@@ -17,6 +17,7 @@ import '../widgets/links.dart';
 import '../widgets/track_selection.dart';
 import '../widgets/track_tile.dart';
 import 'youtube_key_guide_page.dart';
+import '../widgets/empty_state.dart';
 
 /// The search shortcut: the search box takes the cursor once the page is there.
 final searchFocusWanted = ValueNotifier(false);
@@ -85,7 +86,6 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     final online = s.online;
     final onlineQuery = s.onlineQuery;
     final isUrl = q.startsWith('http://') || q.startsWith('https://');
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     return Scaffold(
       appBar: AppBar(title: const Text('搜尋')),
       body: Column(children: [
@@ -143,7 +143,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                   : online
                   ? _OnlineResults(query: onlineQuery, pending: q.isNotEmpty && q != onlineQuery, onSearch: _submit)
                   : q.isEmpty
-                      ? Center(child: Text('搜尋歌曲、演出者或專輯', style: TextStyle(color: muted)))
+                      ? const EmptyState(icon: Icons.search_rounded, title: '搜尋你的音樂庫', message: '輸入歌名、演出者或專輯。')
                       : _LibraryResults(query: _libraryQuery.isEmpty ? q : _libraryQuery),
         ),
       ]),
@@ -159,7 +159,7 @@ class _LibraryResults extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final results = ref.watch(searchProvider(query)).value ?? const <Track>[];
     final handler = ref.read(audioHandlerProvider);
-    if (results.isEmpty) return const Center(child: Text('找不到結果'));
+    if (results.isEmpty) return EmptyState(icon: Icons.search_off_rounded, title: '音樂庫裡找不到「$query」', message: '換個關鍵字，或切到線上搜尋。');
     return TrackSelectionScope(
       tracks: results,
       child: ListView.builder(
@@ -224,24 +224,14 @@ class _OnlineResults extends ConsumerWidget {
       );
     }
     if (query.isEmpty) {
-      return Center(child: Text('搜尋 iTunes 曲庫，可試聽 30 秒', style: TextStyle(color: muted)));
+      return const EmptyState(icon: Icons.travel_explore_rounded, title: '線上搜尋', message: '搜尋 iTunes 曲庫，可試聽 30 秒。');
     }
     final async = ref.watch(onlineSearchProvider(query));
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.cloud_off, size: 40),
-            const SizedBox(height: 8),
-            const Text('無法連線到 iTunes，請檢查網路'),
-            TextButton(onPressed: () => ref.invalidate(onlineSearchProvider(query)), child: const Text('重試')),
-          ]),
-        ),
-      ),
+      error: (e, _) => EmptyState.error(e, onRetry: () => ref.invalidate(onlineSearchProvider(query))),
       data: (songs) => songs.isEmpty
-          ? const Center(child: Text('找不到結果'))
+          ? EmptyState(icon: Icons.search_off_rounded, title: '找不到「$query」')
           : ListView.builder(
               itemCount: songs.length + 2,
               itemBuilder: (_, i) => i == 0

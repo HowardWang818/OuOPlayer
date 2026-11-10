@@ -142,8 +142,7 @@ class AppSettings {
   /// 連上車子時切回音樂 (see OuoAudioHandler.carConnected).
   final bool carMusic;
 
-  /// 同步: only over Wi-Fi (phone), and offer to continue what another device played.
-  final bool syncWifiOnly;
+  /// 同步: offer to continue what another device played.
   final bool syncResume;
   final String ytFormat;
   final bool normalizeVolume;
@@ -236,7 +235,6 @@ class AppSettings {
     required this.downloadDir,
     required this.btAutoPlay,
     this.carMusic = true,
-    this.syncWifiOnly = true,
     this.syncResume = true,
     required this.ytFormat,
     required this.normalizeVolume,
@@ -281,7 +279,6 @@ class AppSettings {
     String? downloadDir,
     bool? btAutoPlay,
     bool? carMusic,
-    bool? syncWifiOnly,
     bool? syncResume,
     String? ytFormat,
     bool? normalizeVolume,
@@ -324,7 +321,6 @@ class AppSettings {
         downloadDir: downloadDir ?? this.downloadDir,
         btAutoPlay: btAutoPlay ?? this.btAutoPlay,
         carMusic: carMusic ?? this.carMusic,
-        syncWifiOnly: syncWifiOnly ?? this.syncWifiOnly,
         syncResume: syncResume ?? this.syncResume,
         ytFormat: ytFormat ?? this.ytFormat,
         normalizeVolume: normalizeVolume ?? this.normalizeVolume,
@@ -377,7 +373,6 @@ class AppSettings {
       downloadDir: m['download_dir'] ?? defaults.download,
       btAutoPlay: m['bt_autoplay'] != 'false',
       carMusic: m['car_music'] != 'false',
-      syncWifiOnly: m['sync_wifi_only'] != 'false',
       syncResume: m['sync_resume'] != 'false',
       // M4A by default: usually no re-encoding, so much faster than MP3.
       ytFormat: m['yt_format'] ?? 'm4a',
@@ -587,11 +582,6 @@ class SettingsNotifier extends Notifier<AppSettings> {
     state = state.copyWith(homeHidden: set, homePinned: hidden ? ([...state.homePinned]..remove(key)) : null);
     _db.setSetting('home_hidden', jsonEncode(set.toList()));
     if (hidden) _db.setSetting('home_pinned', jsonEncode(state.homePinned));
-  }
-
-  void setSyncWifiOnly(bool v) {
-    state = state.copyWith(syncWifiOnly: v);
-    _db.setSetting('sync_wifi_only', '$v');
   }
 
   void setSyncResume(bool v) {

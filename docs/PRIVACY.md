@@ -1,8 +1,8 @@
 # OuOPlayer 隱私權政策
 
-最後更新：2026 年 11 月 1 日
+最後更新：2026 年 11 月 10 日
 
-OuOPlayer 是在 Android 和 Windows 上播放本機音樂的開源 App。它沒有廣告，不需要註冊帳號，開發者也沒有用來收集使用者資料的伺服器。
+OuOPlayer 是在 Android 和 Windows 上播放本機音樂的開源 App。它沒有廣告，不需要註冊帳號，也不收集你的音樂庫、播放紀錄或個人資料。開發者唯一收到的，是下面「匿名使用人數」說明的匿名統計，而且可以關掉。
 
 ## 一般使用
 
@@ -16,10 +16,21 @@ OuOPlayer 是在 Android 和 Windows 上播放本機音樂的開源 App。它沒
 | 歌手照片 | Deezer | 歌手名字 |
 | 找封面、線上搜尋、Podcast 搜尋 | Apple iTunes | 歌名、歌手或搜尋文字 |
 | 取得 YouTube Music 連結 | YouTube Data API | 歌名和歌手（只有你自己填了 API 金鑰才會用） |
-| 檢查更新 | OuOPlayer 的更新伺服器 | 只送出更新檢查請求，不含你的音樂或帳號資料 |
+| 找原文歌名 | mora、OTOTOY、YouTube Music | 歌名和歌手 |
+| 播放記錄（你自己登入才會用） | Last.fm、ListenBrainz | 聽過的歌名、歌手、專輯、長度和播放時間 |
+| 檢查更新、下載元件 | OuOPlayer 的更新伺服器 | 只送出更新檢查請求，不含你的音樂或帳號資料 |
+| 匿名使用人數（可以關掉） | OuOPlayer 的更新伺服器 | 隨機代碼、版本號、平台，每天一次 |
 | 下載、串流、Podcast | 你自己貼上或訂閱的網址 | 取得內容所需的請求 |
 
 這些服務各有自己的隱私權政策，網路連線本身也會讓對方看到你的 IP 位址。
+
+## 匿名使用人數
+
+為了知道大約有多少人在用 OuOPlayer、用哪個版本，App 每天第一次打開時會送一組隨機產生的代碼、版本號和平台（Android 或 Windows）到 OuOPlayer 的更新伺服器（Cloudflare）。
+
+- 代碼是在你的裝置上隨機產生的，和你的身分、Google 帳號、裝置型號都沒有關係。
+- 伺服器只存「日期、代碼、版本、平台」，不記錄 IP 位址，資料保留 90 天後刪除。
+- 可以在「設定 → 關於與更新 → 匿名使用人數統計」關掉。關掉後就不再送出，代碼也會從裝置上刪除。
 
 ## Google 雲端硬碟同步
 
@@ -68,9 +79,9 @@ OuOPlayer 不是專為兒童設計，也不會刻意收集兒童的資料。
 
 # OuOPlayer Privacy Policy
 
-Last updated: November 1, 2026
+Last updated: November 10, 2026
 
-OuOPlayer is an open-source app for playing local music on Android and Windows. It has no ads and needs no account, and the developer runs no server that collects user data.
+OuOPlayer is an open-source app for playing local music on Android and Windows. It has no ads, needs no account, and collects none of your library, listening history or personal data. The only thing the developer receives is the anonymous count described under Anonymous user count, which you can turn off.
 
 ## Everyday use
 
@@ -84,10 +95,21 @@ The app goes online only in these cases, and sends only what is listed:
 | Artist photos | Deezer | Artist name |
 | Finding covers, online search, podcast search | Apple iTunes | Title, artist or search text |
 | YouTube Music links | YouTube Data API | Title and artist (only with your own API key) |
-| Checking for updates | OuOPlayer's update server | An update request only, with none of your music or account data |
+| Original-language titles | mora, OTOTOY, YouTube Music | Title and artist |
+| Scrobbling (only if you sign in) | Last.fm, ListenBrainz | Title, artist, album, length and time of songs you heard |
+| Checking for updates, download parts | OuOPlayer's update server | An update request only, with none of your music or account data |
+| Anonymous user count (can be turned off) | OuOPlayer's update server | A random id, the version and the platform, once a day |
 | Downloads, streams, podcasts | Addresses you enter or subscribe to | The requests needed to fetch them |
 
 Each service has its own privacy policy, and any connection shows your IP address to that service.
+
+## Anonymous user count
+
+To know roughly how many people use OuOPlayer and which versions, the app sends a random id, its version and its platform (Android or Windows) to OuOPlayer's update server (Cloudflare) the first time it opens each day.
+
+- The id is made at random on your device and is tied to nothing: not you, your Google account or your device model.
+- The server stores only the date, id, version and platform, no IP address, and deletes them after 90 days.
+- Turn it off in Settings → About & updates → Anonymous user count. It then sends nothing and the id is deleted from the device.
 
 ## Google Drive sync
 

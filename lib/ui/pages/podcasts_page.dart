@@ -9,8 +9,10 @@ import '../../theme/app_theme.dart';
 import '../widgets/art_image.dart';
 import '../widgets/image_viewer.dart';
 import '../widgets/dialogs.dart';
-import 'podcast_search_page.dart';
+import 'podcast_search_page.dart';
+
 import '../../theme/looks.dart';
+import '../widgets/empty_state.dart';
 
 Future<void> subscribePodcast(BuildContext context, WidgetRef ref) async {
   final url = await promptText(context, title: '訂閱 Podcast', hint: '貼上 RSS 網址', ok: '訂閱');
@@ -130,7 +132,7 @@ class PodcastEpisodesPage extends ConsumerWidget {
       ]),
       body: feed.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('讀取失敗：$e')),
+        error: (e, _) => EmptyState.error(e, onRetry: () => ref.invalidate(podcastFeedProvider(podcast.feedUrl))),
         data: (f) => ListView(children: [
           Padding(
             padding: const EdgeInsets.all(16),

@@ -28,6 +28,7 @@ import 'native_name_page.dart';
 import 'pick_songs_page.dart';
 import '../../config/device_words.dart';
 import '../../theme/looks.dart';
+import '../widgets/empty_state.dart';
 
 enum CollectionKind { album, artist, playlist, favorites, allSongs, folder, smart }
 
@@ -451,7 +452,7 @@ class CollectionPage extends ConsumerWidget {
         if (tracksAsync.isLoading && tracks.isEmpty)
           const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
         else if (tracks.isEmpty)
-          const SliverFillRemaining(hasScrollBody: false, child: Center(child: Text('這裡還沒有歌曲')))
+          const SliverFillRemaining(hasScrollBody: false, child: EmptyState(icon: Icons.queue_music_rounded, title: '這裡還沒有歌曲', message: '從歌曲的 ⋮ 選單「加入播放清單」，或在音樂庫多選後加入。'))
         else
         if (reorderable)
           // A playlist in its own order: drag the ≡ handle to move a song.

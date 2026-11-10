@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/services.dart';
+
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -109,17 +111,51 @@ class BackupSchedule {
   }
 }
 
-/// One backup file in the backup folder.
+/// One backup file in the backup folder ([path]: a file path, or on Android
+/// a picked folder's document URI).
 class BackupFile {
-  BackupFile(this.path, this.time, this.bytes, {required this.automatic});
+  BackupFile(this.path, this.time, this.bytes, {required this.automatic, String? name}) : name = name ?? p.basename(path);
   final String path;
   final DateTime time;
   final int bytes;
   final bool automatic;
+  final String name;
 }
 
+/// A folder picked with Android's folder picker (content:// tree URI), kept
+/// with a lasting permission (BackupTreePlugin.kt). Unlike a plain path it
+/// shows backups an earlier install left there.
+class BackupTree {
+  static const _ch = MethodChannel('ouo/backup_tree');
+
+  static bool isTree(String dir) => dir.startsWith('content://');
+
+  /// The folder picker, opened at Documents/OuOPlayer/備份. Null: cancelled.
+  static Future<String?> pick() => _ch.invokeMethod<String>('pick');
+
+  /// The permission for [tree] is still there (gone after a reinstall).
+  static Future<bool> allowed(String tree) async => await _ch.invokeMethod<bool>('allowed', {'tree': tree}) ?? false;
+
+  /// A readable path for [tree].
+  static Future<String> label(String tree) async => await _ch.invokeMethod<String>('label', {'tree': tree}) ?? tree;
+
+  static Future<List<Map>> list(String tree) async => (await _ch.invokeMethod<List>('list', {'tree': tree}) ?? const []).cast<Map>();
+
+  static Future<void> write(String tree, String name, List<int> bytes) =>
+      _ch.invokeMethod('write', {'tree': tree, 'name': name, 'bytes': Uint8List.fromList(bytes)});
+
+  static Future<Uint8List> read(String doc) async => await _ch.invokeMethod<Uint8List>('read', {'doc': doc}) ?? Uint8List(0);
+
+  static Future<void> delete(String doc) => _ch.invokeMethod('delete', {'doc': doc});
+}
+
+/// Reads a backup file (a path, or a document in a picked folder).
+Future<String> readBackupText(String path) async =>
+    BackupTree.isTree(path) ? utf8.decode(await BackupTree.read(path)) : File(path).readAsString();
+
 /// Automatic backups: written into a folder the user can see (and copy
-/// elsewhere), the newest [keep] kept.
+/// elsewhere), the newest [keep] kept. [dir] is a path, or on Android a
+/// folder picked with the system picker ([BackupTree]).
 class AutoBackup {
   static const prefix = 'OuOPlayer自動備份_';
   static const keep = 10;
@@ -136,41 +172,52 @@ class AutoBackup {
   static String fileName(DateTime d) => '$prefix${d.year}-${_two(d.month)}-${_two(d.day)}_${_two(d.hour)}${_two(d.minute)}${_two(d.second)}.json';
 
   /// Writes a backup now and removes automatic ones beyond the newest [keep].
-  static Future<File> run(AppDatabase db, String dir, {DateTime? now}) async {
-    final d = Directory(dir);
-    await d.create(recursive: true);
+  static Future<void> run(AppDatabase db, String dir, {DateTime? now}) async {
     final data = await buildBackup(db);
-    final file = File(p.join(dir, fileName(now ?? DateTime.now())));
-    await file.writeAsString(const JsonEncoder.withIndent(' ').convert(data));
+    final name = fileName(now ?? DateTime.now());
+    final body = utf8.encode(const JsonEncoder.withIndent(' ').convert(data));
+    if (BackupTree.isTree(dir)) {
+      await BackupTree.write(dir, name, body);
+    } else {
+      await Directory(dir).create(recursive: true);
+      await File(p.join(dir, name)).writeAsBytes(body);
+    }
     await prune(dir);
-    return file;
   }
 
   /// Only automatic backups are removed; ones the user saved stay.
   static Future<void> prune(String dir) async {
-    final auto = [
-      for (final f in Directory(dir).listSync().whereType<File>())
-        if (p.basename(f.path).startsWith(prefix) && f.path.endsWith('.json')) f,
-    ]..sort((a, b) => p.basename(b.path).compareTo(p.basename(a.path)));
+    final auto = (await list(dir)).where((f) => f.automatic).toList()
+      ..sort((a, b) => b.name.compareTo(a.name));
     for (final f in auto.skip(keep)) {
       try {
-        await f.delete();
+        BackupTree.isTree(dir) ? await BackupTree.delete(f.path) : await File(f.path).delete();
       } catch (_) {}
     }
   }
 
   /// The OuOPlayer backups in [dir], newest first.
   static Future<List<BackupFile>> list(String dir) async {
-    final d = Directory(dir);
-    if (!await d.exists()) return const [];
     final out = <BackupFile>[];
-    await for (final f in d.list(followLinks: false)) {
-      final name = p.basename(f.path);
-      if (f is! File || !name.endsWith('.json') || !name.startsWith('OuOPlayer')) continue;
-      try {
-        final stat = await f.stat();
-        out.add(BackupFile(f.path, stat.modified, stat.size, automatic: name.startsWith(prefix)));
-      } catch (_) {}
+    bool ours(String name) => name.endsWith('.json') && name.startsWith('OuOPlayer');
+    if (BackupTree.isTree(dir)) {
+      for (final m in await BackupTree.list(dir)) {
+        final name = '${m['name']}';
+        if (!ours(name)) continue;
+        out.add(BackupFile('${m['doc']}', DateTime.fromMillisecondsSinceEpoch((m['modified'] as num).toInt()), (m['size'] as num).toInt(),
+            automatic: name.startsWith(prefix), name: name));
+      }
+    } else {
+      final d = Directory(dir);
+      if (!await d.exists()) return const [];
+      await for (final f in d.list(followLinks: false)) {
+        final name = p.basename(f.path);
+        if (f is! File || !ours(name)) continue;
+        try {
+          final stat = await f.stat();
+          out.add(BackupFile(f.path, stat.modified, stat.size, automatic: name.startsWith(prefix)));
+        } catch (_) {}
+      }
     }
     out.sort((a, b) => b.time.compareTo(a.time));
     return out;

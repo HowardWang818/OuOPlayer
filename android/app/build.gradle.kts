@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -39,12 +41,18 @@ android {
     // app. OUO_KEYSTORE can point elsewhere; release.ps1 refuses to build
     // without it, so a lost key never quietly becomes a new one.
     val ouoKey = file(System.getenv("OUO_KEYSTORE") ?: "D:/dev/ouoplayer-keys/ouoplayer.keystore")
+    // Its passwords live beside it in key.properties (storePassword=…,
+    // keyPassword=…), never in this public file. Without that file the
+    // debug key's original "android" is used.
+    val keyProps = Properties()
+    val keyPropsFile = File(ouoKey.parentFile, "key.properties")
+    if (keyPropsFile.exists()) keyPropsFile.inputStream().use { keyProps.load(it) }
     signingConfigs {
         create("ouo") {
             storeFile = ouoKey
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+            storePassword = keyProps.getProperty("storePassword") ?: "android"
+            keyAlias = keyProps.getProperty("keyAlias") ?: "androiddebugkey"
+            keyPassword = keyProps.getProperty("keyPassword") ?: keyProps.getProperty("storePassword") ?: "android"
         }
     }
 

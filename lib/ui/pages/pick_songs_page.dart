@@ -6,6 +6,7 @@ import '../../providers/providers.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/art_image.dart';
 import '../widgets/dialogs.dart';
+import '../widgets/empty_state.dart';
 
 /// 從本地音樂加入: tick songs from the library (with search) and add them to
 /// a playlist in one go. Songs already in it are marked, and can be ticked
@@ -54,7 +55,7 @@ class _PickSongsPageState extends ConsumerState<PickSongsPage> {
         ),
         Expanded(
           child: shown.isEmpty
-              ? Center(child: Text(all.isEmpty ? '音樂庫裡還沒有歌曲' : '找不到符合的歌曲', style: TextStyle(color: muted)))
+              ? (all.isEmpty ? const EmptyState(icon: Icons.library_music_outlined, title: '音樂庫裡還沒有歌曲', message: '到 設定 → 音樂庫 新增音樂資料夾。') : const EmptyState(icon: Icons.search_off_rounded, title: '找不到符合的歌曲'))
               : ListView.builder(
                   itemCount: shown.length,
                   itemBuilder: (_, i) {

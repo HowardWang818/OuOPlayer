@@ -15,10 +15,12 @@ import 'services/equalizer.dart';
 import 'services/missing_songs.dart';
 import 'services/network_check.dart';
 import 'services/player_widget.dart';
+import 'services/usage_stats.dart';
 import 'services/volume_normalizer.dart';
 import 'services/ytdlp_auto_update.dart';
 import 'theme/app_theme.dart';
 import 'ui/shell/app_shell.dart';
+import 'ui/pages/onboarding_page.dart';
 import 'providers/auto_backup_provider.dart';
 import 'providers/sync_provider.dart';
 import 'providers/theme_provider.dart';
@@ -47,6 +49,7 @@ class OuoApp extends ConsumerWidget {
     ref.watch(iconFollowThemeProvider);
     ref.watch(autoBackupProvider);
     ref.watch(syncTriggersProvider);
+    ref.watch(launcherShortcutsProvider);
     return MaterialApp(
       navigatorKey: rootNavigatorKey,
       title: 'OuOPlayer',
@@ -55,7 +58,7 @@ class OuoApp extends ConsumerWidget {
       darkTheme: AppTheme.build(colors.dark, looks: looks),
       themeMode: mode,
       builder: Platform.isWindows ? (_, child) => Column(children: [const TitleBar(), Expanded(child: child!)]) : null,
-      home: const UpdateWatcher(child: MissingFilesWatcher(child: AppShell())),
+      home: const UpdateWatcher(child: MissingFilesWatcher(child: FirstRunGate(child: AppShell()))),
     );
   }
 }
@@ -100,6 +103,7 @@ class _MissingFilesWatcherState extends ConsumerState<MissingFilesWatcher> {
     // After start-up settles, so it doesn't slow the first screens.
     Future.delayed(const Duration(seconds: 20), () {
       if (mounted) autoUpdateYtDlp(ref, (msg) => mounted ? toast(context, msg) : null);
+      unawaited(UsageStats.sendIfDue(ref.read(dbProvider)));
     });
   }
 
@@ -254,6 +258,33 @@ final shareIntentProvider = Provider<void>((ref) {
     if (call.method == 'shared') handle(call.arguments as String?);
   });
   channel.invokeMethod<String>('initialText').then(handle).catchError((_) {});
+});
+
+/// Long-press shortcuts on the home-screen icon (ShortcutsPlugin.kt).
+final launcherShortcutsProvider = Provider<void>((ref) {
+  if (!Platform.isAndroid) return;
+  const channel = MethodChannel('ouo/shortcuts');
+  Future<void> handle(String? action) async {
+    final handler = ref.read(audioHandlerProvider);
+    switch (action) {
+      case 'shuffle':
+        final all = await ref.read(dbProvider).tracks();
+        if (all.isNotEmpty) await handler.playTracks(all, shuffle: true);
+      case 'resume':
+        // The last queue may still be loading right after start-up.
+        for (var i = 0; i < 10 && handler.queue.value.isEmpty; i++) {
+          await Future.delayed(const Duration(milliseconds: 300));
+        }
+        await handler.play();
+      case 'search':
+        ref.read(tabProvider.notifier).set(1);
+    }
+  }
+
+  channel.setMethodCallHandler((call) async {
+    if (call.method == 'open') await handle(call.arguments as String?);
+  });
+  channel.invokeMethod<String>('initial').then(handle).catchError((_) {});
 });
 
 /// Bluetooth audio connected → resume (if enabled). Disconnects are handled by

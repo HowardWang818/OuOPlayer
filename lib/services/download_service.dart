@@ -403,6 +403,7 @@ class DownloadService {
     }
     final title = listing.title;
     t.addLog('讀取到 ${listing.entries.length} 首');
+    if (listing.entries.isEmpty) throw emptyPlaylistMessage;
     if (!canSplitPlaylist(listing.entries)) {
       t.addLog('這個清單的歌曲是直接的檔案連結，改用整份下載');
       return _runYtDlp(t, workDir);
@@ -608,6 +609,10 @@ double playlistProgress(double percent, int? item, int? count) {
 
 /// yt-dlp arguments that only list a playlist's songs (nothing is
 /// downloaded), as one JSON document.
+/// A playlist with no songs anyone else can see (empty, private songs, or
+/// songs the owner uploaded to YouTube Music, which only they can play).
+const emptyPlaylistMessage = '這個播放清單是空的，或裡面的歌別人看不到（例如私人影片、在這裡不能播放的歌，或建立者自己上傳到 YouTube Music 的歌）。可以在沒登入的瀏覽器打開連結確認。';
+
 const playlistListArgs = ['--flat-playlist', '--yes-playlist', '--dump-single-json'];
 
 /// A playlist read from yt-dlp's `--dump-single-json --flat-playlist` output.

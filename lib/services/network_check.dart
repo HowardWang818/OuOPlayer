@@ -14,6 +14,9 @@ Future<bool> onMobileData() async {
   }
 }
 
+/// The every-minute sync retry is skipped on mobile data (phone).
+Future<bool> everyMinuteSkipped() => onMobileData();
+
 /// Before a download: on mobile data, asks whether to go on ([warn] is the
 /// 非 Wi-Fi 提醒 setting). Returns true to download.
 /// [size]: how much will be downloaded (「約 62 MB」), when known.

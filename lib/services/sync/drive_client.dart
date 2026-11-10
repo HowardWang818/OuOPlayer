@@ -186,6 +186,65 @@ class DriveClient implements DriveStore {
       });
 }
 
+/// [inner] with downloads remembered: a file whose modified time in the last
+/// [list] matches the copy here isn't fetched again (each sync reads every
+/// other device's files; most haven't changed since the last one).
+class CachedDrive implements DriveStore {
+  CachedDrive(this.inner);
+  final DriveStore inner;
+  final _modified = <String, DateTime>{};
+  final _copies = <String, (DateTime, Uint8List)>{};
+
+  /// Files fetched from [inner] (tests).
+  int fetched = 0;
+
+  @override
+  Future<List<DriveFile>> list() async {
+    final files = await inner.list();
+    _modified
+      ..clear()
+      ..addEntries(files.map((f) => MapEntry(f.id, f.modified)));
+    _copies.removeWhere((id, _) => !_modified.containsKey(id));
+    return files;
+  }
+
+  @override
+  Future<Uint8List> download(String id) async {
+    final known = _modified[id];
+    final copy = _copies[id];
+    if (known != null && copy != null && copy.$1 == known) return copy.$2;
+    final bytes = await inner.download(id);
+    fetched++;
+    if (known != null) _copies[id] = (known, bytes);
+    return bytes;
+  }
+
+  @override
+  Future<String> upload(String name, List<int> bytes, {String? id, String mime = 'application/octet-stream'}) async {
+    if (id != null) _forget(id);
+    return inner.upload(name, bytes, id: id, mime: mime);
+  }
+
+  @override
+  Future<String> uploadFile(String name, File file, {String mime = 'application/octet-stream', void Function(int, int)? onProgress, CancelToken? cancel}) =>
+      inner.uploadFile(name, file, mime: mime, onProgress: onProgress, cancel: cancel);
+
+  @override
+  Future<void> downloadTo(String id, String path, {void Function(int, int)? onProgress, CancelToken? cancel}) =>
+      inner.downloadTo(id, path, onProgress: onProgress, cancel: cancel);
+
+  @override
+  Future<void> delete(String id) async {
+    _forget(id);
+    await inner.delete(id);
+  }
+
+  void _forget(String id) {
+    _modified.remove(id);
+    _copies.remove(id);
+  }
+}
+
 /// Not signed in to Google (or the sign-in expired).
 class SignedOut implements Exception {
   const SignedOut();

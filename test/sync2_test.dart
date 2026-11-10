@@ -54,7 +54,7 @@ class Device {
   final SyncEngine engine;
   static var _clock = 1000000;
 
-  static Future<Device> make(String name, FakeDrive drive) async {
+  static Future<Device> make(String name, DriveStore drive) async {
     final db = await openDb();
     final dir = await Directory.systemTemp.createTemp('ouo_$name');
     late SyncEngine engine;

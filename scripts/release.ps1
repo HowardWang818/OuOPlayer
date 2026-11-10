@@ -55,11 +55,22 @@ foreach ($d in $targets) {
 $keystore = if ($env:OUO_KEYSTORE) { $env:OUO_KEYSTORE } else { 'D:\dev\ouoplayer-keys\ouoplayer.keystore' }
 if ($Android -and -not (Test-Path $keystore)) { throw "Signing key not found: $keystore - restore it from your backup before releasing." }
 
+# Last.fm's API account (播放記錄), kept beside the signing key. Without it the
+# builds simply have no Last.fm choice (ListenBrainz needs nothing).
+$lastFmArgs = @()
+$lastFmFile = 'D:\dev\ouoplayer-keys\lastfm.json'
+if (Test-Path $lastFmFile) {
+    $l = Get-Content $lastFmFile -Raw | ConvertFrom-Json
+    $lastFmArgs = @("--dart-define=OUO_LASTFM_KEY=$($l.apiKey)", "--dart-define=OUO_LASTFM_SECRET=$($l.sharedSecret)")
+} else {
+    Write-Host "== $lastFmFile not found: no Last.fm in this build" -ForegroundColor Yellow
+}
+
 Write-Host "== Building OuOPlayer $full ($((@(if ($Android) { 'Android' }) + @(if ($Windows) { 'Windows' })) -join ' + '))" -ForegroundColor Cyan
 Push-Location $buildRoot
 try {
     if ($Android) {
-        flutter build apk --release --split-per-abi --dart-define=OUO_VERSION=$version
+        flutter build apk --release --split-per-abi --dart-define=OUO_VERSION=$version @lastFmArgs
         if ($LASTEXITCODE -ne 0) { throw 'Android build failed' }
     }
     if ($Windows) {
@@ -101,7 +112,7 @@ try {
         } else {
             Write-Host "== $googleFile not found: the Windows build has no Google Drive sync" -ForegroundColor Yellow
         }
-        flutter build windows --release --build-name=$winVersion --build-number=$build --dart-define=OUO_VERSION=$winVersion @googleArgs
+        flutter build windows --release --build-name=$winVersion --build-number=$build --dart-define=OUO_VERSION=$winVersion @googleArgs @lastFmArgs
         if ($LASTEXITCODE -ne 0) { throw 'Windows build failed' }
         Copy-Item -Force $mpvDll (Join-Path $buildRoot 'build\windows\x64\runner\Release\libmpv-2.dll')
     }

@@ -17,6 +17,7 @@ import '../pages/native_name_page.dart';
 import '../../services/native_names.dart';
 import '../pages/pick_replacement_page.dart';
 import 'art_image.dart';
+import 'share_card.dart';
 import 'dialogs.dart';
 import 'edit_track_dialog.dart';
 import 'removal_summary.dart';
@@ -242,6 +243,15 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
               Navigator.pop(ctx);
               await handler.enqueue([track]);
               if (context.mounted) toast(context, '已加入佇列');
+            },
+          ),
+          ListTile(
+            leading: Icon(Platform.isAndroid ? Icons.share : Icons.image_outlined),
+            title: const Text('分享'),
+            subtitle: const Text('做成一張有封面的圖片，直式或方形'),
+            onTap: () {
+              Navigator.pop(ctx);
+              showShareCard(context, track);
             },
           ),
           if (track.source != TrackSource.url && track.source != TrackSource.podcast) ...[

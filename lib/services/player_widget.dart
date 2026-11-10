@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/providers.dart';
+import '../providers/theme_provider.dart';
 
 /// Text and button colour on a widget background: white on dark covers,
 /// black on light ones (the same rule as the in-app player bar).
@@ -20,14 +21,21 @@ final playerWidgetProvider = Provider<void>((ref) {
   final playing = ref.watch(playbackStateProvider.select((s) => s.value?.playing ?? false));
   final art = track?.art;
   // The colour the player bar uses; null until worked out (or no cover).
-  final bg = ref.watch(artColorProvider(art)).value?.withValues(alpha: 1);
+  // Without a cover colour, the colour theme's bar colour (dark or light as
+  // the app shows).
+  final colors = ref.watch(themeChoiceProvider).theme;
+  final mode = ref.watch(settingsProvider.select((s) => s.themeMode));
+  final dark = mode == ThemeMode.dark ||
+      (mode == ThemeMode.system && WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark);
+  final themed = (dark ? colors.dark : colors.light).bar;
+  final bg = ref.watch(artColorProvider(art)).value?.withValues(alpha: 1) ?? themed.withValues(alpha: 1);
   channel.invokeMethod('update', {
     'title': track?.title,
     'artist': track?.artist,
     // Only local cover files; online covers would need downloading.
     'art': art != null && !art.startsWith('http') ? art : null,
     'playing': playing,
-    'bg': bg?.toARGB32(),
-    'fg': bg == null ? null : widgetForeground(bg).toARGB32(),
+    'bg': bg.toARGB32(),
+    'fg': widgetForeground(bg).toARGB32(),
   }).catchError((_) => null);
 });

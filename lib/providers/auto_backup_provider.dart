@@ -79,7 +79,7 @@ class AutoBackupNotifier extends Notifier<AutoBackupState> {
       state = state.copyWith(last: now, running: false, clearError: true);
       return null;
     } catch (e) {
-      final msg = '無法寫入「${state.dir}」：$e';
+      final msg = BackupTree.isTree(state.dir) ? '無法寫入備份資料夾，請在「備份與還原」重新選擇備份資料夾（$e）' : '無法寫入「${state.dir}」：$e';
       state = state.copyWith(running: false, error: msg);
       return msg;
     }

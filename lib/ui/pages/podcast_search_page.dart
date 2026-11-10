@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,6 +7,7 @@ import '../../services/online/itunes.dart';
 import '../widgets/art_image.dart';
 import '../widgets/dialogs.dart';
 import 'podcasts_page.dart';
+import '../widgets/empty_state.dart';
 
 /// 搜尋 Podcast: shows from Apple's directory by name or host.
 class PodcastSearchPage extends ConsumerStatefulWidget {
@@ -72,9 +72,9 @@ class PodcastSearchResults extends ConsumerWidget {
     final subscribed = {for (final p in ref.watch(podcastsProvider).value ?? const <Podcast>[]) p.feedUrl};
     return ref.watch(podcastSearchProvider(query)).when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text(e is DioException ? '無法連線，請檢查網路' : '搜尋失敗：$e')),
+          error: (e, _) => EmptyState.error(e, onRetry: () => ref.invalidate(podcastSearchProvider(query))),
           data: (list) => list.isEmpty
-              ? Center(child: Text('找不到「$query」相關的節目\n也可以用 RSS 網址訂閱', textAlign: TextAlign.center, style: TextStyle(color: muted)))
+              ? EmptyState(icon: Icons.podcasts_rounded, title: '找不到「$query」相關的節目', message: '也可以用 RSS 網址訂閱。')
               : ListView(children: [
                   if (pending)
                     ListTile(leading: const Icon(Icons.search), title: const Text('按搜尋鍵查詢新的關鍵字'), onTap: onSearch),

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -35,9 +37,32 @@ class _BackupPageState extends ConsumerState<BackupPage> {
   Future<List<BackupFile>>? _files;
   String? _listed;
 
+  /// Android: the backup folder is one picked with the system picker and
+  /// its permission is still there (it shows an earlier install's backups).
+  Future<bool>? _picked;
+  Future<String>? _label;
+
   void _refresh(String dir) {
     _listed = dir;
-    _files = AutoBackup.list(dir);
+    final tree = BackupTree.isTree(dir);
+    _picked = !Platform.isAndroid ? Future.value(true) : (tree ? BackupTree.allowed(dir) : Future.value(false));
+    _label = tree ? BackupTree.label(dir) : Future.value(dir);
+    _files = _picked!.then<List<BackupFile>>((ok) => tree && !ok ? const <BackupFile>[] : AutoBackup.list(dir)).catchError((_) => const <BackupFile>[]);
+  }
+
+  Future<void> _pickFolder() async {
+    final n = ref.read(autoBackupProvider.notifier);
+    if (Platform.isAndroid) {
+      try {
+        final tree = await BackupTree.pick();
+        if (tree != null) await n.setDir(tree);
+      } catch (e) {
+        if (mounted) toast(context, '無法使用這個資料夾：$e');
+      }
+      return;
+    }
+    final d = await FilePicker.getDirectoryPath(dialogTitle: '選擇備份資料夾');
+    if (d != null) await n.setDir(d);
   }
 
   @override
@@ -138,17 +163,20 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                 action: '選擇',
                 leading: const Icon(Icons.folder_outlined),
                 title: const Text('備份資料夾'),
-                subtitle: Text(st.dir, style: TextStyle(color: muted)),
-                trailing: FutureBuilder<String>(
-                  future: AutoBackup.defaultDir(),
-                  builder: (_, snap) => snap.data == null || snap.data == st.dir
-                      ? const SizedBox.shrink()
-                      : TextButton(onPressed: () => n.setDir(null), child: const Text('改回預設')),
+                subtitle: FutureBuilder<String>(
+                  future: _label,
+                  builder: (_, snap) => Text(snap.data ?? '', style: TextStyle(color: muted)),
                 ),
-                onTap: () async {
-                  final d = await FilePicker.getDirectoryPath(dialogTitle: '選擇備份資料夾');
-                  if (d != null) await n.setDir(d);
-                },
+                // Android: the default is only a path, so no 改回預設 there.
+                trailing: Platform.isAndroid
+                    ? null
+                    : FutureBuilder<String>(
+                        future: AutoBackup.defaultDir(),
+                        builder: (_, snap) => snap.data == null || snap.data == st.dir
+                            ? const SizedBox.shrink()
+                            : TextButton(onPressed: () => n.setDir(null), child: const Text('改回預設')),
+                      ),
+                onTap: _pickFolder,
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(72, 0, 16, 8),
@@ -179,6 +207,24 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                       },
               ),
               header('備份資料夾裡的備份'),
+              FutureBuilder<bool>(
+                future: _picked,
+                builder: (_, snap) => snap.data != false
+                    ? const SizedBox.shrink()
+                    : Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(
+                            BackupTree.isTree(st.dir)
+                                ? '重新安裝後要再選一次備份資料夾，才看得到裡面的備份。選同一個資料夾就好，備份檔都還在。'
+                                : '選一次備份資料夾（建議用預設的 文件/OuOPlayer/備份），之後重新安裝 OuOPlayer 也看得到之前的備份。',
+                            style: TextStyle(color: muted),
+                          ),
+                          const SizedBox(height: 8),
+                          FilledButton.tonal(onPressed: _pickFolder, child: const Text('選擇備份資料夾')),
+                        ]),
+                      ),
+              ),
               FutureBuilder<List<BackupFile>>(
                 future: _files,
                 builder: (context, snap) {
@@ -191,7 +237,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                     return Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('這裡沒有列出備份。重新安裝後，Android 可能不讓 App 看到之前的備份檔，檔案還在，請自己選擇：', style: TextStyle(color: muted)),
+                        Text('這裡沒有列出備份。也可以直接選一個備份檔：', style: TextStyle(color: muted)),
                         const SizedBox(height: 8),
                         OutlinedButton(onPressed: () => importBackup(context, ref), child: const Text('選擇備份檔')),
                       ]),

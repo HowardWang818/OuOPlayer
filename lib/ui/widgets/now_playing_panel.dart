@@ -15,6 +15,7 @@ import 'player_controls.dart';
 import 'song_font.dart';
 import 'track_links.dart';
 import '../../theme/looks.dart';
+import 'empty_state.dart';
 
 /// Windows: the blocks on the right of everything (settings too): the song
 /// playing with its lyrics on top, the queue from the next song below, with a
@@ -34,7 +35,7 @@ class NowPlayingPanel extends ConsumerWidget {
           child: child,
         );
     if (track == null) {
-      return block(Center(child: Text('沒有播放中的歌曲', style: TextStyle(color: cs.onSurfaceVariant))));
+      return block(const EmptyState(icon: Icons.music_note_rounded, title: '沒有播放中的歌曲', compact: true));
     }
     final queue = ref.watch(queueProvider).value ?? const [];
     final index = ref.watch(playbackStateProvider).value?.queueIndex;

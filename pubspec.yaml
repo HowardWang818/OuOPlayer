@@ -1,7 +1,7 @@
 name: ouoplayer
 description: "OuOPlayer - a music player for Android and Windows, with playlist sync."
 publish_to: 'none'
-version: 1.17.4+91
+version: 1.18.0+92
 
 environment:
   sdk: ^3.6.0
@@ -59,6 +59,8 @@ flutter:
     - assets/icon/app_icon_dark.png
     - assets/icon/app_icon_light.png
     - assets/icon/tray.ico
+    # 這版新功能 (shown once after an update; rewritten for each version).
+    - assets/whats_new.txt
   # The Noto font for song titles (Windows only) isn't an asset: the Windows
   # build puts it in dataonts (windows/CMakeLists.txt), so the APK stays small.
 

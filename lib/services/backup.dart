@@ -18,6 +18,10 @@ bool _private(String key) => _privateSettings.contains(key) || key.startsWith('s
 
 /// Settings that never go into a backup: secrets and per-device state.
 const _privateSettings = {
+  // 匿名統計's id, the guide and 這版新功能 belong to this device; so do the
+  // scrobble accounts (secrets).
+  'usage_id', 'usage_day', 'onboarded', 'seen_version', 'lastfm_session', 'lastfm_user', 'listenbrainz_token', 'listenbrainz_user',
+  'scrobble_queue_lastfm', 'scrobble_queue_listenbrainz',
   'youtube_api_key', 'last_session', 'last_music_session', 'auto_backup_dir', 'auto_backup_last', 'update_last_check',
   // Google Drive sync: the sign-in and this device's own sync state.
   'gdrive_refresh', 'sync_signed_in', 'sync_device_id', 'sync_last', 'sync_email', 'sync_base', 'sync_remote_base', 'sync_stamps',

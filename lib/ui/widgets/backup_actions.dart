@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/auto_backup_provider.dart';
 import '../../providers/providers.dart';
 import '../../providers/theme_provider.dart';
+import '../../services/auto_backup.dart';
 import '../../services/backup.dart';
 import 'dialogs.dart';
 
@@ -44,7 +44,7 @@ Future<void> importBackup(BuildContext context, WidgetRef ref) async {
 Future<void> restoreFromFile(BuildContext context, WidgetRef ref, String path) async {
   final Map<String, Object?> data;
   try {
-    data = (jsonDecode(await File(path).readAsString()) as Map).cast<String, Object?>();
+    data = (jsonDecode(await readBackupText(path)) as Map).cast<String, Object?>();
     if (data['app'] != 'OuOPlayer') throw '這不是 OuOPlayer 的備份檔';
   } catch (e) {
     if (context.mounted) toast(context, '無法讀取備份：$e');

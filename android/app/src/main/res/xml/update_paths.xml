@@ -2,4 +2,6 @@
 <!-- Downloaded updates (cache/updates) shared with Android's package installer. -->
 <paths>
     <cache-path name="updates" path="updates/" />
+    <!-- 分享 cards (ShareCard) sent to other apps. -->
+    <cache-path name="share" path="share/" />
 </paths>

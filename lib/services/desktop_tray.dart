@@ -28,6 +28,20 @@ class DesktopTray with TrayListener, WindowListener {
     const MethodChannel('ouoplayer/instance').setMethodCallHandler((call) async {
       if (call.method == 'show') await tray._show();
     });
+    // Previous / play-pause / next under the taskbar thumbnail (flutter_window.cpp).
+    const taskbar = MethodChannel('ouoplayer/taskbar');
+    taskbar.setMethodCallHandler((call) async {
+      if (call.method != 'button') return;
+      switch (call.arguments) {
+        case 'prev':
+          await handler.skipToPrevious();
+        case 'next':
+          await handler.skipToNext();
+        case 'toggle':
+          handler.player.playing ? await handler.pause() : await handler.play();
+      }
+    });
+    handler.player.playingStream.distinct().listen((on) => taskbar.invokeMethod('playing', on).catchError((_) {}));
     final settings = await db.allSettings();
     final on = settings['close_to_tray'] == 'true';
     await tray._set(on);

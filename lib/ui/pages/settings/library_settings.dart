@@ -19,6 +19,26 @@ import '../native_name_page.dart';
 import '../settings_page.dart';
 import 'section_page.dart';
 
+/// 新增資料夾: picks a music folder, adds it and (if set) scans it. Also the
+/// first-run guide's folder step. [scan]: scan even if 新增資料夾時自動掃描 is off.
+Future<bool> addMusicFolder(BuildContext context, WidgetRef ref, {bool scan = false}) async {
+  final s = ref.read(settingsProvider);
+  await ensureStoragePermission();
+  final dir = await FilePicker.getDirectoryPath(dialogTitle: '選擇音樂資料夾');
+  if (dir == null) return false;
+  final cover = coveringFolder(dir, {...s.musicDirs, s.downloadDir});
+  if (cover != null) {
+    if (context.mounted) toast(context, cover == dir ? '這個資料夾已經在清單裡' : '已包含在「$cover」裡，不需要另外加入');
+    return false;
+  }
+  ref.read(settingsProvider.notifier).setMusicDirs([...s.musicDirs, dir]);
+  if (scan || ref.read(settingsProvider).autoScanNewFolders) {
+    final added = await ref.read(scannerProvider).scan([dir]);
+    if (context.mounted) toast(context, '「${p.basename(dir)}」掃描完成，新增 $added 首歌曲');
+  }
+  return true;
+}
+
 /// 音樂庫: music folders, scanning, missing songs, deleting, covers and artist photos.
 class LibrarySettingsPage extends ConsumerWidget {
   const LibrarySettingsPage({super.key});
@@ -43,21 +63,7 @@ class LibrarySettingsPage extends ConsumerWidget {
         action: '新增',
         leading: const Icon(Icons.create_new_folder_outlined),
         title: const Text('新增資料夾'),
-        onTap: () async {
-          await ensureStoragePermission();
-          final dir = await FilePicker.getDirectoryPath(dialogTitle: '選擇音樂資料夾');
-          if (dir == null) return;
-          final cover = coveringFolder(dir, {...s.musicDirs, s.downloadDir});
-          if (cover != null) {
-            if (context.mounted) toast(context, cover == dir ? '這個資料夾已經在清單裡' : '已包含在「$cover」裡，不需要另外加入');
-            return;
-          }
-          n.setMusicDirs([...s.musicDirs, dir]);
-          if (ref.read(settingsProvider).autoScanNewFolders) {
-            final added = await ref.read(scannerProvider).scan([dir]);
-            if (context.mounted) toast(context, '「${p.basename(dir)}」掃描完成，新增 $added 首歌曲');
-          }
-        },
+        onTap: () => addMusicFolder(context, ref),
       ),
       SettingSwitch(
         secondary: const Icon(Icons.manage_search),

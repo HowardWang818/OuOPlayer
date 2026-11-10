@@ -14,6 +14,7 @@ import '../widgets/links.dart';
 import 'pick_replacement_page.dart';
 import 'youtube_key_guide_page.dart';
 import '../../config/device_words.dart';
+import '../widgets/empty_state.dart';
 
 /// Many songs missing: Soundiiz moves whole playlists to YouTube Music
 /// in one go, faster than looking songs up one by one (and no API quota).
@@ -240,7 +241,7 @@ class _MissingSongsPageState extends ConsumerState<MissingSongsPage> {
           ),
       ]),
       body: list.isEmpty
-          ? Center(child: Text('沒有缺少的歌曲', style: TextStyle(color: muted)))
+          ? const EmptyState(icon: Icons.check_circle_outline_rounded, title: '沒有缺少的歌曲', message: '播放清單裡的歌都在這台上。')
           : ListView(children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),

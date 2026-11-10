@@ -46,7 +46,7 @@ Windows 版要把整個 `Release` 資料夾一起複製才能執行。
 
 ## 發布流程
 
-1. 改 `pubspec.yaml` 的版本和 `lib/config/version.dart` 的預設值。
+1. 改 `pubspec.yaml` 的版本和 `lib/config/version.dart` 的預設值，並把這版的重點寫進 `assets/whats_new.txt`（更新後第一次打開時顯示，最多 8 行）。
 2. `flutter analyze`、`flutter test`。
 3. 建置兩邊（`-WindowsOnly` 只建 Windows；不加參數只建 Android）：
    ```powershell
@@ -79,6 +79,20 @@ Android 只接受用**同一把金鑰**簽的更新，所以 release 建置固�
 
 金鑰檔不會進 git。**自己 fork 的版本請用自己的金鑰**，並改掉下面的更新伺服器網址。
 
+金鑰的密碼放在金鑰旁邊的 `key.properties`（`storePassword=…`、`keyPassword=…`，可加 `keyAlias=…`），沒有這個檔案時用 debug 金鑰原本的 `android`。改密碼不會改變簽章，已安裝的 App 照樣能更新：
+
+```powershell
+keytool -storepasswd -keystore D:\dev\ouoplayer-keys\ouoplayer.keystore
+keytool -keypasswd -alias androiddebugkey -keystore D:\dev\ouoplayer-keys\ouoplayer.keystore
+```
+
+## 建置時帶入的金鑰
+
+都放在 `D:\dev\ouoplayer-keys\`，由 `release.ps1` 帶進去，不進 git：
+
+- `google_oauth.json`：Windows 版的 Google 登入（`desktopClientId`、`desktopClientSecret`）。
+- `lastfm.json`：Last.fm 播放記錄（`apiKey`、`sharedSecret`，到 last.fm/api/account/create 申請）。沒有這個檔案時，App 不顯示 Last.fm 選項；ListenBrainz 不需要任何金鑰。
+
 ## App 內更新與更新伺服器
 
 - App 端：`lib/services/updater.dart`、`lib/ui/widgets/update_dialog.dart`，伺服器網址在 `lib/config/update_config.dart`。App 讀 `latest.json`，下載適合手機 ABI 的 APK，比對 SHA-256 後交給 Android 安裝。
@@ -88,6 +102,7 @@ Android 只接受用**同一把金鑰**簽的更新，所以 release 建置固�
   - 每個 IP 每分鐘的次數有限制。
   - 使用 Workers 免費方案：每天超過 10 萬次請求只會暫停，不會產生費用。
   - 部署：在 `cloud/update-worker/` 執行 `npx wrangler login`，再執行 `npx wrangler deploy`。
+  - 匿名使用人數（1.18.0 起）：App 每天一次 `GET /hello`，帶隨機代碼、版本、平台，存在 D1（`schema.sql`），保留 90 天，不存 IP。第一次要建資料庫並設定看統計的密碼，步驟寫在 `wrangler.toml` 最後面；之後在瀏覽器開 `/stats?key=<密碼>` 看每天人數和版本分布。沒有設定 D1 時 `/hello` 只回應、不記錄。
 
 ## 圖示
 

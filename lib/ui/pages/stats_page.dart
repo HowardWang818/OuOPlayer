@@ -11,6 +11,7 @@ import '../widgets/dialogs.dart';
 import 'collection_page.dart';
 import 'year_review_page.dart';
 import '../../theme/looks.dart';
+import '../widgets/empty_state.dart';
 
 /// Listening statistics for a period, from the listening log.
 final statsProvider = FutureProvider.family<ListeningStats, StatsPeriod>((ref, period) async {
@@ -37,7 +38,6 @@ class StatsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final period = ref.watch(_periodProvider);
     final stats = ref.watch(statsProvider(period));
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     return Scaffold(
       appBar: AppBar(title: const Text('收聽統計')),
       body: ListView(padding: const EdgeInsets.only(bottom: 24), children: [
@@ -67,7 +67,7 @@ class StatsPage extends ConsumerWidget {
           loading: () => const [Padding(padding: EdgeInsets.all(48), child: Center(child: CircularProgressIndicator()))],
           error: (e, _) => [Padding(padding: const EdgeInsets.all(24), child: Text('讀取失敗：$e'))],
           data: (s) => s.isEmpty
-              ? [Padding(padding: const EdgeInsets.all(48), child: Center(child: Text('這段期間還沒有收聽紀錄', style: TextStyle(color: muted))))]
+              ? [const Padding(padding: EdgeInsets.only(top: 24), child: EmptyState(icon: Icons.insights_rounded, title: '這段期間還沒有收聽紀錄', message: '聽一陣子歌之後，這裡會出現最常聽的歌和歌手。'))]
               : _sections(context, ref, s, period),
         ),
       ]),

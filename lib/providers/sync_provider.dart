@@ -44,7 +44,7 @@ final syncEngineProvider = Provider<SyncEngine>((ref) {
 
   final engine = SyncEngine(
     db: db,
-    drive: DriveClient(ref.watch(googleAuthProvider)),
+    drive: CachedDrive(DriveClient(ref.watch(googleAuthProvider))),
     deviceId: deviceId,
     deviceName: Platform.isAndroid ? '手機' : '電腦（${Platform.localHostname}）',
     importFile: (path) => scanner.importFile(path, source: TrackSource.download),
@@ -471,8 +471,11 @@ final syncTriggersProvider = Provider<void>((ref) {
   });
   final every = Timer.periodic(const Duration(minutes: 15), (_) => notifier.run(auto: true));
   // Every minute: songs still missing on a device are tried again until both
-  // have them; in front, a look at what the other device did.
-  final retry = Timer.periodic(const Duration(minutes: 1), (_) {
+  // have them; in front, a look at what the other device did. Not on mobile
+  // data (the phone then syncs on opening, coming to the front, after a
+  // change here, and every 15 minutes).
+  final retry = Timer.periodic(const Duration(minutes: 1), (_) async {
+    if (await everyMinuteSkipped()) return;
     if (notifier.incomplete) {
       notifier.run(auto: true, retry: true);
       if (front) notifier.offerResume();

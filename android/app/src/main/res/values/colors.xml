@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#10151C</color>
+    <!-- Splash screen: the 晴空 theme's background (light here, dark in values-night). -->
+    <color name="splash_background">#F4F7FB</color>
 </resources>

@@ -22,3 +22,12 @@ simple = { limit = 10, period = 60 }
 name = "APK_LIMIT"
 namespace_id = "18002"
 simple = { limit = 3, period = 60 }
+
+# 匿名使用人數 (v1.18.0): create the database once, then uncomment and put its id here:
+#   npx wrangler d1 create ouoplayer-stats
+#   npx wrangler d1 execute ouoplayer-stats --remote --file=schema.sql
+#   npx wrangler secret put STATS_KEY      (the password for /stats?key=…)
+# [[d1_databases]]
+# binding = "STATS"
+# database_name = "ouoplayer-stats"
+# database_id = "…"

@@ -10,9 +10,11 @@ class MainActivity : AudioServiceActivity() {
     private var bluetooth: BluetoothPlugin? = null
     private var normalizer: NormalizerPlugin? = null
     private var trash: TrashPlugin? = null
+    private var backupTree: BackupTreePlugin? = null
     private var downloads: DownloadNotifierPlugin? = null
     private var widget: PlayerWidgetPlugin? = null
     private var share: MethodChannel? = null
+    private var shortcuts: ShortcutsPlugin? = null
     private var pendingShare: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -22,10 +24,14 @@ class MainActivity : AudioServiceActivity() {
         bluetooth = BluetoothPlugin(applicationContext, messenger)
         normalizer = NormalizerPlugin(messenger)
         trash = TrashPlugin(applicationContext, messenger).also { it.activity = this }
+        backupTree = BackupTreePlugin(applicationContext, messenger).also { it.activity = this }
         widget = PlayerWidgetPlugin(applicationContext, messenger)
         UpdatePlugin(applicationContext, messenger)
         IconPlugin(applicationContext, messenger)
         CarConnectionPlugin(applicationContext, messenger)
+        shortcuts = ShortcutsPlugin(applicationContext, messenger).also {
+            it.pending = intent?.getStringExtra(ShortcutsPlugin.EXTRA)
+        }
         // Download notification: progress from Dart; taps open the downloads page.
         downloads = DownloadNotifierPlugin(applicationContext, messenger).also {
             it.pendingAction = intent?.getStringExtra(DownloadForegroundService.EXTRA_OPEN)
@@ -40,6 +46,16 @@ class MainActivity : AudioServiceActivity() {
                     caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) &&
                     !caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) &&
                     !caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET),
+            )
+        }
+        // 回報問題: the phone model and Android version for the report.
+        MethodChannel(messenger, "ouo/device").setMethodCallHandler { call, result ->
+            if (call.method != "info") return@setMethodCallHandler result.notImplemented()
+            result.success(
+                mapOf(
+                    "model" to "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}",
+                    "os" to "Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})",
+                ),
             )
         }
         // Lyrics can keep the screen on while they are shown.
@@ -59,6 +75,22 @@ class MainActivity : AudioServiceActivity() {
                 if (call.method == "initialText") {
                     result.success(pendingShare)
                     pendingShare = null
+                } else if (call.method == "image") {
+                    // 分享 card: a PNG in cache/share, sent to the app the user picks.
+                    try {
+                        val file = java.io.File(call.argument<String>("path")!!)
+                        val uri = androidx.core.content.FileProvider.getUriForFile(this@MainActivity, "$packageName.updates", file)
+                        val send = Intent(Intent.ACTION_SEND)
+                            .setType("image/png")
+                            .putExtra(Intent.EXTRA_STREAM, uri)
+                            .putExtra(Intent.EXTRA_TEXT, call.argument<String>("text"))
+                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        send.clipData = android.content.ClipData.newRawUri(null, uri)
+                        startActivity(Intent.createChooser(send, null))
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("share", e.message, null)
+                    }
                 } else {
                     result.notImplemented()
                 }
@@ -70,11 +102,13 @@ class MainActivity : AudioServiceActivity() {
         super.onNewIntent(intent)
         sharedText(intent)?.let { share?.invokeMethod("shared", it) }
         intent.getStringExtra(DownloadForegroundService.EXTRA_OPEN)?.let { downloads?.deliver(it) }
+        intent.getStringExtra(ShortcutsPlugin.EXTRA)?.let { shortcuts?.deliver(it) }
     }
 
     @Deprecated("Needed for the system delete confirmation (MediaStore trash request)")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (trash?.onActivityResult(requestCode, resultCode) == true) return
+        if (backupTree?.onActivityResult(requestCode, resultCode, data) == true) return
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
     }
@@ -85,6 +119,7 @@ class MainActivity : AudioServiceActivity() {
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         bluetooth?.dispose()
         trash?.activity = null
+        backupTree?.activity = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
 }
