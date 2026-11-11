@@ -37,6 +37,10 @@ class DownloadTask {
 
   /// Liked once downloaded (♥ pressed while a preview played).
   bool like = false;
+
+  /// The cover shown while it downloads (the search result's), then the
+  /// song's own once it is in the library.
+  String? art;
   String? playlistName;
 
   /// Files that already existed and were kept instead of the new copy.
@@ -159,6 +163,7 @@ class DownloadService {
     int? playlistId,
     String? playlistName,
     bool like = false,
+    String? art,
   }) {
     final k = kind ?? (_looksLikeAudioFile(url) || ytdlp == null ? DownloadKind.direct : DownloadKind.ytdlp);
     final task = DownloadTask(
@@ -173,12 +178,17 @@ class DownloadService {
       title: title,
       playlistId: playlistId,
       playlistName: playlistName,
-    )..like = like;
+    )
+      ..like = like
+      ..art = art;
     tasks.insert(0, task);
     _emit();
     _pump();
     return task;
   }
+
+  /// The newest download of [url], if any (for progress on its cover).
+  DownloadTask? taskFor(String url) => tasks.where((t) => t.url == url).firstOrNull;
 
   void retry(DownloadTask t) {
     if (t.isGroup) {
@@ -338,6 +348,10 @@ class DownloadService {
       await _addToPlaylist(t, [track]);
     }
     if (track != null && t.like) await _db.setFavorite(track, true);
+    if (track?.art != null) {
+      t.art = track!.art;
+      t.parent?.art ??= track.art;
+    }
     return target;
   }
 

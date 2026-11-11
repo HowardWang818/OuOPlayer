@@ -8,6 +8,7 @@ import '../../services/network_check.dart';
 import '../../services/online/ytmusic.dart';
 import '../../services/song_matcher.dart';
 import '../widgets/art_image.dart';
+import '../widgets/cover_progress.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/download_actions.dart';
 import 'pick_replacement_page.dart';
@@ -72,8 +73,13 @@ class _MissingSongsPageState extends ConsumerState<MissingSongsPage> {
   /// Songs whose search found no sure match: picked by hand (選擇版本).
   final _unsure = <String, List<YtMusicSong>>{};
 
-  void _queue(Track t, YtMusicSong song) =>
-      ref.read(downloadServiceProvider).add(song.url, format: ref.read(settingsProvider).ytFormat, title: t.title);
+  /// The download started for each missing song (its progress on the cover).
+  final _queued = <String, String>{};
+
+  void _queue(Track t, YtMusicSong song) {
+    _queued[t.id] = song.url;
+    ref.read(downloadServiceProvider).add(song.url, format: ref.read(settingsProvider).ytFormat, title: t.title, art: t.art ?? song.artwork);
+  }
 
   /// Searches one song: queued when the match is sure; otherwise kept for
   /// picking by hand. False when nothing was found or it is unsure.
@@ -210,19 +216,25 @@ class _MissingSongsPageState extends ConsumerState<MissingSongsPage> {
         subtitle: subtitle,
       );
     }
+    ref.watch(downloadsProvider);
+    final url = _queued[t.id];
+    final task = url == null ? null : ref.read(downloadServiceProvider).taskFor(url);
     return ListTile(
-      leading: IconButton(
-        tooltip: '從音樂庫選擇',
-        icon: const Icon(Icons.library_music_outlined),
-        onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PickReplacementPage(missing: t))),
-      ),
+      leading: CoverProgress(art: t.art, task: task, size: 44),
       title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: subtitle,
       trailing: _busy.contains(t.id)
           ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
-          : _unsure.containsKey(t.id)
-              ? TextButton(onPressed: () => _choose(t), child: const Text('選擇'))
-              : IconButton(tooltip: '下載', icon: const Icon(Icons.download_rounded), onPressed: () => _downloadOne(t)),
+          : Row(mainAxisSize: MainAxisSize.min, children: [
+              IconButton(
+                tooltip: '從音樂庫選擇',
+                icon: const Icon(Icons.library_music_outlined),
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PickReplacementPage(missing: t))),
+              ),
+              _unsure.containsKey(t.id)
+                  ? TextButton(onPressed: () => _choose(t), child: const Text('選擇'))
+                  : IconButton(tooltip: '下載', icon: const Icon(Icons.download_rounded), onPressed: () => _downloadOne(t)),
+            ]),
     );
   }
 }

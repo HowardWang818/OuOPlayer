@@ -16,6 +16,7 @@ import '../widgets/dialogs.dart';
 import '../widgets/track_selection.dart';
 import '../widgets/track_tile.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/cover_progress.dart';
 import '../widgets/download_actions.dart';
 
 /// The search shortcut: the search box takes the cursor once the page is there.
@@ -128,6 +129,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                   labelStyle: TextStyle(color: online == tabOnline && s.podcast == tabPodcast ? Colors.black : null),
                   onSelected: (_) {
                     _search.setOnline(tabOnline, podcast: tabPodcast);
+                    if (tabOnline && !tabPodcast) explainLocalPlayer(context, ref);
                     if (tabOnline && q.isNotEmpty && !isUrl) _search.setOnlineQuery(q);
                   },
                 ),
@@ -220,7 +222,7 @@ class _OnlineResults extends ConsumerWidget {
       );
     }
     if (query.isEmpty) {
-      return const EmptyState(icon: Icons.travel_explore_rounded, title: '搜尋 YouTube Music');
+      return const EmptyState(icon: Icons.travel_explore_rounded, title: '線上搜尋');
     }
     final async = ref.watch(ytMusicSearchProvider(query));
     return async.when(
@@ -229,8 +231,8 @@ class _OnlineResults extends ConsumerWidget {
       data: (songs) => songs.isEmpty
           ? EmptyState(icon: Icons.search_off_rounded, title: '找不到「$query」')
           : ListView.builder(
-              itemCount: songs.length,
-              itemBuilder: (_, i) => _OnlineSongTile(song: songs[i]),
+              itemCount: songs.length + 1,
+              itemBuilder: (_, i) => i == 0 ? const _OnlineNote() : _OnlineSongTile(song: songs[i - 1]),
             ),
     );
   }
@@ -261,8 +263,9 @@ class _OnlineSongTileState extends ConsumerState<_OnlineSongTile> {
       }
       previewSources[clip] = (url: song.url, title: song.title);
       await ref.read(audioHandlerProvider).playTracks([
-        Track.fromUrl(clip, title: song.title, artist: song.artist, album: song.album ?? '', art: song.artwork, durationMs: 30000, source: TrackSource.preview),
+        Track.fromUrl(clip, title: '${song.title}（試聽）', artist: song.artist, album: song.album ?? '', art: song.artwork, durationMs: 30000, source: TrackSource.preview),
       ]);
+      if (mounted) toast(context, '試聽 30 秒');
     } catch (_) {
       if (mounted) toast(context, '無法試聽');
     } finally {
@@ -279,18 +282,61 @@ class _OnlineSongTileState extends ConsumerState<_OnlineSongTile> {
       if (song.album != null) song.album!,
       if (song.durationMs != null) formatDuration(Duration(milliseconds: song.durationMs!)),
     ].join(' • ');
+    ref.watch(downloadsProvider);
+    final task = ref.read(downloadServiceProvider).taskFor(song.url);
     return ListTile(
       leading: _loading
           ? const SizedBox(width: 48, height: 48, child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))))
-          : ArtImage(song.artwork, size: 48),
+          : CoverProgress(art: song.artwork, task: task),
       title: Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(info, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted)),
       trailing: IconButton(
         tooltip: '下載',
         icon: const Icon(Icons.download_rounded),
-        onPressed: () => startDownload(context, song.url, title: song.title),
+        onPressed: () => startDownload(context, song.url, title: song.title, art: song.artwork),
       ),
       onTap: _loading ? null : _preview,
     );
   }
+}
+
+/// The fixed line above online results: a local player, songs are kept by
+/// downloading them.
+class _OnlineNote extends StatelessWidget {
+  const _OnlineNote();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Row(children: [
+        Icon(Icons.info_outline, size: 16, color: cs.onSurfaceVariant),
+        const SizedBox(width: 6),
+        Expanded(child: Text(onlineNote, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant))),
+      ]),
+    );
+  }
+}
+
+const onlineNote = '下載後才能播放，試聽僅 30 秒';
+const localPlayerTitle = 'OuOPlayer 是本機播放器';
+const localPlayerText = '線上搜尋用於尋找並下載歌曲，下載後即可離線播放。';
+const localPlayerKey = 'online_intro_seen';
+
+/// 線上搜尋 the first time: OuOPlayer plays downloaded songs, not streams.
+Future<void> explainLocalPlayer(BuildContext context, WidgetRef ref) async {
+  final db = ref.read(dbProvider);
+  if ((await db.allSettings())[localPlayerKey] == 'true' || !context.mounted) return;
+  await db.setSetting(localPlayerKey, 'true');
+  if (!context.mounted) return;
+  await showDialog<void>(
+    context: context,
+    useRootNavigator: true,
+    builder: (ctx) => AlertDialog(
+      title: const Text(localPlayerTitle),
+      content: const Text(localPlayerText),
+      actions: [FilledButton(autofocus: true, onPressed: () => Navigator.pop(ctx), child: const Text('好'))],
+    ),
+  );
 }

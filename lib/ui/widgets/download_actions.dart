@@ -89,7 +89,7 @@ Future<DownloadTarget?> pickDownloadTarget(BuildContext context, {bool ask = fal
 /// Downloads one song (or a single-video link) into the chosen playlist.
 /// Playlist links keep making their own playlist. [ask]: false for songs
 /// that fill a missing place by themselves (缺少的歌曲).
-Future<bool> startDownload(BuildContext context, String url, {String? title, bool ask = true, bool like = false, bool askPlaylist = false}) async {
+Future<bool> startDownload(BuildContext context, String url, {String? title, String? art, bool ask = true, bool like = false, bool askPlaylist = false}) async {
   final c = ProviderScope.containerOf(context, listen: false);
   if (!await acceptDownloadTerms(context) || !context.mounted) return false;
   if (!await okToDownload(context, warn: c.read(settingsProvider).wifiWarning) || !context.mounted) return false;
@@ -98,7 +98,7 @@ Future<bool> startDownload(BuildContext context, String url, {String? title, boo
     target = await pickDownloadTarget(context, ask: askPlaylist);
     if (target == null) return false;
   }
-  c.read(downloadServiceProvider).add(url, format: c.read(settingsProvider).ytFormat, title: title, playlistId: target?.playlistId, playlistName: target?.name, like: like);
+  c.read(downloadServiceProvider).add(url, format: c.read(settingsProvider).ytFormat, title: title, playlistId: target?.playlistId, playlistName: target?.name, like: like, art: art);
   if (context.mounted) {
     toast(context, like ? '已加入下載，完成後加入已按讚的歌曲' : target?.name == null ? '已加入下載' : '已加入下載，完成後加入「${target!.name}」');
   }

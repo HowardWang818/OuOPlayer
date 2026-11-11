@@ -128,16 +128,7 @@ class TrackTile extends ConsumerWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(color: playing ? AppTheme.accent(context) : cs.onSurface, fontWeight: FontWeight.w500)),
-      subtitle: Row(children: [
-        if (track.source == TrackSource.download)
-          Padding(
-            padding: const EdgeInsets.only(right: 4),
-            child: Icon(Icons.arrow_circle_down, size: 14, color: AppTheme.accent(context)),
-          ),
-        Expanded(
-          child: Text(track.artist, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: cs.onSurfaceVariant)),
-        ),
-      ]),
+      subtitle: Text(track.artist, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: cs.onSurfaceVariant)),
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
         if (trailing != null) trailing!,
         if (track.duration != null && MediaQuery.sizeOf(context).width > 720)

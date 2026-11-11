@@ -12,6 +12,7 @@ import '../widgets/links.dart';
 import 'download_detail_page.dart';
 import 'help_page.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/cover_progress.dart';
 import '../widgets/download_actions.dart';
 import '../../services/download_match.dart' show isPlaylistUrl;
 import '../../services/download_target.dart';
@@ -248,7 +249,9 @@ class _TaskTile extends ConsumerWidget {
     final statusText = failed ? '失敗，點擊查看原因' : downloadStatusText(task);
     return ListTile(
       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DownloadDetailPage(taskId: task.id))),
-      leading: Icon(icon, color: color),
+      leading: task.art == null && task.status != DownloadStatus.running && task.status != DownloadStatus.queued
+          ? Icon(icon, color: color)
+          : CoverProgress(art: task.art, task: task),
       title: Text(task.title, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(statusText,

@@ -138,7 +138,7 @@ class LibrarySettingsPage extends ConsumerWidget {
         action: '尋找',
         leading: const Icon(Icons.translate),
         title: const Text('找原文歌名'),
-        subtitle: const Text('羅馬拼音或英文的歌名（例如 YouTube Music 下載的「Yoru ni Kakeru」）改回日文或中文的原名（會先預覽）'),
+        subtitle: const Text('羅馬拼音或英文的歌名（例如「Yoru ni Kakeru」）改回日文或中文的原名（會先預覽）'),
         onTap: () async {
           final all = await ref.read(dbProvider).tracks();
           if (context.mounted) await findNativeNames(context, ref, all);
