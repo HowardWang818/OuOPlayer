@@ -8,6 +8,7 @@ import '../../../providers/sync_provider.dart';
 import '../../../services/sync2/now_playing.dart';
 import '../../widgets/dialogs.dart';
 import 'section_page.dart';
+import 'sync_log_page.dart';
 
 /// 同步: Google sign-in, which playlists sync, the relay limit. Songs on
 /// their way show only in the notification (phone) / taskbar (Windows).
@@ -192,6 +193,12 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
               style: TextStyle(color: muted, fontSize: 13)),
         ),
       ],
+      SettingTile(
+        action: '查看',
+        leading: const Icon(Icons.receipt_long_outlined),
+        title: const Text('同步紀錄'),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SyncLogPage())),
+      ),
     ]);
   }
 }

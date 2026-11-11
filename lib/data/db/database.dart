@@ -14,6 +14,20 @@ import '../models/track.dart';
 
 /// Thin sqflite wrapper. Every write emits on [changes] so providers can refresh.
 class AppDatabase {
+  /// User changes to the library and sync's own writes take turns: a user
+  /// action (its rows and what it reports to sync) never interleaves with sync
+  /// merging or applying, so neither swallows the other. Re-entrant inside.
+  Future<void> _turns = Future.value();
+  static const _inTurn = #ouoDbTurn;
+
+  Future<T> exclusive<T>(Future<T> Function() fn) {
+    if (Zone.current[_inTurn] == true) return fn();
+    final before = _turns;
+    final done = Completer<void>();
+    _turns = done.future;
+    return before.then((_) => runZoned(fn, zoneValues: {_inTurn: true})).whenComplete(done.complete);
+  }
+
   AppDatabase._(this.db);
 
   /// Wraps an already open database (tests).
@@ -255,14 +269,14 @@ class AppDatabase {
   }
 
   /// Saves edited details (編輯資訊) of a song already in the library.
-  Future<void> updateTrackInfo(Track t) async {
+  Future<void> updateTrackInfo(Track t) => exclusive(() async {
     final before = await track(t.id);
     await db.update('tracks', {'title': t.title, 'artist': t.artist, 'album': t.album, 'art': t.art}, where: 'id = ?', whereArgs: [t.id]);
     if (before != null && (before.title != t.title || before.artist != t.artist || before.album != t.album || before.art != t.art)) {
       await syncHooks?.trackEdited(before, t);
     }
     _notify();
-  }
+  });
 
   /// Songs whose files moved (old path → new path): the song keeps its
   /// playlists, like, play counts, listening log and download record.
@@ -284,7 +298,7 @@ class AppDatabase {
     _notify();
   }
 
-  Future<void> deleteTracks(Iterable<String> ids) async {
+  Future<void> deleteTracks(Iterable<String> ids) => exclusive(() async {
     final list = ids.toList();
     if (list.isEmpty) return;
     final marks = List.filled(list.length, '?').join(',');
@@ -297,7 +311,7 @@ class AppDatabase {
     // playlists keep them (greyed), and sync doesn't fetch them back.
     await syncHooks?.songsRemoved(gone);
     _notify();
-  }
+  });
 
 
   /// Where removing these songs from the library takes them out of: the
@@ -430,7 +444,7 @@ class AppDatabase {
     return rows.map(Track.fromMap).toList();
   }
 
-  Future<void> setFavorite(Track t, bool fav) async {
+  Future<void> setFavorite(Track t, bool fav) => exclusive(() async {
     if (fav) {
       await db.insert('tracks', t.toMap(), conflictAlgorithm: ConflictAlgorithm.ignore);
       await db.insert('favorites', {'track_id': t.id, 'added_at': DateTime.now().millisecondsSinceEpoch},
@@ -440,7 +454,7 @@ class AppDatabase {
     }
     await syncHooks?.likesEdited();
     _notify();
-  }
+  });
 
   // ---------- history ----------
   Future<void> addHistory(Track t) async {
@@ -672,19 +686,19 @@ class AppDatabase {
     return id;
   }
 
-  Future<void> renamePlaylist(int id, String name) async {
+  Future<void> renamePlaylist(int id, String name) => exclusive(() async {
     await db.update('playlists', {'name': name}, where: 'id = ?', whereArgs: [id]);
     await syncHooks?.playlistEdited(id);
     _notify();
-  }
+  });
 
-  Future<void> deletePlaylist(int id) async {
+  Future<void> deletePlaylist(int id) => exclusive(() async {
     final row = await db.query('playlists', columns: ['uid', 'synced'], where: 'id = ?', whereArgs: [id]);
     await db.delete('playlists', where: 'id = ?', whereArgs: [id]);
     await db.delete('playlist_tracks', where: 'playlist_id = ?', whereArgs: [id]);
     if (row.isNotEmpty && row.first['synced'] == 1) await syncHooks?.playlistDeleted(row.first['uid'] as String?);
     _notify();
-  }
+  });
 
   /// A playlist's rows in order: (song id, entry id or null).
   Future<List<(String, String?)>> playlistRows(int id) async {
@@ -713,7 +727,7 @@ class AppDatabase {
 
   /// Appends songs that aren't in the playlist yet (each song appears once),
   /// or all of them with [allowDuplicates]. Returns how many were added.
-  Future<int> addToPlaylist(int id, List<Track> tracks, {bool allowDuplicates = false}) async {
+  Future<int> addToPlaylist(int id, List<Track> tracks, {bool allowDuplicates = false}) => exclusive(() async {
     final r = await db.rawQuery('SELECT COALESCE(MAX(position), -1) AS m FROM playlist_tracks WHERE playlist_id = ?', [id]);
     var pos = (r.first['m'] as int) + 1;
     final have = await _playlistTrackIds(id);
@@ -729,7 +743,7 @@ class AppDatabase {
     if (added > 0) await syncHooks?.playlistEdited(id);
     _notify();
     return added;
-  }
+  });
 
   Future<Set<String>> _playlistTrackIds(int id) async {
     final rows = await db.query('playlist_tracks', columns: ['track_id'], where: 'playlist_id = ?', whereArgs: [id]);
@@ -766,7 +780,7 @@ class AppDatabase {
   /// position), so songs downloaded in parallel keep the source order.
   /// Does nothing if the song is already in the playlist; returns whether it
   /// was added.
-  Future<bool> addToPlaylistAt(int id, Track track, int position) async {
+  Future<bool> addToPlaylistAt(int id, Track track, int position) => exclusive(() async {
     final have = await db.query('playlist_tracks',
         columns: ['track_id'], where: 'playlist_id = ? AND track_id = ?', whereArgs: [id, track.id], limit: 1);
     if (have.isNotEmpty) return false;
@@ -775,7 +789,7 @@ class AppDatabase {
     await syncHooks?.playlistEdited(id);
     _notify();
     return true;
-  }
+  });
 
   /// Removes several rows (by position) from a playlist at once.
   Future<void> removeFromPlaylistAt(int id, List<int> indexes) async {
@@ -803,7 +817,7 @@ class AppDatabase {
   }
 
   /// A user change to the rows (entry ids kept), reported to [syncHooks].
-  Future<void> _rewritePlaylist(int id, List<(String, String?)> rows) async {
+  Future<void> _rewritePlaylist(int id, List<(String, String?)> rows) => exclusive(() async {
     await db.transaction((txn) async {
       await txn.delete('playlist_tracks', where: 'playlist_id = ?', whereArgs: [id]);
       for (var i = 0; i < rows.length; i++) {
@@ -812,7 +826,7 @@ class AppDatabase {
     });
     await syncHooks?.playlistEdited(id);
     _notify();
-  }
+  });
 
   // ---------- podcasts ----------
   Future<List<Podcast>> podcasts() async {

@@ -32,6 +32,10 @@ class EditSync {
   final Future<void> Function(Track t, Uint8List? cover)? writeTags;
   final Future<String> Function(Uint8List bytes, String mime)? storeArt;
 
+  /// 同步紀錄: a song's name or cover taken from another device (its name
+  /// before, after, whether the cover changed, the device id).
+  void Function(String before, String after, bool cover, String device)? onApplied;
+
   /// Lyrics the last [apply] took from another device (root → lrc).
   final adoptedLyrics = <String, String>{};
 
@@ -198,6 +202,9 @@ class EditSync {
             'device': m['d'],
           },
           conflictAlgorithm: ConflictAlgorithm.replace);
+      if (updated.title != t.title || updated.artist != t.artist || updated.art != t.art) {
+        onApplied?.call(t.title, updated.title, updated.art != t.art, '${m['d']}');
+      }
       changed++;
     }
     // Lyrics: picked by hand beats found; otherwise the latest; never the same twice.

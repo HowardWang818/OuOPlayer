@@ -17,6 +17,7 @@ import '../playlist_import.dart';
 import '../sync/drive_client.dart';
 import 'edits.dart';
 import 'merge.dart';
+import 'sync_log.dart';
 import 'now_playing.dart';
 import 'plays.dart';
 
@@ -82,6 +83,10 @@ class SyncEngine implements SyncHooks {
   }) : _clock = clock ?? (() => DateTime.now().millisecondsSinceEpoch) {
     db.syncHooks = this;
     edits = EditSync(db: db, drive: drive, lyricsOf: lyricsOf, setLyrics: setLyrics, writeTags: writeTags, storeArt: storeArt);
+    edits.onApplied = (before, after, cover, device) => _logged.add(SyncLogEntry(
+        DateTime.now(),
+        [if (before != after) '歌名「$before」改為「$after」', if (cover) '「$after」更換封面'].join('，'),
+        device: _deviceNames[device]));
     plays = PlaySync(db);
     nowPlaying = NowPlayingStore(drive);
   }
@@ -106,7 +111,11 @@ class SyncEngine implements SyncHooks {
   final _random = Random.secure();
 
   /// Set while sync itself writes the library (those aren't user actions).
-  bool _applying = false;
+  /// Sync's own writes run in a zone marked with this, inside the library's
+  /// turn (AppDatabase.exclusive): the hooks skip them, and only them.
+  static const _syncZone = #ouoSyncApplying;
+  bool get _own => Zone.current[_syncZone] == true;
+  Future<T> _asSync<T>(Future<T> Function() fn) => db.exclusive(() => runZoned(fn, zoneValues: {_syncZone: true}));
 
   String _newId() => List.generate(14, (_) => _random.nextInt(36).toRadixString(36)).join();
 
@@ -198,7 +207,7 @@ class SyncEngine implements SyncHooks {
 
   @override
   Future<void> playlistEdited(int playlistId) async {
-    if (_applying) return;
+    if (_own) return;
     final row = (await db.db.query('playlists', where: 'id = ?', whereArgs: [playlistId])).firstOrNull;
     if (row == null || row['synced'] != 1 || row['uid'] == null) return;
     final sid = row['uid'] as String;
@@ -216,18 +225,15 @@ class SyncEngine implements SyncHooks {
     await _save(sid, state);
     // New entries get their ids in the library too.
     if ([for (final r in rows) r.$2].join('|') != rec.ids.join('|')) {
-      _applying = true;
-      try {
+      await _asSync(() async {
         await db.setPlaylistRows(playlistId, [for (var i = 0; i < rows.length; i++) (rows[i].$1, rec.ids[i])]);
-      } finally {
-        _applying = false;
-      }
+      });
     }
   }
 
   @override
   Future<void> playlistDeleted(String? uid) async {
-    if (_applying || uid == null) return;
+    if (_own || uid == null) return;
     final state = (await states())[uid];
     if (state == null) return;
     await _save(uid, ListState(name: state.name, deleted: Stamped(true, _clock(), await deviceId()), items: state.items));
@@ -235,7 +241,7 @@ class SyncEngine implements SyncHooks {
 
   @override
   Future<void> likesEdited() async {
-    if (_applying || !await likedSynced) return;
+    if (_own || !await likedSynced) return;
     final me = await deviceId();
     final now = _clock();
     final state = (await states())[likedId] ?? ListState();
@@ -259,7 +265,7 @@ class SyncEngine implements SyncHooks {
   /// Not downloaded back here; a copy still here is still sent to the others.
   @override
   Future<void> songsRemoved(List<(String, String)> songs) async {
-    if (_applying) return;
+    if (_own) return;
     await _putSet(_removedKey, {...await _set(_removedKey), for (final (t, a) in songs) songKey(t, a)});
     await applyAll();
   }
@@ -268,7 +274,7 @@ class SyncEngine implements SyncHooks {
   /// (when 歌曲資料 sync is on).
   @override
   Future<void> trackEdited(Track before, Track after) async {
-    if (_applying || (await _settings())['sync_edits'] == 'false') return;
+    if (_own || (await _settings())['sync_edits'] == 'false') return;
     await edits.recorded(before, after, await deviceId(), _clock());
   }
 
@@ -284,14 +290,11 @@ class SyncEngine implements SyncHooks {
   Future<void> applyAll() async {
     final all = await states();
     final r = await _Resolver.make(db);
-    _applying = true;
-    try {
+    await _asSync(() async {
       for (final e in all.entries) {
         if (!e.value.isDeleted) await _apply(e.key, e.value, r);
       }
-    } finally {
-      _applying = false;
-    }
+    });
   }
 
   Future<bool> _apply(String sid, ListState state, _Resolver r) async {
@@ -320,9 +323,27 @@ class SyncEngine implements SyncHooks {
     if ([for (final x in rows) '${x.$1}/${x.$2}'].join('|') != [for (final x in want) '${x.$1}/${x.$2}'].join('|')) {
       await db.setPlaylistRows(id, want);
       changed = true;
+      // 同步紀錄: the songs this brought in or took out of the list.
+      final before = {for (final x in rows) x.$2}, after = {for (final x in want) x.$2};
+      final listName = state.name?.value ?? '播放清單';
+      String title(String? tid) => _titles[tid] ?? '';
+      final added = [for (final x in want) if (!before.contains(x.$2)) x.$1];
+      final gone = [for (final x in rows) if (!after.contains(x.$2)) x.$1];
+      _titles.addAll({for (final t in await db.tracksByIds([...added, ...gone])) t.id: t.title});
+      _logged.addAll([
+        for (final tid in added) SyncLogEntry(DateTime.now(), '「$listName」加入「${title(tid)}」'),
+        for (final tid in gone) SyncLogEntry(DateTime.now(), '「$listName」移除「${title(tid)}」'),
+      ]);
     }
     return changed;
   }
+
+  /// Titles for the log, and what this sync brought in (written at its end).
+  final _titles = <String?, String>{};
+  final _logged = <SyncLogEntry>[];
+
+  /// Device id → its name, from the other devices' state files.
+  final _deviceNames = <String, String>{};
 
   Future<bool> _applyLiked(ListState state, _Resolver r) async {
     final liked = {for (final t in await db.favorites()) songKey(t.title, t.artist): t};
@@ -332,6 +353,7 @@ class SyncEngine implements SyncHooks {
       if (liked.containsKey(k)) continue;
       final t = await r.resolve(item.song);
       await db.db.insert('favorites', {'track_id': t.id, 'added_at': item.addedAt}, conflictAlgorithm: ConflictAlgorithm.ignore);
+      _logged.add(SyncLogEntry(DateTime.now(), '按讚「${t.title}」', device: _deviceNames[item.order.device]));
       changed = true;
     }
     final removed = {for (final i in state.items.values) if (!i.visible) i.key}..removeAll(shown.keys);
@@ -339,6 +361,7 @@ class SyncEngine implements SyncHooks {
       final t = liked[k];
       if (t == null) continue;
       await db.db.delete('favorites', where: 'track_id = ?', whereArgs: [t.id]);
+      _logged.add(SyncLogEntry(DateTime.now(), '取消按讚「${t.title}」'));
       changed = true;
     }
     if (changed) db.notifyChanged();
@@ -364,6 +387,7 @@ class SyncEngine implements SyncHooks {
     for (final f in files.where((f) => f.name.startsWith('v2-state-') && f.name != mine)) {
       try {
         final j = jsonDecode(utf8.decode(await drive.download(f.id))) as Map;
+        if (j['name'] != null) _deviceNames['${j['device']}'] = '${j['name']}';
         remote['${j['device']}'] = _Remote(
           (j['updated'] as num?)?.toInt() ?? 0,
           // Songs it has, and songs it doesn't want (cancelled / removed there): no upload for it.
@@ -387,10 +411,13 @@ class SyncEngine implements SyncHooks {
       all = await states();
     }
 
-    // Merge.
+    // Merge, on this device's states as they are now (the user may have
+    // changed a list while the other devices' files came in), in one turn.
+    final changed = <String>{};
+    await _asSync(() async {
+    all = await states();
     final fresh = await _set('sync2_fresh');
     final ignored = await _set('sync2_ignored');
-    final changed = <String>{};
     for (final dev in remote.values) {
       for (final MapEntry(key: sid, value: theirs) in dev.lists.entries) {
         if (ignored.contains(sid) || (sid == likedId && !await likedSynced)) continue;
@@ -423,6 +450,7 @@ class SyncEngine implements SyncHooks {
     for (final sid in changed) {
       await _save(sid, all[sid]!);
     }
+    });
 
     // Song details first (a renamed song still matches its playlist entries).
     final s = await _settings();
@@ -436,10 +464,12 @@ class SyncEngine implements SyncHooks {
     final r = await _Resolver.make(db);
     final deleted = <String>[];
     var applied = 0;
-    _applying = true;
-    try {
+    await _asSync(() async {
+      // The states as they are now: a user change since the merge counts.
+      final current = await states();
       for (final sid in changed) {
-        final s = all[sid]!;
+        final s = current[sid] ?? all[sid]!;
+        all[sid] = s;
         if (!s.isDeleted) {
           if (await _apply(sid, s, r)) applied++;
           continue;
@@ -457,9 +487,7 @@ class SyncEngine implements SyncHooks {
         }
         applied++;
       }
-    } finally {
-      _applying = false;
-    }
+    });
     if (applied > 0) db.notifyChanged();
 
     // What this device has of the synced playlists' songs, and what it
@@ -512,6 +540,8 @@ class SyncEngine implements SyncHooks {
     final active = [for (final d in remote.values) if (now - d.updated < _active.inMilliseconds) d];
     final incomplete = lacking.difference(removed).isNotEmpty || active.any((d) => have.any((k) => !d.have.contains(k)));
     _seen = seen;
+    await SyncLog.add(db, _logged);
+    _logged.clear();
     return SyncResult(
       changed: applied,
       deleted: deleted,
@@ -644,13 +674,10 @@ class SyncEngine implements SyncHooks {
     }
     final names = {for (final f in files) f.name: f.id};
     var received = 0;
-    _applying = true;
-    try {
+    await _asSync(() async {
       received = await edits.apply(theirs, me, names);
       if (received > 0) db.notifyChanged();
-    } finally {
-      _applying = false;
-    }
+    });
     // Lyrics that just came in aren't this device's to count next time.
     marks.addAll({for (final e in edits.adoptedLyrics.entries) 'l|${e.key}': _hash(e.value)});
     await db.setSetting('sync2_sent_edits', jsonEncode(marks));
@@ -917,13 +944,10 @@ class SyncEngine implements SyncHooks {
         trackNo: imported.trackNo,
         addedAt: imported.addedAt,
       );
-      _applying = true;
-      try {
+      await _asSync(() async {
         await db.updateTrackInfo(named);
         await MissingSongs.fillExact(db, named);
-      } finally {
-        _applying = false;
-      }
+      });
     } finally {
       final f = File(part);
       if (f.existsSync()) await f.delete();
