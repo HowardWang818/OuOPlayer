@@ -9,6 +9,7 @@ import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../services/network_check.dart';
 import '../../services/download_service.dart';
+import '../../services/online/preview_match.dart';
 import '../../services/online/ytmusic.dart';
 import '../widgets/art_image.dart';
 import '../widgets/dialogs.dart';
@@ -250,15 +251,17 @@ class _OnlineSongTileState extends ConsumerState<_OnlineSongTile> {
     final song = widget.song;
     setState(() => _loading = true);
     try {
-      final stream = await ref.read(downloadServiceProvider).streamUrl(song.url);
+      // iTunes' 30-second preview of the same song (YouTube isn't streamed).
+      final found = previewMatch(song.title, song.artist, await ref.read(iTunesSearchProvider).search('${song.title} ${song.artist}', limit: 10));
+      final clip = found?.previewUrl;
       if (!mounted) return;
-      if (stream == null) {
+      if (clip == null) {
         toast(context, '無法試聽');
         return;
       }
-      previewSources[stream] = (url: song.url, title: song.title);
+      previewSources[clip] = (url: song.url, title: song.title);
       await ref.read(audioHandlerProvider).playTracks([
-        Track.fromUrl(stream, title: song.title, artist: song.artist, album: song.album ?? '', art: song.artwork, durationMs: song.durationMs, source: TrackSource.preview),
+        Track.fromUrl(clip, title: song.title, artist: song.artist, album: song.album ?? '', art: song.artwork, durationMs: 30000, source: TrackSource.preview),
       ]);
     } catch (_) {
       if (mounted) toast(context, '無法試聽');

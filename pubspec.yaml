@@ -1,7 +1,7 @@
 name: ouoplayer
 description: "OuOPlayer - a music player for Android and Windows, with playlist sync."
 publish_to: 'none'
-version: 1.19.1+95
+version: 1.19.2+96
 
 environment:
   sdk: ^3.6.0

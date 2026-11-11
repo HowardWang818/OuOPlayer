@@ -180,42 +180,6 @@ class DownloadService {
     return task;
   }
 
-  /// 試聽: a direct audio address for [url] (yt-dlp -g), or null. Gets the
-  /// download parts first if needed.
-  Future<String?> streamUrl(String url) async {
-    final kept = _streams[url];
-    if (kept != null && DateTime.now().isBefore(kept.$2)) return kept.$1;
-    final backend = ytdlp;
-    if (backend == null) return null;
-    if (!await backend.isReady()) await backend.prepare((_) {});
-    String? found;
-    final lines = <String>[];
-    await for (final e in backend.run('preview_${_seq++}', url, const ['-f', 'bestaudio', '-g', '--no-playlist'])) {
-      if (e is YtDlpLog) lines.add(e.line);
-      if (e is YtDlpFinished) lines.addAll((e.output ?? '').split('\n'));
-    }
-    for (final l in lines) {
-      final t = l.trim();
-      if (t.startsWith('http')) {
-        found = t;
-        break;
-      }
-    }
-    if (found != null) _streams[url] = (found, streamExpiry(found, DateTime.now()));
-    return found;
-  }
-
-  /// 試聽 addresses already looked up (the same song plays again at once).
-  final _streams = <String, (String, DateTime)>{};
-
-  /// When a looked-up address stops working: YouTube's `expire` time less
-  /// ten minutes, or four hours when it doesn't say.
-  static DateTime streamExpiry(String address, DateTime now) {
-    final expire = int.tryParse(Uri.tryParse(address)?.queryParameters['expire'] ?? '');
-    if (expire == null) return now.add(const Duration(hours: 4));
-    return DateTime.fromMillisecondsSinceEpoch(expire * 1000).subtract(const Duration(minutes: 10));
-  }
-
   void retry(DownloadTask t) {
     if (t.isGroup) {
       for (final c in t.children) {

@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ouoplayer/services/download_service.dart';
 import 'package:ouoplayer/services/online/ytmusic.dart';
 import 'package:ouoplayer/ui/widgets/download_actions.dart';
 
@@ -9,14 +8,6 @@ YtMusicSong song(String id, String title, String artist, {int? ms}) => YtMusicSo
 
 void main() {
   group('試聽', () {
-    test('a looked-up address is kept until YouTube says it expires', () {
-      final now = DateTime(2026, 11, 11, 20);
-      final expire = now.add(const Duration(hours: 6)).millisecondsSinceEpoch ~/ 1000;
-      final at = DownloadService.streamExpiry('https://rr1.googlevideo.com/videoplayback?expire=$expire&id=x', now);
-      expect(at, DateTime.fromMillisecondsSinceEpoch(expire * 1000).subtract(const Duration(minutes: 10)));
-      expect(DownloadService.streamExpiry('https://example.com/a.m4a', now), now.add(const Duration(hours: 4)));
-    });
-
     test('a preview remembers the song page, so ♥ and 加入播放清單 download it', () {
       previewSources['https://rr1.googlevideo.com/x'] = (url: 'https://music.youtube.com/watch?v=abc', title: '群青');
       expect(previewSourceOf('https://rr1.googlevideo.com/x')!.url, 'https://music.youtube.com/watch?v=abc');
