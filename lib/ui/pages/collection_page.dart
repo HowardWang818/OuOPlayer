@@ -29,6 +29,8 @@ import 'pick_songs_page.dart';
 import '../../config/device_words.dart';
 import '../../theme/looks.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/download_actions.dart';
+import '../widgets/missing_download.dart';
 
 enum CollectionKind { album, artist, playlist, favorites, allSongs, folder, smart }
 
@@ -504,7 +506,36 @@ class CollectionPage extends ConsumerWidget {
 
 extension on CollectionPage {
   /// Paste a song or playlist URL; finished songs go straight into this playlist.
+  /// 下載到這個播放清單: its missing songs, or a pasted address.
   Future<void> _downloadToPlaylist(BuildContext context, WidgetRef ref) async {
+    final missing = [for (final t in await ref.read(dbProvider).playlistTracks(playlistId!)) if (t.source == TrackSource.missing) t];
+    if (!context.mounted) return;
+    if (missing.isNotEmpty) {
+      final choice = await showModalBottomSheet<String>(
+        context: context,
+        useRootNavigator: true,
+        showDragHandle: true,
+        builder: (ctx) => SafeArea(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            ListTile(
+              leading: const Icon(Icons.download_rounded),
+              title: Text('下載缺少的 ${missing.length} 首'),
+              onTap: () => Navigator.pop(ctx, 'missing'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.link),
+              title: const Text('貼上網址'),
+              onTap: () => Navigator.pop(ctx, 'url'),
+            ),
+          ]),
+        ),
+      );
+      if (choice == null || !context.mounted) return;
+      if (choice == 'missing') {
+        await downloadMissingSongs(context, missing);
+        return;
+      }
+    }
     final ctrl = TextEditingController();
     var wholePlaylist = true;
     final url = await showDialog<String>(
@@ -538,6 +569,7 @@ extension on CollectionPage {
       if (context.mounted) toast(context, '請輸入有效的網址');
       return;
     }
+    if (!context.mounted || !await acceptDownloadTerms(context)) return;
     if (!context.mounted || !await okToDownload(context, warn: ref.read(settingsProvider).wifiWarning)) return;
     ref.read(downloadServiceProvider).add(
           url,
@@ -546,7 +578,7 @@ extension on CollectionPage {
           playlistId: playlistId,
           playlistName: name,
         );
-    if (context.mounted) toast(context, '已加入下載佇列，完成後會加進「$name」');
+    if (context.mounted) toast(context, '已加入下載，完成後加入「$name」');
   }
 }
 

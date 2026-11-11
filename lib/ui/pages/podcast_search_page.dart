@@ -61,12 +61,11 @@ class PodcastSearchResults extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     if (query.isEmpty) {
       return Center(
         child: pending
             ? FilledButton.icon(onPressed: onSearch, icon: const Icon(Icons.search), label: const Text('搜尋 Podcast'))
-            : Text('搜尋 Podcast 節目', style: TextStyle(color: muted)),
+            : const EmptyState(icon: Icons.podcasts_rounded, title: '搜尋 Podcast 節目'),
       );
     }
     final subscribed = {for (final p in ref.watch(podcastsProvider).value ?? const <Podcast>[]) p.feedUrl};

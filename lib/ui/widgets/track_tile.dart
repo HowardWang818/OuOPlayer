@@ -12,18 +12,17 @@ import '../../theme/app_theme.dart';
 import '../../theme/looks.dart';
 import '../pages/collection_page.dart';
 import '../pages/cover_fix_page.dart';
-import '../pages/missing_songs_page.dart';
 import '../pages/native_name_page.dart';
 import '../../services/native_names.dart';
 import '../pages/pick_replacement_page.dart';
 import 'art_image.dart';
 import 'dialogs.dart';
 import 'download_actions.dart';
+import 'missing_download.dart';
 import 'edit_track_dialog.dart';
 import 'removal_summary.dart';
 import 'track_links.dart';
 import 'track_selection.dart';
-import '../../config/device_words.dart';
 
 class TrackTile extends ConsumerWidget {
   const TrackTile({
@@ -146,7 +145,8 @@ class TrackTile extends ConsumerWidget {
   }
 }
 
-/// A missing song's menu: find it on YouTube Music, or take it out of the list.
+/// A missing song's menu: download it, pick it from the library, or take it
+/// out of the list.
 Future<void> showMissingSongMenu(BuildContext context, WidgetRef ref, Track track, {VoidCallback? onRemove, String removeLabel = '移除'}) =>
     showModalBottomSheet(
       context: context,
@@ -157,25 +157,23 @@ Future<void> showMissingSongMenu(BuildContext context, WidgetRef ref, Track trac
           ListTile(
             leading: const Icon(Icons.music_off_outlined),
             title: Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text('${track.artist} • $thisDevice上還沒有這首歌，有了之後會自動補上'),
+            subtitle: Text('${track.artist} • 缺少'),
           ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.library_music_outlined),
-            title: const Text('從音樂庫選擇這首歌'),
-            subtitle: Text('$thisDevice上其實有，只是沒自動對上時用'),
+            title: const Text('從音樂庫選擇'),
             onTap: () {
               Navigator.pop(ctx);
               Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => PickReplacementPage(missing: track)));
             },
           ),
           ListTile(
-            leading: const Icon(Icons.link),
-            title: const Text('取得 YouTube Music 連結'),
-            subtitle: const Text('在「缺少的歌曲」頁面查詢'),
+            leading: const Icon(Icons.download_rounded),
+            title: const Text('下載'),
             onTap: () {
               Navigator.pop(ctx);
-              Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => const MissingSongsPage()));
+              downloadMissingSong(context, track);
             },
           ),
           if (onRemove != null)

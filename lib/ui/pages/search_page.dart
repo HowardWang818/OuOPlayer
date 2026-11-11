@@ -254,7 +254,7 @@ class _OnlineSongTileState extends ConsumerState<_OnlineSongTile> {
     setState(() => _loading = true);
     try {
       // iTunes' 30-second preview of the same song (YouTube isn't streamed).
-      final found = previewMatch(song.title, song.artist, await ref.read(iTunesSearchProvider).search('${song.title} ${song.artist}', limit: 10));
+      final found = previewMatch(song.title, song.artist, await ref.read(iTunesSearchProvider).search('${song.title} ${song.artist}', limit: 15), durationMs: song.durationMs);
       final clip = found?.previewUrl;
       if (!mounted) return;
       if (clip == null) {

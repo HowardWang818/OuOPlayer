@@ -230,7 +230,7 @@ Future<void> importSpotify(BuildContext context, WidgetRef ref) async {
               Navigator.pop(ctx);
               Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => const MissingSongsPage()));
             },
-            child: const Text('取得 YouTube Music 連結'),
+            child: const Text('下載缺少的歌曲'),
           ),
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('好')),
       ],

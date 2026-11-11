@@ -30,4 +30,39 @@ void main() {
       expect(search, isNot(contains('streamUrl')));
     });
   });
+
+  group('試聽不換版本', () {
+    ITunesSong v(int id, String title, {String album = '', int? ms}) =>
+        ITunesSong(id: id, title: title, artist: 'YOASOBI', album: album, viewUrl: 'https://x/$id', previewUrl: 'https://a/$id', durationMs: ms);
+
+    test('the studio song skips THE FIRST TAKE and live takes', () {
+      final found = previewMatch('夜に駆ける', 'YOASOBI', [
+        v(1, '夜に駆ける - From THE FIRST TAKE', ms: 262000),
+        v(2, '夜に駆ける (Live)', ms: 270000),
+        v(3, '夜に駆ける', ms: 261000),
+      ], durationMs: 261000);
+      expect(found?.id, 3);
+    });
+
+    test('only a live take found: no preview rather than the wrong one', () {
+      expect(previewMatch('夜に駆ける', 'YOASOBI', [v(1, '夜に駆ける (Live)')]), isNull);
+    });
+
+    test('a live song looks for its live take', () {
+      final found = previewMatch('夜に駆ける (Live)', 'YOASOBI', [v(1, '夜に駆ける'), v(2, '夜に駆ける (Live)')]);
+      expect(found?.id, 2);
+    });
+
+    test('far too long is not the same recording', () {
+      expect(previewMatch('夜に駆ける', 'YOASOBI', [v(1, '夜に駆ける', ms: 400000)], durationMs: 261000), isNull);
+    });
+  });
+
+  test('no 取得 YouTube Music 連結 left on screen', () {
+    for (final f in Directory('lib/ui').listSync(recursive: true).whereType<File>().where((f) => f.path.endsWith('.dart'))) {
+      expect(f.readAsStringSync(), isNot(contains('取得 YouTube Music 連結')), reason: f.path);
+    }
+    expect(File('lib/ui/widgets/track_tile.dart').readAsStringSync(), contains('downloadMissingSong(context, track)'));
+    expect(File('lib/ui/pages/collection_page.dart').readAsStringSync(), contains('downloadMissingSongs(context, missing)'));
+  });
 }

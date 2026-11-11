@@ -7,8 +7,8 @@ import '../../services/missing_songs.dart';
 import '../../services/network_check.dart';
 import '../../services/online/ytmusic.dart';
 import '../../services/song_matcher.dart';
-import '../widgets/art_image.dart';
 import '../widgets/cover_progress.dart';
+import '../widgets/missing_download.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/download_actions.dart';
 import 'pick_replacement_page.dart';
@@ -78,7 +78,7 @@ class _MissingSongsPageState extends ConsumerState<MissingSongsPage> {
 
   void _queue(Track t, YtMusicSong song) {
     _queued[t.id] = song.url;
-    ref.read(downloadServiceProvider).add(song.url, format: ref.read(settingsProvider).ytFormat, title: t.title, art: t.art ?? song.artwork);
+    queueMissing(ProviderScope.containerOf(context, listen: false), t, song);
   }
 
   /// Searches one song: queued when the match is sure; otherwise kept for
@@ -133,34 +133,7 @@ class _MissingSongsPageState extends ConsumerState<MissingSongsPage> {
 
   /// 選擇版本: the search results for [t]; the one tapped is downloaded.
   Future<void> _choose(Track t) async {
-    final results = _unsure[t.id] ?? const <YtMusicSong>[];
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
-    final song = await showModalBottomSheet<YtMusicSong>(
-      context: context,
-      useRootNavigator: true,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (ctx) => SafeArea(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.7),
-          child: ListView(shrinkWrap: true, children: [
-            ListTile(title: Text(t.title, style: const TextStyle(fontWeight: FontWeight.w600)), subtitle: Text(t.artist)),
-            const Divider(),
-            for (final r in results)
-              ListTile(
-                leading: ArtImage(r.artwork, size: 44),
-                title: Text(r.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: Text(
-                    [r.artist, if (r.album != null) r.album!, if (r.durationMs != null) formatDuration(Duration(milliseconds: r.durationMs!))].join(' • '),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: muted)),
-                onTap: () => Navigator.pop(ctx, r),
-              ),
-          ]),
-        ),
-      ),
-    );
+    final song = await pickVersion(context, t, _unsure[t.id] ?? const <YtMusicSong>[]);
     if (song == null || !mounted) return;
     _queue(t, song);
     setState(() => _unsure.remove(t.id));
