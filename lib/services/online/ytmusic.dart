@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import '../song_matcher.dart';
 
 /// A song found on YouTube Music.
 class YtMusicSong {
@@ -107,4 +108,15 @@ class YtMusicSearch {
       artwork: art,
     );
   }
+}
+
+/// 缺少的歌曲: the search result that is surely [title] by [artist] (same
+/// artist, title close enough, length within 10 seconds when both are
+/// known), or null when none is sure.
+YtMusicSong? sureMatch(String title, String artist, int? durationMs, List<YtMusicSong> results) {
+  final want = SongKey(title, artist, durationMs: durationMs);
+  final (song, result) = SongMatcher.best(want, results, (YtMusicSong s) => SongKey(s.title, s.artist, durationMs: s.durationMs));
+  if (song == null || result.level != MatchLevel.sure) return null;
+  if (durationMs != null && song.durationMs != null && (durationMs - song.durationMs!).abs() > 10000) return null;
+  return song;
 }

@@ -225,6 +225,10 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
             child: EmptyState(icon: Icons.download_rounded, title: '尚無下載'),
           ),
         for (final t in tasks) _TaskTile(task: t),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+          child: Text(downloadTerms, style: TextStyle(fontSize: 12, color: muted)),
+        ),
       ]),
     );
   }

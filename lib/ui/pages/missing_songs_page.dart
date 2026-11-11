@@ -7,6 +7,7 @@ import '../../services/missing_songs.dart';
 import '../../services/network_check.dart';
 import '../../services/online/ytmusic.dart';
 import '../../services/song_matcher.dart';
+import '../widgets/art_image.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/download_actions.dart';
 import 'pick_replacement_page.dart';
@@ -38,7 +39,8 @@ String linkQuery(Track t) {
 }
 
 /// 缺少的歌曲: songs listed in playlists but not on the device. A download
-/// (the first YouTube Music match for title and artist) fills the place.
+/// fills the place: automatic when YouTube Music has a sure match (same
+/// artist, close title and length), otherwise picked by hand.
 class MissingSongsPage extends ConsumerStatefulWidget {
   const MissingSongsPage({super.key});
 
@@ -67,14 +69,26 @@ class _MissingSongsPageState extends ConsumerState<MissingSongsPage> {
     toast(context, '已移除 ${chosen.length} 首');
   }
 
-  /// Finds and queues one song; false when nothing was found.
+  /// Songs whose search found no sure match: picked by hand (選擇版本).
+  final _unsure = <String, List<YtMusicSong>>{};
+
+  void _queue(Track t, YtMusicSong song) =>
+      ref.read(downloadServiceProvider).add(song.url, format: ref.read(settingsProvider).ytFormat, title: t.title);
+
+  /// Searches one song: queued when the match is sure; otherwise kept for
+  /// picking by hand. False when nothing was found or it is unsure.
   Future<bool> _download(Track t) async {
     setState(() => _busy.add(t.id));
     try {
-      final song = await YtMusicSearch().first(linkQuery(t));
-      if (song == null) return false;
-      ref.read(downloadServiceProvider).add(song.url, format: ref.read(settingsProvider).ytFormat, title: t.title);
-      return true;
+      final results = await YtMusicSearch().search(linkQuery(t));
+      final song = sureMatch(t.title, t.artist, t.durationMs, results);
+      if (song != null) {
+        _queue(t, song);
+        _unsure.remove(t.id);
+        return true;
+      }
+      if (results.isNotEmpty) _unsure[t.id] = results;
+      return false;
     } catch (_) {
       return false;
     } finally {
@@ -86,23 +100,65 @@ class _MissingSongsPageState extends ConsumerState<MissingSongsPage> {
     if (songs.isEmpty || !await acceptDownloadTerms(context) || !mounted) return;
     if (!await okToDownload(context, warn: ref.read(settingsProvider).wifiWarning) || !mounted) return;
     setState(() => _all = true);
-    var missed = 0;
+    var queued = 0;
     try {
       for (final t in songs) {
         if (!mounted) break;
-        if (!await _download(t)) missed++;
+        if (await _download(t)) queued++;
       }
     } finally {
       if (mounted) setState(() => _all = false);
     }
-    if (mounted) toast(context, missed == 0 ? '已加入下載' : '已加入下載，$missed 首找不到');
+    final left = songs.length - queued;
+    if (mounted) toast(context, left == 0 ? '已加入下載' : '已加入下載 $queued 首，$left 首需要選擇');
   }
 
   Future<void> _downloadOne(Track t) async {
     if (!await acceptDownloadTerms(context) || !mounted) return;
     if (!await okToDownload(context, warn: ref.read(settingsProvider).wifiWarning) || !mounted) return;
-    final ok = await _download(t);
-    if (mounted) toast(context, ok ? '已加入下載' : '找不到「${t.title}」');
+    if (await _download(t)) {
+      if (mounted) toast(context, '已加入下載');
+    } else if (_unsure.containsKey(t.id)) {
+      if (mounted) await _choose(t);
+    } else if (mounted) {
+      toast(context, '找不到「${t.title}」');
+    }
+  }
+
+  /// 選擇版本: the search results for [t]; the one tapped is downloaded.
+  Future<void> _choose(Track t) async {
+    final results = _unsure[t.id] ?? const <YtMusicSong>[];
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final song = await showModalBottomSheet<YtMusicSong>(
+      context: context,
+      useRootNavigator: true,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.7),
+          child: ListView(shrinkWrap: true, children: [
+            ListTile(title: Text(t.title, style: const TextStyle(fontWeight: FontWeight.w600)), subtitle: Text(t.artist)),
+            const Divider(),
+            for (final r in results)
+              ListTile(
+                leading: ArtImage(r.artwork, size: 44),
+                title: Text(r.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text(
+                    [r.artist, if (r.album != null) r.album!, if (r.durationMs != null) formatDuration(Duration(milliseconds: r.durationMs!))].join(' • '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: muted)),
+                onTap: () => Navigator.pop(ctx, r),
+              ),
+          ]),
+        ),
+      ),
+    );
+    if (song == null || !mounted) return;
+    _queue(t, song);
+    setState(() => _unsure.remove(t.id));
+    toast(context, '已加入下載');
   }
 
   @override
@@ -164,7 +220,9 @@ class _MissingSongsPageState extends ConsumerState<MissingSongsPage> {
       subtitle: subtitle,
       trailing: _busy.contains(t.id)
           ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
-          : IconButton(tooltip: '下載', icon: const Icon(Icons.download_rounded), onPressed: () => _downloadOne(t)),
+          : _unsure.containsKey(t.id)
+              ? TextButton(onPressed: () => _choose(t), child: const Text('選擇'))
+              : IconButton(tooltip: '下載', icon: const Icon(Icons.download_rounded), onPressed: () => _downloadOne(t)),
     );
   }
 }

@@ -256,6 +256,7 @@ class _OnlineSongTileState extends ConsumerState<_OnlineSongTile> {
         toast(context, '無法試聽');
         return;
       }
+      previewSources[stream] = (url: song.url, title: song.title);
       await ref.read(audioHandlerProvider).playTracks([
         Track.fromUrl(stream, title: song.title, artist: song.artist, album: song.album ?? '', art: song.artwork, durationMs: song.durationMs, source: TrackSource.preview),
       ]);

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../providers/providers.dart';
+import '../../widgets/download_actions.dart' show downloadTerms;
 import 'section_page.dart';
 
 /// 下載與線上: where downloads go, mobile data and yt-dlp.
@@ -50,6 +51,10 @@ class DownloadSettingsPage extends ConsumerWidget {
             '${Platform.isAndroid ? '。開啟「沒有 Wi-Fi 時下載前提醒」時只在 Wi-Fi 下更新' : ''}'),
         value: s.ytAutoUpdate,
         onChanged: n.setYtAutoUpdate,
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Text(downloadTerms, style: TextStyle(fontSize: 12, color: muted)),
       ),
     ]);
   }

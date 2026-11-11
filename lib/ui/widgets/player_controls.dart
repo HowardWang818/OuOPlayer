@@ -11,6 +11,7 @@ import '../../theme/app_theme.dart';
 import 'art_image.dart';
 import 'hover.dart';
 import '../../theme/looks.dart';
+import 'download_actions.dart';
 
 class SeekBar extends ConsumerStatefulWidget {
   const SeekBar({super.key, this.compact = false});
@@ -138,10 +139,14 @@ class FavoriteButton extends ConsumerWidget {
     final track = ref.watch(currentTrackProvider);
     if (track == null) return const SizedBox.shrink();
     final fav = ref.watch(favoriteIdsProvider).value?.contains(track.id) ?? false;
+    // A preview: ♥ downloads the song and likes the file, not the address.
+    final preview = previewSourceOf(track.id);
     return IconButton(
       tooltip: fav ? '從已按讚的歌曲移除' : '加到已按讚的歌曲',
       icon: Icon(fav ? Icons.favorite : Icons.favorite_border, color: fav ? (activeColor ?? AppTheme.accent(context)) : null),
-      onPressed: () => ref.read(dbProvider).setFavorite(track, !fav),
+      onPressed: preview != null
+          ? () => startDownload(context, preview.url, title: preview.title, ask: false, like: true)
+          : () => ref.read(dbProvider).setFavorite(track, !fav),
     );
   }
 }

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../widgets/download_actions.dart' show downloadTerms;
 import '../widgets/links.dart';
 import 'onboarding_page.dart';
 
@@ -62,8 +61,6 @@ class HelpPage extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 16),
-        Text(downloadTerms, style: t.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
         const SizedBox(height: 24),
         FilledButton.tonalIcon(
           onPressed: () => Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => const OnboardingPage())),

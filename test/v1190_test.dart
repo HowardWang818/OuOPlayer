@@ -129,7 +129,10 @@ void main() {
 
     test('the download terms are shown in the app and the READMEs', () {
       expect(downloadTerms, contains('法律責任'));
-      expect(File('lib/ui/pages/help_page.dart').readAsStringSync(), contains('downloadTerms'));
+      // Shown once, then only on 下載 and in its settings.
+      expect(File('lib/ui/pages/help_page.dart').readAsStringSync(), isNot(contains('downloadTerms')));
+      expect(File('lib/ui/pages/downloads_page.dart').readAsStringSync(), contains('downloadTerms'));
+      expect(File('lib/ui/pages/settings/download_settings.dart').readAsStringSync(), contains('downloadTerms'));
       expect(File('README.md').readAsStringSync(), contains('法律責任'));
     });
   });

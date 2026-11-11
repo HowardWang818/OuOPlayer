@@ -18,6 +18,7 @@ import '../../services/native_names.dart';
 import '../pages/pick_replacement_page.dart';
 import 'art_image.dart';
 import 'dialogs.dart';
+import 'download_actions.dart';
 import 'edit_track_dialog.dart';
 import 'removal_summary.dart';
 import 'track_links.dart';
@@ -204,6 +205,7 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
   final db = ref.read(dbProvider);
   final favs = ref.read(favoriteIdsProvider).value ?? {};
   final isFav = favs.contains(track.id);
+  final preview = previewSourceOf(track.id);
   await showModalBottomSheet(
     context: context,
     useRootNavigator: true,
@@ -222,7 +224,12 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
             title: Text(isFav ? '從已按讚的歌曲移除' : '加到已按讚的歌曲'),
             onTap: () {
               Navigator.pop(ctx);
-              db.setFavorite(track, !isFav);
+              // A preview: download the song, then like it.
+              if (preview != null) {
+                startDownload(context, preview.url, title: preview.title, ask: false, like: true);
+              } else {
+                db.setFavorite(track, !isFav);
+              }
             },
           ),
           ListTile(
@@ -230,7 +237,12 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
             title: const Text('加入播放清單'),
             onTap: () {
               Navigator.pop(ctx);
-              showAddToPlaylist(context, ref, [track]);
+              // A preview: download the song into the playlist picked.
+              if (preview != null) {
+                startDownload(context, preview.url, title: preview.title, askPlaylist: true);
+              } else {
+                showAddToPlaylist(context, ref, [track]);
+              }
             },
           ),
           // Only 加入佇列 (like Spotify): it plays after the current song and
@@ -244,7 +256,7 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
               if (context.mounted) toast(context, '已加入佇列');
             },
           ),
-          if (track.source != TrackSource.url && track.source != TrackSource.podcast) ...[
+          if (track.source != TrackSource.url && track.source != TrackSource.podcast && track.source != TrackSource.preview) ...[
             ListTile(
               leading: const Icon(Icons.album),
               title: const Text('前往專輯'),

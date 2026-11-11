@@ -34,11 +34,12 @@ Future<bool> acceptDownloadTerms(BuildContext context) async {
 
 /// The playlist downloads go into: the one picked within the last hour, or
 /// asked now. Null: cancelled.
-Future<DownloadTarget?> pickDownloadTarget(BuildContext context) async {
+/// [ask]: always ask (「加入播放清單」 on a preview), without remembering.
+Future<DownloadTarget?> pickDownloadTarget(BuildContext context, {bool ask = false}) async {
   final db = ProviderScope.containerOf(context, listen: false).read(dbProvider);
   final saved = DownloadTarget.decode((await db.allSettings())[DownloadTarget.key]);
   final now = DateTime.now();
-  if (saved != null && saved.freshAt(now)) {
+  if (!ask && saved != null && saved.freshAt(now)) {
     // The playlist may have been deleted since.
     final lists = await db.playlists();
     if (saved.playlistId == null || lists.any((p) => p.id == saved.playlistId)) return saved;
@@ -55,11 +56,12 @@ Future<DownloadTarget?> pickDownloadTarget(BuildContext context) async {
           padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Text('下載至', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         ),
-        ListTile(
-          leading: const Icon(Icons.library_music_outlined),
-          title: const Text('僅加入音樂庫'),
-          onTap: () => Navigator.pop(ctx, DownloadTarget(at: DateTime.now())),
-        ),
+        if (!ask)
+          ListTile(
+            leading: const Icon(Icons.library_music_outlined),
+            title: const Text('僅加入音樂庫'),
+            onTap: () => Navigator.pop(ctx, DownloadTarget(at: DateTime.now())),
+          ),
         ListTile(
           leading: const Icon(Icons.add),
           title: const Text('新增播放清單'),
@@ -80,23 +82,32 @@ Future<DownloadTarget?> pickDownloadTarget(BuildContext context) async {
       ]),
     ),
   );
-  if (picked != null) await db.setSetting(DownloadTarget.key, picked.encode());
+  if (picked != null && !ask) await db.setSetting(DownloadTarget.key, picked.encode());
   return picked;
 }
 
 /// Downloads one song (or a single-video link) into the chosen playlist.
 /// Playlist links keep making their own playlist. [ask]: false for songs
 /// that fill a missing place by themselves (缺少的歌曲).
-Future<bool> startDownload(BuildContext context, String url, {String? title, bool ask = true}) async {
+Future<bool> startDownload(BuildContext context, String url, {String? title, bool ask = true, bool like = false, bool askPlaylist = false}) async {
   final c = ProviderScope.containerOf(context, listen: false);
   if (!await acceptDownloadTerms(context) || !context.mounted) return false;
   if (!await okToDownload(context, warn: c.read(settingsProvider).wifiWarning) || !context.mounted) return false;
   DownloadTarget? target;
   if (ask && !isPlaylistUrl(url)) {
-    target = await pickDownloadTarget(context);
+    target = await pickDownloadTarget(context, ask: askPlaylist);
     if (target == null) return false;
   }
-  c.read(downloadServiceProvider).add(url, format: c.read(settingsProvider).ytFormat, title: title, playlistId: target?.playlistId, playlistName: target?.name);
-  if (context.mounted) toast(context, target?.name == null ? '已加入下載' : '已加入下載，完成後加入「${target!.name}」');
+  c.read(downloadServiceProvider).add(url, format: c.read(settingsProvider).ytFormat, title: title, playlistId: target?.playlistId, playlistName: target?.name, like: like);
+  if (context.mounted) {
+    toast(context, like ? '已加入下載，完成後加入已按讚的歌曲' : target?.name == null ? '已加入下載' : '已加入下載，完成後加入「${target!.name}」');
+  }
   return true;
 }
+
+/// 試聽 tracks (a short-lived audio address) and the song page each came
+/// from, so 加入播放清單 and ♥ download the song instead of keeping the address.
+final previewSources = <String, ({String url, String title})>{};
+
+/// The song page behind a preview track, or null for other tracks.
+({String url, String title})? previewSourceOf(String trackId) => previewSources[trackId];

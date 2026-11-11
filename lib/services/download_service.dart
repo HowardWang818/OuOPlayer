@@ -34,6 +34,9 @@ class DownloadTask {
   /// Library playlist the finished songs go into: chosen by the user
   /// ("下載到這個播放清單") or created from the source playlist's title.
   int? playlistId;
+
+  /// Liked once downloaded (♥ pressed while a preview played).
+  bool like = false;
   String? playlistName;
 
   /// Files that already existed and were kept instead of the new copy.
@@ -155,6 +158,7 @@ class DownloadService {
     String? title,
     int? playlistId,
     String? playlistName,
+    bool like = false,
   }) {
     final k = kind ?? (_looksLikeAudioFile(url) || ytdlp == null ? DownloadKind.direct : DownloadKind.ytdlp);
     final task = DownloadTask(
@@ -169,7 +173,7 @@ class DownloadService {
       title: title,
       playlistId: playlistId,
       playlistName: playlistName,
-    );
+    )..like = like;
     tasks.insert(0, task);
     _emit();
     _pump();
@@ -179,6 +183,8 @@ class DownloadService {
   /// 試聽: a direct audio address for [url] (yt-dlp -g), or null. Gets the
   /// download parts first if needed.
   Future<String?> streamUrl(String url) async {
+    final kept = _streams[url];
+    if (kept != null && DateTime.now().isBefore(kept.$2)) return kept.$1;
     final backend = ytdlp;
     if (backend == null) return null;
     if (!await backend.isReady()) await backend.prepare((_) {});
@@ -195,7 +201,19 @@ class DownloadService {
         break;
       }
     }
+    if (found != null) _streams[url] = (found, streamExpiry(found, DateTime.now()));
     return found;
+  }
+
+  /// 試聽 addresses already looked up (the same song plays again at once).
+  final _streams = <String, (String, DateTime)>{};
+
+  /// When a looked-up address stops working: YouTube's `expire` time less
+  /// ten minutes, or four hours when it doesn't say.
+  static DateTime streamExpiry(String address, DateTime now) {
+    final expire = int.tryParse(Uri.tryParse(address)?.queryParameters['expire'] ?? '');
+    if (expire == null) return now.add(const Duration(hours: 4));
+    return DateTime.fromMillisecondsSinceEpoch(expire * 1000).subtract(const Duration(minutes: 10));
   }
 
   void retry(DownloadTask t) {
@@ -355,6 +373,7 @@ class DownloadService {
     } else if (track != null) {
       await _addToPlaylist(t, [track]);
     }
+    if (track != null && t.like) await _db.setFavorite(track, true);
     return target;
   }
 
