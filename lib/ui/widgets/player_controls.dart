@@ -145,7 +145,7 @@ class FavoriteButton extends ConsumerWidget {
       tooltip: fav ? '從已按讚的歌曲移除' : '加到已按讚的歌曲',
       icon: Icon(fav ? Icons.favorite : Icons.favorite_border, color: fav ? (activeColor ?? AppTheme.accent(context)) : null),
       onPressed: preview != null
-          ? () => startDownload(context, preview.url, title: preview.title, ask: false, like: true)
+          ? () => downloadPreview(context, preview, like: true)
           : () => ref.read(dbProvider).setFavorite(track, !fav),
     );
   }

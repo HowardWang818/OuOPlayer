@@ -217,7 +217,7 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
               Navigator.pop(ctx);
               // A preview: download the song, then like it.
               if (preview != null) {
-                startDownload(context, preview.url, title: preview.title, ask: false, like: true);
+                downloadPreview(context, preview, like: true);
               } else {
                 db.setFavorite(track, !isFav);
               }
@@ -230,7 +230,7 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
               Navigator.pop(ctx);
               // A preview: download the song into the playlist picked.
               if (preview != null) {
-                startDownload(context, preview.url, title: preview.title, askPlaylist: true);
+                downloadPreview(context, preview, like: false);
               } else {
                 showAddToPlaylist(context, ref, [track]);
               }
@@ -288,7 +288,6 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
             ListTile(
               leading: const Icon(Icons.image_search_outlined),
               title: const Text('找正式封面'),
-              subtitle: const Text('從 iTunes 找正方形的專輯封面'),
               onTap: () {
                 Navigator.pop(ctx);
                 Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => CoverFixPage(tracks: [track])));

@@ -111,3 +111,21 @@ final previewSources = <String, ({String url, String title})>{};
 
 /// The song page behind a preview track, or null for other tracks.
 ({String url, String title})? previewSourceOf(String trackId) => previewSources[trackId];
+
+/// ♥ or 加入播放清單 on a preview: asks first, then downloads the song
+/// (liked, or into the playlist picked).
+Future<void> downloadPreview(BuildContext context, ({String url, String title}) preview, {required bool like}) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    useRootNavigator: true,
+    builder: (ctx) => AlertDialog(
+      title: Text(like ? '下載並加入已按讚的歌曲？' : '下載並加入播放清單？'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('下載')),
+      ],
+    ),
+  );
+  if (ok != true || !context.mounted) return;
+  await startDownload(context, preview.url, title: preview.title, ask: !like, like: like, askPlaylist: !like);
+}

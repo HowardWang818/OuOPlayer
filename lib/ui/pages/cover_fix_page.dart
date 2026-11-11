@@ -24,7 +24,7 @@ Future<void> findCovers(BuildContext context, WidgetRef ref, List<Track> tracks,
       kind: 'cover',
       tracks: want,
       title: (n) => '替 $n 首找封面？',
-      message: (n) => 'iTunes 每分鐘大約只能查 20 次，大約需要 ${(n * 3 / 60).ceil()} 分鐘。找完會先讓你預覽，確認後才更換。');
+      message: (n) => '大約需要 ${(n * 3 / 60).ceil()} 分鐘，找完後先預覽再更換。');
   if (list != null && context.mounted) {
     await Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => CoverFixPage(tracks: list)));
   }
@@ -134,8 +134,7 @@ class _CoverFixPageState extends ConsumerState<CoverFixPage> {
       body: ListView(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: Text('封面來自 iTunes。勾選的會換成正式的正方形封面；MP3、M4A、FLAC 會寫進檔案，其他格式只在 OuOPlayer 裡更換。'
-              '「可能是」的結果預設不勾，請確認是同一張專輯再勾。',
+          child: Text('勾選的歌曲將換成正方形封面，MP3、M4A、FLAC 會寫入檔案。「可能是」的結果預設不勾選。',
               style: TextStyle(color: muted, fontSize: 13)),
         ),
         if (_searching) ...[

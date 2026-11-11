@@ -12,10 +12,14 @@ void main() {
       previewSources['https://rr1.googlevideo.com/x'] = (url: 'https://music.youtube.com/watch?v=abc', title: '群青');
       expect(previewSourceOf('https://rr1.googlevideo.com/x')!.url, 'https://music.youtube.com/watch?v=abc');
       expect(previewSourceOf('/storage/emulated/0/Music/a.mp3'), isNull);
+      // Asks first (1.19.4), then downloads.
       final menu = File('lib/ui/widgets/track_tile.dart').readAsStringSync();
-      expect(menu, contains('askPlaylist: true'));
-      expect(menu, contains('like: true'));
-      expect(File('lib/ui/widgets/player_controls.dart').readAsStringSync(), contains('like: true'));
+      expect(menu, contains('downloadPreview(context, preview, like: false)'));
+      expect(menu, contains('downloadPreview(context, preview, like: true)'));
+      expect(File('lib/ui/widgets/player_controls.dart').readAsStringSync(), contains('downloadPreview(context, preview, like: true)'));
+      final actions = File('lib/ui/widgets/download_actions.dart').readAsStringSync();
+      expect(actions, contains('下載並加入已按讚的歌曲？'));
+      expect(actions, contains('下載並加入播放清單？'));
     });
   });
 

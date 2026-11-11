@@ -43,4 +43,16 @@ void main() {
       expect(t.art, 'https://lh3/a');
     });
   });
+
+  test('no Apple or iTunes on screen (the privacy page lists services)', () {
+    final dir = Directory('lib/ui');
+    for (final f in dir.listSync(recursive: true).whereType<File>().where((f) => f.path.endsWith('.dart'))) {
+      if (f.path.replaceAll(r'\', '/').endsWith('privacy_page.dart')) continue;
+      for (final m in RegExp(r"'([^'\n]*)'").allMatches(f.readAsStringSync())) {
+        final text = m.group(1)!;
+        if (text.startsWith('http')) continue;
+        expect(text.contains('iTunes') || text.contains('Apple'), isFalse, reason: '${f.path}: $text');
+      }
+    }
+  });
 }

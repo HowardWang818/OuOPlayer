@@ -117,7 +117,7 @@ class LibrarySettingsPage extends ConsumerWidget {
         action: '整理',
         leading: const Icon(Icons.image_search_outlined),
         title: const Text('整理音樂庫的封面'),
-        subtitle: const Text('替沒有封面、或封面是影片截圖的歌，從 iTunes 找正式的正方形封面（會先預覽）'),
+        subtitle: const Text('為沒有封面或封面為影片截圖的歌曲尋找正方形封面'),
         onTap: () async {
           final all = await ref.read(dbProvider).tracks();
           if (context.mounted) await findCovers(context, ref, all);
@@ -127,7 +127,7 @@ class LibrarySettingsPage extends ConsumerWidget {
         action: '替換',
         leading: const Icon(Icons.hd_outlined),
         title: const Text('替換太小的封面'),
-        subtitle: const Text('小於 500×500、在電腦上看起來糊的封面，也從 iTunes 找正式封面（會先預覽）'),
+        subtitle: const Text('替換小於 500×500 的封面'),
         onTap: () async {
           final all = await ref.read(dbProvider).tracks();
           if (context.mounted) await findCovers(context, ref, all, small: true);
@@ -276,7 +276,7 @@ class _CoverSizeTileState extends ConsumerState<_CoverSizeTile> {
     action: '更改',
         leading: const Icon(Icons.photo_size_select_large_outlined),
         title: const Text('封面大小'),
-        subtitle: Text('找封面時從 iTunes 取用的大小：${_labels[CoverFinder.size]}'),
+        subtitle: Text('找封面時使用的大小：${_labels[CoverFinder.size]}'),
         onTap: () async {
           final picked = await showDialog<int>(
             context: context,

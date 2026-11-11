@@ -20,8 +20,7 @@ Future<void> findNativeNames(BuildContext context, WidgetRef ref, List<Track> tr
       kind: 'original',
       tracks: want,
       title: (n) => '替 $n 首找原文歌名？',
-      message: (n) => '從 iTunes 日本和台灣查歌名、歌手和專輯的日文或中文原名（只會送出歌名和歌手）；歌名括號裡已經有原文的直接改用。'
-          'iTunes 每分鐘大約只能查 20 次，大約需要 ${(n * 3 / 60).ceil()} 分鐘。找完會先讓你預覽，確認後才更改。');
+      message: (n) => '大約需要 ${(n * 3 / 60).ceil()} 分鐘，找完後先預覽再更改。');
   if (list != null && context.mounted) {
     await Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => NativeNamePage(tracks: list)));
   }
@@ -127,8 +126,7 @@ class _NativeNamePageState extends ConsumerState<NativeNamePage> {
       body: ListView(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: Text('原名來自歌名括號裡的原文，或 iTunes 日本、台灣；只有歌手相同、長度相差 2 秒內的才算。'
-              'MP3、M4A、FLAC 會寫進檔案，其他格式只在 OuOPlayer 裡更改。找不到的維持原樣（韓文歌在 iTunes 上是英文名，只能用括號裡的韓文）。',
+          child: Text('只採用歌手相同、長度相近的結果，MP3、M4A、FLAC 會寫入檔案。',
               style: TextStyle(color: muted, fontSize: 13)),
         ),
         if (_searching) ...[

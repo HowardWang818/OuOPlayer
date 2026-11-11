@@ -9,7 +9,7 @@ import '../widgets/dialogs.dart';
 import 'podcasts_page.dart';
 import '../widgets/empty_state.dart';
 
-/// 搜尋 Podcast: shows from Apple's directory by name or host.
+/// 搜尋 Podcast: shows by name or host (the iTunes directory, not named on screen).
 class PodcastSearchPage extends ConsumerStatefulWidget {
   const PodcastSearchPage({super.key});
 
@@ -66,7 +66,7 @@ class PodcastSearchResults extends ConsumerWidget {
       return Center(
         child: pending
             ? FilledButton.icon(onPressed: onSearch, icon: const Icon(Icons.search), label: const Text('搜尋 Podcast'))
-            : Text('從 Apple Podcast 目錄搜尋節目', style: TextStyle(color: muted)),
+            : Text('搜尋 Podcast 節目', style: TextStyle(color: muted)),
       );
     }
     final subscribed = {for (final p in ref.watch(podcastsProvider).value ?? const <Podcast>[]) p.feedUrl};
