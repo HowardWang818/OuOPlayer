@@ -1,11 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Splash screen before Android 12: the theme background with the app icon
-     in the middle (dark or light with the phone; values-v31 for Android 12+). -->
+<!-- Splash screen before Android 12: only the theme background, dark or
+     light with the phone (values-v31 for Android 12+). -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/splash_background" />
-    <item>
-        <bitmap
-            android:gravity="center"
-            android:src="@drawable/splash_icon" />
-    </item>
 </layer-list>

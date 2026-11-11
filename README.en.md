@@ -168,7 +168,7 @@ On the old phone use 設定 → 備份與還原 → 備份資料 (Settings → B
 
 ## Privacy
 
-OuOPlayer needs no account, shows no ads, and collects none of your library, listening history or personal data; the one exception is an anonymous user count you can turn off. Playing your own music needs no internet at all. See the full [privacy policy](docs/PRIVACY.md).
+OuOPlayer needs no account, shows no ads, and collects none of your library, listening history or personal data; the one exception is an anonymous user count. Playing your own music needs no internet at all. See the full [privacy policy](docs/PRIVACY.md).
 
 It only goes online for the following, and only sends what's listed:
 
@@ -180,7 +180,7 @@ It only goes online for the following, and only sends what's listed:
 | YouTube Music links | YouTube Data API | Title and artist | Only if you enter your own API key |
 | Sync | Your own Google Drive | Chosen playlists, song details and files, lyrics, listening history | Off by default, 設定 → 同步 (Settings → Sync) |
 | Update checks | OuOPlayer's update server | An update request only | 設定 → 關於與更新 (Settings → About and updates) |
-| Anonymous user count | OuOPlayer's update server | Once a day: a random id, the version, the platform (no IP kept, deleted after 90 days) | 設定 → 關於與更新 (Settings → About and updates) |
+| Anonymous user count | OuOPlayer's update server | Once a day: a random id, the version, the platform (no IP kept, deleted after 90 days) | — |
 | Original-language titles | mora, OTOTOY, YouTube Music | Title and artist | Only when you use it |
 | Scrobbling | Last.fm, ListenBrainz | Title, artist, album and time of songs you heard | Off by default, 設定 → 播放紀錄與統計 (Settings → History and stats) |
 | Downloads, streams, podcasts | The links you paste or subscribe to | — | Only when you use them |

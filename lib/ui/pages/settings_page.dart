@@ -10,6 +10,7 @@ import '../widgets/hover.dart';
 import '../widgets/missing_files_dialog.dart';
 import 'backup_page.dart';
 import '../../config/version.dart';
+import '../../services/app_icon.dart';
 import '../../services/updater.dart';
 import 'settings/about_settings.dart';
 import 'settings/appearance_settings.dart';
@@ -74,7 +75,7 @@ List<({IconData icon, String title, String subtitle, Widget page})> get _section
       (icon: Icons.storage_outlined, title: '儲存空間', subtitle: '封面、歌手圖片、歌詞、下載暫存檔佔用的空間', page: const StoragePage()),
       if (Platform.isWindows) (icon: Icons.keyboard_outlined, title: '快捷鍵', subtitle: '自訂電腦快捷鍵', page: const ShortcutSettingsEntry()),
       // After 快捷鍵 (Windows) / 儲存空間 (phone): set once, looked at now and then.
-      (icon: Icons.palette_outlined, title: '外觀', subtitle: '深色／淺色、顏色主題、播放頁、清單密度、圓角、歌名字體', page: const AppearanceSettingsPage()),
+      (icon: Icons.palette_outlined, title: '外觀', subtitle: '深色／淺色、顏色主題、播放頁、清單密度、圓角、歌名字體${AppIcon.supported ? '、App 圖示' : ''}', page: const AppearanceSettingsPage()),
       (icon: Icons.info_outline, title: '關於與更新', subtitle: '版本 $appVersion${Updater.supported ? ' • 檢查更新' : ''}', page: const AboutSettingsPage()),
     ];
 

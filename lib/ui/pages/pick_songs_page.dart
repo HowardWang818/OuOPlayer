@@ -55,7 +55,7 @@ class _PickSongsPageState extends ConsumerState<PickSongsPage> {
         ),
         Expanded(
           child: shown.isEmpty
-              ? (all.isEmpty ? const EmptyState(icon: Icons.library_music_outlined, title: '音樂庫裡還沒有歌曲', message: '到 設定 → 音樂庫 新增音樂資料夾。') : const EmptyState(icon: Icons.search_off_rounded, title: '找不到符合的歌曲'))
+              ? (all.isEmpty ? const EmptyState(icon: Icons.library_music_outlined, title: '音樂庫沒有歌曲') : const EmptyState(icon: Icons.search_off_rounded, title: '找不到符合的歌曲'))
               : ListView.builder(
                   itemCount: shown.length,
                   itemBuilder: (_, i) {

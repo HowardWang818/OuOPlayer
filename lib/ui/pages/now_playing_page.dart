@@ -13,6 +13,7 @@ import '../widgets/image_viewer.dart';
 import '../widgets/lyrics_view.dart';
 import '../widgets/output_device_chip.dart';
 import '../widgets/player_controls.dart';
+import '../widgets/share_card.dart';
 import '../widgets/song_font.dart';
 import '../widgets/sleep_timer_sheet.dart';
 import '../widgets/track_links.dart';
@@ -109,6 +110,12 @@ class NowPlayingPage extends ConsumerWidget {
                 style: font.artist(theme.textTheme.titleMedium!.copyWith(color: theme.colorScheme.onSurfaceVariant))),
           ]),
         ),
+        if (track != null && track.source != TrackSource.podcast)
+          IconButton(
+            tooltip: '分享',
+            icon: Icon(Platform.isAndroid ? Icons.share_outlined : Icons.ios_share),
+            onPressed: () => showShareCard(context, track),
+          ),
         const FavoriteButton(),
       ]),
       const SizedBox(height: 16),

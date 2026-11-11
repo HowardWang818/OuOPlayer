@@ -241,7 +241,7 @@ class _MissingSongsPageState extends ConsumerState<MissingSongsPage> {
           ),
       ]),
       body: list.isEmpty
-          ? const EmptyState(icon: Icons.check_circle_outline_rounded, title: '沒有缺少的歌曲', message: '播放清單裡的歌都在這台上。')
+          ? const EmptyState(icon: Icons.check_circle_outline_rounded, title: '沒有缺少的歌曲')
           : ListView(children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),

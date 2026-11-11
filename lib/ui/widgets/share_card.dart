@@ -27,6 +27,7 @@ enum ShareShape {
 /// The card is laid out at this width and saved 4 times as large (1080 px).
 const shareCardWidth = 270.0;
 const shareScale = 4.0;
+const shareCardRadius = 20.0;
 
 Future<void> showShareCard(BuildContext context, Track track) => showDialog<void>(
       context: context,
@@ -68,12 +69,12 @@ class _ShareDialogState extends ConsumerState<_ShareDialog> {
         await file.writeAsBytes(png);
         await Process.run('explorer.exe', ['/select,', file.path]);
         if (mounted) {
-          toast(context, '已存成圖片：${file.path}');
+          toast(context, '圖片已儲存');
           Navigator.pop(context);
         }
       }
     } catch (e) {
-      if (mounted) toast(context, '無法分享：$e');
+      if (mounted) toast(context, '無法分享');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -83,7 +84,7 @@ class _ShareDialogState extends ConsumerState<_ShareDialog> {
   Widget build(BuildContext context) {
     final colour = ref.watch(artColorProvider(widget.track.art)).value ?? const Color(0xFF2A3A55);
     return AlertDialog(
-      title: const Text('分享這首歌'),
+      title: const Text('分享歌曲'),
       contentPadding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
         SegmentedButton<ShareShape>(
@@ -110,7 +111,7 @@ class _ShareDialogState extends ConsumerState<_ShareDialog> {
           icon: _busy
               ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
               : Icon(Platform.isAndroid ? Icons.share : Icons.save_alt),
-          label: Text(Platform.isAndroid ? '分享' : '存成圖片'),
+          label: Text(Platform.isAndroid ? '分享' : '儲存圖片'),
         ),
       ],
     );
@@ -129,10 +130,13 @@ class ShareCard extends StatelessWidget {
     final tall = shape == ShareShape.story;
     final h = shareCardWidth / shape.aspect;
     final dark = Color.lerp(colour, Colors.black, 0.75)!;
+    // Fixed rounded corners in both shapes (transparent outside them).
     return SizedBox(
       width: shareCardWidth,
       height: h,
-      child: DecoratedBox(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(shareCardRadius),
+        child: DecoratedBox(
         decoration: BoxDecoration(
           gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [colour, dark]),
         ),
@@ -156,10 +160,11 @@ class ShareCard extends StatelessWidget {
               Row(children: [
                 ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.asset('assets/icon/app_icon_dark.png', width: 18, height: 18)),
                 const SizedBox(width: 6),
-                Text('正在用 OuOPlayer 聽', style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.85))),
+                Text('Listen on OuOPlayer', style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.85))),
               ]),
             ]),
           ),
+        ),
         ),
       ),
     );

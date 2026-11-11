@@ -5,12 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../config/links.dart';
 import '../../config/version.dart';
 import '../../providers/providers.dart';
-import '../widgets/dialogs.dart';
 import 'privacy_page.dart';
-import 'settings_page.dart' show ensureStoragePermission;
 import 'settings/library_settings.dart' show addMusicFolder;
 import 'youtube_key_guide_page.dart';
 
@@ -38,9 +35,10 @@ class _FirstRunGateState extends ConsumerState<FirstRunGate> {
     final db = ref.read(dbProvider);
     final m = await db.allSettings();
     if (!mounted) return;
-    if (ref.read(firstRunProvider)) {
+    final first = ref.read(firstRunProvider);
+    if (first) {
       await Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => const OnboardingPage()));
-    } else if (m['seen_version'] != null && m['seen_version'] != appVersion) {
+    } else if (whatsNewDue(firstRun: first, seenVersion: m['seen_version'])) {
       await showWhatsNew(context);
     }
     await db.setSetting('onboarded', 'true');
@@ -50,6 +48,10 @@ class _FirstRunGateState extends ConsumerState<FirstRunGate> {
   @override
   Widget build(BuildContext context) => widget.child;
 }
+
+/// 這版新功能 shows once per version, but not on a new install (the guide
+/// shows then). Copies from before 1.18.0 never stored [seenVersion].
+bool whatsNewDue({required bool firstRun, required String? seenVersion}) => !firstRun && seenVersion != appVersion;
 
 /// The lines of assets/whats_new.txt (written for each version).
 Future<List<String>> whatsNewLines() async {
@@ -68,7 +70,7 @@ Future<void> showWhatsNew(BuildContext context) async {
   await showDialog<void>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: Text('OuOPlayer $appVersion 有什麼新東西'),
+      title: const Text('$appVersion 新功能'),
       content: SingleChildScrollView(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           for (final l in lines)
@@ -78,7 +80,7 @@ Future<void> showWhatsNew(BuildContext context) async {
             ),
         ]),
       ),
-      actions: [FilledButton(autofocus: true, onPressed: () => Navigator.pop(ctx), child: const Text('知道了'))],
+      actions: [FilledButton(autofocus: true, onPressed: () => Navigator.pop(ctx), child: const Text('好'))],
     ),
   );
 }
@@ -170,18 +172,12 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-              child: Text.rich(
-                TextSpan(children: [
-                  const TextSpan(text: 'OuOPlayer 不收集你的資料，只有一個可以關掉的匿名使用人數統計（設定 → 關於與更新）。'),
-                  WidgetSpan(
-                    alignment: PlaceholderAlignment.middle,
-                    child: InkWell(
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PrivacyPage())),
-                      child: Text('隱私說明', style: TextStyle(color: cs.primary, fontSize: 12, decoration: TextDecoration.underline)),
-                    ),
-                  ),
-                ]),
-                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: InkWell(
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PrivacyPage())),
+                  child: Text('隱私說明', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12, decoration: TextDecoration.underline)),
+                ),
               ),
             ),
           ]),
@@ -212,7 +208,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
       context,
       icon: Icons.download_for_offline_outlined,
       title: '歡迎使用 OuOPlayer',
-      text: '$tagline\n\n先把下載準備好：貼上 YouTube、YouTube Music 等網址，就能把歌存進手機${Platform.isAndroid ? '' : '或電腦'}。',
+      text: '本機音樂播放器，手機與電腦同步。免費、開源、無廣告。',
       children: [
         if (backend != null)
           Card(
@@ -220,10 +216,8 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
               leading: _preparing
                   ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
                   : Icon(_ready ? Icons.check_circle : Icons.extension_outlined, color: _ready ? Colors.green : null),
-              title: const Text('下載元件'),
-              subtitle: Text(_ready
-                  ? '已準備好'
-                  : _status ?? (Platform.isAndroid ? '約 50 MB，只需下載一次，建議連上 Wi-Fi' : 'yt-dlp 和 ffmpeg，只需下載一次')),
+              title: Text(Platform.isAndroid ? '下載元件（約 50 MB）' : '下載元件'),
+              subtitle: _ready ? const Text('已就緒') : (_status == null ? null : Text(_status!)),
               trailing: _ready || _preparing ? null : FilledButton.tonal(onPressed: _prepare, child: const Text('下載')),
             ),
           ),
@@ -242,10 +236,8 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
         Card(
           child: ListTile(
             leading: Icon(s.youtubeApiKey.isEmpty ? Icons.key_outlined : Icons.check_circle, color: s.youtubeApiKey.isEmpty ? null : Colors.green),
-            title: const Text('YouTube Data API 金鑰（可以之後再設）'),
-            subtitle: Text(
-                s.youtubeApiKey.isEmpty ? '「取得 YouTube Music 連結」要用，免費，申請約 5 分鐘。一般下載不需要' : '已設定',
-                style: TextStyle(color: muted)),
+            title: const Text('YouTube Data API 金鑰（選填）'),
+            subtitle: s.youtubeApiKey.isEmpty ? null : Text('已設定', style: TextStyle(color: muted)),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const YouTubeKeyGuidePage())),
           ),
@@ -260,8 +252,8 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     return _frame(
       context,
       icon: Icons.library_music_outlined,
-      title: '你的音樂在哪裡？',
-      text: '選放歌的資料夾，OuOPlayer 會把裡面的歌加進音樂庫。之後可以在 設定 → 音樂庫 新增或移除。',
+      title: '音樂資料夾',
+      text: '選擇要加入音樂庫的資料夾。',
       children: [
         for (final d in s.musicDirs)
           ListTile(dense: true, leading: const Icon(Icons.folder_outlined), title: Text(d, style: TextStyle(color: muted))),
@@ -271,22 +263,8 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
             if (await addMusicFolder(context, ref, scan: true) && mounted) setState(() => _folders++);
           },
           icon: const Icon(Icons.create_new_folder_outlined),
-          label: Text(_folders == 0 ? '選擇音樂資料夾' : '再加一個資料夾'),
+          label: Text(_folders == 0 ? '選擇資料夾' : '新增資料夾'),
         ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: () async {
-            await ensureStoragePermission();
-            final added = await ref.read(scannerProvider).scan(ref.read(settingsProvider).musicDirs);
-            if (context.mounted) toast(context, '掃描完成，新增 $added 首歌曲');
-          },
-          icon: const Icon(Icons.search),
-          label: const Text('只掃描上面列出的資料夾'),
-        ),
-        if (_folders > 0) ...[
-          const SizedBox(height: 12),
-          Text('已新增 $_folders 個資料夾', style: TextStyle(color: muted)),
-        ],
       ],
     );
   }

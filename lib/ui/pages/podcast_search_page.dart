@@ -74,7 +74,7 @@ class PodcastSearchResults extends ConsumerWidget {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => EmptyState.error(e, onRetry: () => ref.invalidate(podcastSearchProvider(query))),
           data: (list) => list.isEmpty
-              ? EmptyState(icon: Icons.podcasts_rounded, title: '找不到「$query」相關的節目', message: '也可以用 RSS 網址訂閱。')
+              ? EmptyState(icon: Icons.podcasts_rounded, title: '找不到「$query」')
               : ListView(children: [
                   if (pending)
                     ListTile(leading: const Icon(Icons.search), title: const Text('按搜尋鍵查詢新的關鍵字'), onTap: onSearch),

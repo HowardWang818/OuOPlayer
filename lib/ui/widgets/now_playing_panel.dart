@@ -35,7 +35,7 @@ class NowPlayingPanel extends ConsumerWidget {
           child: child,
         );
     if (track == null) {
-      return block(const EmptyState(icon: Icons.music_note_rounded, title: '沒有播放中的歌曲', compact: true));
+      return block(const EmptyState(icon: Icons.music_note_rounded, title: '未播放', compact: true));
     }
     final queue = ref.watch(queueProvider).value ?? const [];
     final index = ref.watch(playbackStateProvider).value?.queueIndex;

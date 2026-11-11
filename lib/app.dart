@@ -12,6 +12,7 @@ import 'providers/providers.dart';
 import 'services/app_icon.dart';
 import 'services/download_notifier.dart';
 import 'services/equalizer.dart';
+import 'services/launcher_shortcuts.dart';
 import 'services/missing_songs.dart';
 import 'services/network_check.dart';
 import 'services/player_widget.dart';
@@ -285,6 +286,22 @@ final launcherShortcutsProvider = Provider<void>((ref) {
     if (call.method == 'open') await handle(call.arguments as String?);
   });
   channel.invokeMethod<String>('initial').then(handle).catchError((_) {});
+  ref.watch(launcherShortcutIconsProvider);
+});
+
+/// The shortcuts' icons: white on the colour theme's main colour (dark or
+/// light as the app shows), redrawn when the theme changes.
+final launcherShortcutIconsProvider = FutureProvider<void>((ref) async {
+  if (!Platform.isAndroid) return;
+  final colors = ref.watch(themeChoiceProvider).theme;
+  final mode = ref.watch(settingsProvider.select((s) => s.themeMode));
+  final dark = mode == ThemeMode.dark ||
+      (mode == ThemeMode.system && WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark);
+  final main = (dark ? colors.dark : colors.light).main;
+  final icons = <String, Uint8List>{
+    for (final e in launcherShortcutIcons.entries) e.key: await drawShortcutIcon(e.value, main, Colors.white),
+  };
+  await const MethodChannel('ouo/shortcuts').invokeMethod('icons', icons).catchError((_) => null);
 });
 
 /// Bluetooth audio connected → resume (if enabled). Disconnects are handled by

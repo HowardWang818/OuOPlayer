@@ -143,7 +143,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                   : online
                   ? _OnlineResults(query: onlineQuery, pending: q.isNotEmpty && q != onlineQuery, onSearch: _submit)
                   : q.isEmpty
-                      ? const EmptyState(icon: Icons.search_rounded, title: '搜尋你的音樂庫', message: '輸入歌名、演出者或專輯。')
+                      ? const EmptyState(icon: Icons.search_rounded, title: '搜尋歌曲、演出者或專輯')
                       : _LibraryResults(query: _libraryQuery.isEmpty ? q : _libraryQuery),
         ),
       ]),
@@ -159,7 +159,7 @@ class _LibraryResults extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final results = ref.watch(searchProvider(query)).value ?? const <Track>[];
     final handler = ref.read(audioHandlerProvider);
-    if (results.isEmpty) return EmptyState(icon: Icons.search_off_rounded, title: '音樂庫裡找不到「$query」', message: '換個關鍵字，或切到線上搜尋。');
+    if (results.isEmpty) return EmptyState(icon: Icons.search_off_rounded, title: '找不到「$query」');
     return TrackSelectionScope(
       tracks: results,
       child: ListView.builder(
@@ -224,7 +224,7 @@ class _OnlineResults extends ConsumerWidget {
       );
     }
     if (query.isEmpty) {
-      return const EmptyState(icon: Icons.travel_explore_rounded, title: '線上搜尋', message: '搜尋 iTunes 曲庫，可試聽 30 秒。');
+      return const EmptyState(icon: Icons.travel_explore_rounded, title: '搜尋 iTunes，可試聽 30 秒');
     }
     final async = ref.watch(onlineSearchProvider(query));
     return async.when(

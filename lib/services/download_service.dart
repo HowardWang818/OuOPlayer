@@ -611,7 +611,7 @@ double playlistProgress(double percent, int? item, int? count) {
 /// downloaded), as one JSON document.
 /// A playlist with no songs anyone else can see (empty, private songs, or
 /// songs the owner uploaded to YouTube Music, which only they can play).
-const emptyPlaylistMessage = '這個播放清單是空的，或裡面的歌別人看不到（例如私人影片、在這裡不能播放的歌，或建立者自己上傳到 YouTube Music 的歌）。可以在沒登入的瀏覽器打開連結確認。';
+const emptyPlaylistMessage = '播放清單沒有可下載的歌曲';
 
 const playlistListArgs = ['--flat-playlist', '--yes-playlist', '--dump-single-json'];
 

@@ -7,7 +7,9 @@ import '../../../providers/providers.dart';
 import '../../../providers/theme_provider.dart';
 import '../../../theme/looks.dart';
 import '../../../theme/themes.dart';
+import '../../../services/app_icon.dart';
 import '../../widgets/song_font.dart';
+import 'app_icon_setting.dart';
 import 'section_page.dart';
 
 /// 外觀: light / dark, the colour theme, the player page, the lists'
@@ -72,6 +74,7 @@ class AppearanceSettingsPage extends ConsumerWidget {
           onSelectionChanged: (v) => ref.read(songFontProvider.notifier).set(v.first),
         ),
       ),
+      if (AppIcon.supported) const AppIconSetting(),
     ]);
   }
 }

@@ -12,8 +12,7 @@ class EmptyState extends StatelessWidget {
   /// Couldn't load: the reason in plain words ([friendlyError]) and 重試.
   factory EmptyState.error(Object error, {VoidCallback? onRetry, bool compact = false}) => EmptyState(
         icon: isOffline(error) ? Icons.wifi_off_rounded : Icons.error_outline_rounded,
-        title: isOffline(error) ? '沒有網路連線' : '出了點問題',
-        message: friendlyError(error),
+        title: isOffline(error) ? '無網路連線' : friendlyError(error),
         action: onRetry == null ? null : '重試',
         onAction: onRetry,
         compact: compact,
@@ -73,14 +72,13 @@ bool isOffline(Object e) =>
 
 /// An error in words a listener understands.
 String friendlyError(Object e) {
-  if (isOffline(e)) return '連上網路後再試一次。';
+  if (isOffline(e)) return '無網路連線';
   if (e is DioException) {
     final code = e.response?.statusCode;
-    if (code == 404) return '找不到這個項目，可能已經移除。';
-    if (code == 429) return '太頻繁了，等一下再試。';
-    if (code != null && code >= 500) return '對方的伺服器暫時有問題，等一下再試。';
-    return '連線失敗（${code ?? e.type.name}），等一下再試。';
+    if (code == 404) return '找不到項目';
+    if (code == 429) return '請稍後再試';
+    if (code != null && code >= 500) return '請稍後再試';
+    return '連線失敗，請稍後再試';
   }
-  final text = '$e';
-  return text.length > 160 ? '${text.substring(0, 160)}…' : text;
+  return '發生錯誤';
 }

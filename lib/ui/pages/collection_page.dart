@@ -452,7 +452,7 @@ class CollectionPage extends ConsumerWidget {
         if (tracksAsync.isLoading && tracks.isEmpty)
           const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
         else if (tracks.isEmpty)
-          const SliverFillRemaining(hasScrollBody: false, child: EmptyState(icon: Icons.queue_music_rounded, title: '這裡還沒有歌曲', message: '從歌曲的 ⋮ 選單「加入播放清單」，或在音樂庫多選後加入。'))
+          const SliverFillRemaining(hasScrollBody: false, child: EmptyState(icon: Icons.queue_music_rounded, title: '尚無歌曲'))
         else
         if (reorderable)
           // A playlist in its own order: drag the ≡ handle to move a song.

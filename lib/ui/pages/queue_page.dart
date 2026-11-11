@@ -69,7 +69,7 @@ class QueueList extends ConsumerWidget {
     final font = ref.watch(songFontProvider);
     final skip = played(index, queue.length);
     return queue.isEmpty
-          ? const EmptyState(icon: Icons.queue_music_rounded, title: '佇列是空的', message: '播放一首歌，或從歌曲的 ⋮ 選單「加入佇列」。')
+          ? const EmptyState(icon: Icons.queue_music_rounded, title: '佇列是空的')
           : ReorderableListView.builder(
               itemCount: queue.length - skip,
               itemExtent: extent,

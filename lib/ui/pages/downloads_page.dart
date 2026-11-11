@@ -10,6 +10,7 @@ import '../../theme/app_theme.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/links.dart';
 import 'download_detail_page.dart';
+import 'help_page.dart';
 import '../widgets/empty_state.dart';
 
 /// youtube-dl-gui style downloader: paste URL → pick format → queue with progress.
@@ -101,6 +102,11 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('下載'), actions: [
+        IconButton(
+          tooltip: 'Help',
+          icon: const Icon(Icons.help_outline),
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HelpPage())),
+        ),
         if (tasks.any((t) => !t.active)) TextButton(
             onPressed: () async {
               if (await confirmDelete(context,
@@ -199,7 +205,7 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
         if (tasks.isEmpty)
           const Padding(
             padding: EdgeInsets.only(top: 24),
-            child: EmptyState(icon: Icons.download_rounded, title: '還沒有下載', message: '在上面貼上 YouTube、YouTube Music 等網址，或從其他 App 分享連結到 OuOPlayer。'),
+            child: EmptyState(icon: Icons.download_rounded, title: '尚無下載'),
           ),
         for (final t in tasks) _TaskTile(task: t),
       ]),

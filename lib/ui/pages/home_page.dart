@@ -121,7 +121,8 @@ class HomePage extends ConsumerWidget {
                   LinearProgressIndicator(value: scan.total == 0 ? null : scan.done / scan.total),
                 ]),
               ),
-            if ((tracks.value ?? const []).isEmpty && !(scan?.running ?? false))
+            // Only once the library has loaded (not for a moment at start-up).
+            if (tracks.hasValue && tracks.value!.isEmpty && !(scan?.running ?? false))
               Card(
                 margin: const EdgeInsets.all(16),
                 child: Padding(

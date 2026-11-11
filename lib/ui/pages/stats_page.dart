@@ -67,7 +67,7 @@ class StatsPage extends ConsumerWidget {
           loading: () => const [Padding(padding: EdgeInsets.all(48), child: Center(child: CircularProgressIndicator()))],
           error: (e, _) => [Padding(padding: const EdgeInsets.all(24), child: Text('讀取失敗：$e'))],
           data: (s) => s.isEmpty
-              ? [const Padding(padding: EdgeInsets.only(top: 24), child: EmptyState(icon: Icons.insights_rounded, title: '這段期間還沒有收聽紀錄', message: '聽一陣子歌之後，這裡會出現最常聽的歌和歌手。'))]
+              ? [const Padding(padding: EdgeInsets.only(top: 24), child: EmptyState(icon: Icons.insights_rounded, title: '尚無收聽紀錄'))]
               : _sections(context, ref, s, period),
         ),
       ]),

@@ -101,7 +101,7 @@ class _FolderBrowserPageState extends ConsumerState<FolderBrowserPage> {
       body: TrackSelectionScope(
         tracks: songs,
         child: listing.folders.isEmpty && songs.isEmpty
-            ? (all.isLoading ? const Center(child: CircularProgressIndicator()) : const EmptyState(icon: Icons.folder_open_rounded, title: '這個資料夾是空的'))
+            ? (all.isLoading ? const Center(child: CircularProgressIndicator()) : const EmptyState(icon: Icons.folder_open_rounded, title: '資料夾是空的'))
             : ListView(children: [
                 for (final f in listing.folders)
                   ListTile(

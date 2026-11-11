@@ -21,19 +21,18 @@ class BugReport {
 
   /// The address of a new issue with [device] in its body.
   static String url(String device) {
-    final body = '''**發生了什麼事？**
+    final body = '''**問題描述**
 
 
-**怎麼做會出現？**
-1.
-2.
+**重現步驟**
 
-**預期應該要怎樣？**
+
+**預期結果**
 
 
 ---
 OuOPlayer $appVersion（${Platform.isAndroid ? 'Android' : 'Windows'}）
-裝置：$device''';
+$device''';
     return Uri.parse('$issuesUrl/new').replace(queryParameters: {'body': body}).toString();
   }
 

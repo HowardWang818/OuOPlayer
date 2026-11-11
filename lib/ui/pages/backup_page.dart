@@ -216,8 +216,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text(
                             BackupTree.isTree(st.dir)
-                                ? '重新安裝後要再選一次備份資料夾，才看得到裡面的備份。選同一個資料夾就好，備份檔都還在。'
-                                : '選一次備份資料夾（建議用預設的 文件/OuOPlayer/備份），之後重新安裝 OuOPlayer 也看得到之前的備份。',
+                                ? '重新選擇備份資料夾'
+                                : '選擇備份資料夾',
                             style: TextStyle(color: muted),
                           ),
                           const SizedBox(height: 8),
@@ -237,7 +237,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                     return Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('這裡沒有列出備份。也可以直接選一個備份檔：', style: TextStyle(color: muted)),
+                        Text('尚無備份', style: TextStyle(color: muted)),
                         const SizedBox(height: 8),
                         OutlinedButton(onPressed: () => importBackup(context, ref), child: const Text('選擇備份檔')),
                       ]),

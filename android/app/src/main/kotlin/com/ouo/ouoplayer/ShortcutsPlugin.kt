@@ -27,6 +27,11 @@ class ShortcutsPlugin(private val context: Context, messenger: BinaryMessenger) 
             if (call.method == "initial") {
                 result.success(pending)
                 pending = null
+            } else if (call.method == "icons") {
+                // Drawn in Dart in the colour theme (launcher_shortcuts.dart).
+                val args = call.arguments as? Map<*, *>
+                publish(args?.mapNotNull { (k, v) -> (k as? String)?.let { key -> (v as? ByteArray)?.let { key to it } } }?.toMap() ?: emptyMap())
+                result.success(null)
             } else {
                 result.notImplemented()
             }
@@ -36,12 +41,17 @@ class ShortcutsPlugin(private val context: Context, messenger: BinaryMessenger) 
 
     fun deliver(action: String) = channel.invokeMethod("open", action)
 
-    private fun publish() {
+    private fun publish(drawn: Map<String, ByteArray> = emptyMap()) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N_MR1) return
         val manager = context.getSystemService(ShortcutManager::class.java) ?: return
-        fun item(id: String, label: String, icon: Int) = ShortcutInfo.Builder(context, id)
+        fun icon(id: String, fallback: Int): Icon {
+            val bytes = drawn[id] ?: return Icon.createWithResource(context, fallback)
+            val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return Icon.createWithResource(context, fallback)
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Icon.createWithAdaptiveBitmap(bitmap) else Icon.createWithBitmap(bitmap)
+        }
+        fun item(id: String, label: String, fallback: Int) = ShortcutInfo.Builder(context, id)
             .setShortLabel(label)
-            .setIcon(Icon.createWithResource(context, icon))
+            .setIcon(icon(id, fallback))
             .setIntent(
                 Intent(context, MainActivity::class.java)
                     .setAction(Intent.ACTION_VIEW)
