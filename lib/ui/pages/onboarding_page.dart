@@ -9,7 +9,6 @@ import '../../config/version.dart';
 import '../../providers/providers.dart';
 import 'privacy_page.dart';
 import 'settings/library_settings.dart' show addMusicFolder;
-import 'youtube_key_guide_page.dart';
 
 /// A new install (set in main.dart): 第一次使用 shows instead of 這版新功能.
 final firstRunProvider = Provider<bool>((ref) => false);
@@ -231,15 +230,6 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
               final dir = await FilePicker.getDirectoryPath(dialogTitle: '選擇下載位置');
               if (dir != null) n.setDownloadDir(dir);
             },
-          ),
-        ),
-        Card(
-          child: ListTile(
-            leading: Icon(s.youtubeApiKey.isEmpty ? Icons.key_outlined : Icons.check_circle, color: s.youtubeApiKey.isEmpty ? null : Colors.green),
-            title: const Text('YouTube Data API 金鑰（選填）'),
-            subtitle: s.youtubeApiKey.isEmpty ? null : Text('已設定', style: TextStyle(color: muted)),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const YouTubeKeyGuidePage())),
           ),
         ),
       ],

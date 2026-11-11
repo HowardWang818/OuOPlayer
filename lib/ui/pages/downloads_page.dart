@@ -12,6 +12,9 @@ import '../widgets/links.dart';
 import 'download_detail_page.dart';
 import 'help_page.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/download_actions.dart';
+import '../../services/download_match.dart' show isPlaylistUrl;
+import '../../services/download_target.dart';
 
 /// youtube-dl-gui style downloader: paste URL → pick format → queue with progress.
 class DownloadsPage extends ConsumerStatefulWidget {
@@ -62,11 +65,25 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
       toast(context, '請輸入有效的網址');
       return;
     }
+    if (!await acceptDownloadTerms(context) || !mounted) return;
     if (!await okToDownload(context, warn: ref.read(settingsProvider).wifiWarning) || !mounted) return;
+    // Single songs go into the playlist picked (asked at most once an hour);
+    // playlist links make their own.
+    bool single(String u) => !_playlist && !isPlaylistUrl(u);
+    DownloadTarget? target;
+    if (urls.any(single)) {
+      target = await pickDownloadTarget(context);
+      if (target == null || !mounted) return;
+    }
     final svc = ref.read(downloadServiceProvider);
     final fmt = ref.read(settingsProvider).ytFormat;
     for (final u in urls) {
-      svc.add(u, kind: _direct ? DownloadKind.direct : null, format: fmt, playlist: _playlist);
+      svc.add(u,
+          kind: _direct ? DownloadKind.direct : null,
+          format: fmt,
+          playlist: _playlist,
+          playlistId: single(u) ? target?.playlistId : null,
+          playlistName: single(u) ? target?.name : null);
     }
     _ctrl.clear();
   }

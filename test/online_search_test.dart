@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ouoplayer/data/models/track.dart';
 import 'package:ouoplayer/services/online/itunes.dart';
-import 'package:ouoplayer/services/online/youtube_link.dart';
 
 void main() {
   test('parses iTunes songs and builds links', () {
@@ -43,35 +42,5 @@ void main() {
   test('song without preview has no preview track', () {
     final s = ITunesSong.fromJson({'trackId': 1, 'trackName': 'a', 'artistName': 'b', 'trackViewUrl': 'https://x'});
     expect(s.previewTrack, isNull);
-  });
-
-  test('parses the first YouTube video', () {
-    final v = YouTubeLinkFinder.parse({
-      'items': [
-        {'id': {'kind': 'youtube#channel', 'channelId': 'c'}},
-        {
-          'id': {'kind': 'youtube#video', 'videoId': 'x8VYWazR5mE'},
-          'snippet': {'title': 'YOASOBI「夜に駆ける」', 'channelTitle': 'Ayase / YOASOBI'},
-        },
-      ],
-    })!;
-    expect(v.url, 'https://music.youtube.com/watch?v=x8VYWazR5mE');
-    expect(v.channel, 'Ayase / YOASOBI');
-    expect(YouTubeLinkFinder.parse({'items': []}), isNull);
-  });
-
-  test('explains Google API errors in Chinese', () {
-    Map<String, dynamic> err(String reason, [String message = '']) => {
-          'error': {
-            'message': message,
-            'errors': [
-              {'reason': reason},
-            ],
-          },
-        };
-    expect(YouTubeLinkFinder.explainError(err('quotaExceeded'), null), contains('額度'));
-    expect(YouTubeLinkFinder.explainError(err('badRequest', 'API key not valid. Please pass a valid API key.'), null), contains('金鑰無效'));
-    expect(YouTubeLinkFinder.explainError(err('accessNotConfigured'), null), contains('尚未啟用'));
-    expect(YouTubeLinkFinder.explainError(null, 'timeout'), contains('網路'));
   });
 }

@@ -14,7 +14,6 @@ import 'services/download_notifier.dart';
 import 'services/equalizer.dart';
 import 'services/launcher_shortcuts.dart';
 import 'services/missing_songs.dart';
-import 'services/network_check.dart';
 import 'services/player_widget.dart';
 import 'services/usage_stats.dart';
 import 'services/volume_normalizer.dart';
@@ -26,6 +25,7 @@ import 'providers/auto_backup_provider.dart';
 import 'providers/sync_provider.dart';
 import 'providers/theme_provider.dart';
 import 'ui/widgets/dialogs.dart';
+import 'ui/widgets/download_actions.dart';
 import 'ui/widgets/update_dialog.dart';
 import 'ui/widgets/missing_files_dialog.dart';
 import 'ui/widgets/title_bar.dart';
@@ -250,8 +250,12 @@ final shareIntentProvider = Provider<void>((ref) {
   Future<void> handle(String? text) async {
     final url = RegExp(r'https?://\S+').firstMatch(text ?? '')?.group(0);
     if (url == null) return;
-    if (!await okToDownload(rootNavigatorKey.currentContext, warn: ref.read(settingsProvider).wifiWarning)) return;
-    ref.read(downloadServiceProvider).add(url, format: ref.read(settingsProvider).ytFormat);
+    final context = rootNavigatorKey.currentContext;
+    if (context == null || !context.mounted) {
+      ref.read(downloadServiceProvider).add(url, format: ref.read(settingsProvider).ytFormat);
+    } else if (!await startDownload(context, url)) {
+      return;
+    }
     ref.read(tabProvider.notifier).set(3);
   }
 

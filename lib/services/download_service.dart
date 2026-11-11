@@ -176,6 +176,28 @@ class DownloadService {
     return task;
   }
 
+  /// 試聽: a direct audio address for [url] (yt-dlp -g), or null. Gets the
+  /// download parts first if needed.
+  Future<String?> streamUrl(String url) async {
+    final backend = ytdlp;
+    if (backend == null) return null;
+    if (!await backend.isReady()) await backend.prepare((_) {});
+    String? found;
+    final lines = <String>[];
+    await for (final e in backend.run('preview_${_seq++}', url, const ['-f', 'bestaudio', '-g', '--no-playlist'])) {
+      if (e is YtDlpLog) lines.add(e.line);
+      if (e is YtDlpFinished) lines.addAll((e.output ?? '').split('\n'));
+    }
+    for (final l in lines) {
+      final t = l.trim();
+      if (t.startsWith('http')) {
+        found = t;
+        break;
+      }
+    }
+    return found;
+  }
+
   void retry(DownloadTask t) {
     if (t.isGroup) {
       for (final c in t.children) {

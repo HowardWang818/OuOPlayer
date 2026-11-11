@@ -97,8 +97,8 @@ void main() {
 
     test('Help covers copying links and Soundiiz', () {
       final titles = HelpPage.sections.map((s) => s.$2).toList();
-      expect(titles, ['下載歌曲', '轉換 Spotify 等歌單']);
-      expect(HelpPage.sections[1].$3.join(), contains('soundiiz.com'));
+      expect(titles, ['搜尋並下載', '貼上連結下載', '轉換 Spotify 等歌單']);
+      expect(HelpPage.sections[2].$3.join(), contains('soundiiz.com'));
     });
   });
 

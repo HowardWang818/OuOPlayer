@@ -35,15 +35,7 @@ void main() {
     expect(await MissingSongs.all(db), isEmpty);
   });
 
-  test('links text, quota and the Soundiiz tip', () {
-    const t = Track(id: 'missing:1', uri: '', title: '如果可以', artist: 'WeiBird', source: TrackSource.missing);
-    expect(linksText([(t, const FoundLink('https://music.youtube.com/watch?v=x', '', '', true))]),
-        '如果可以 - WeiBird：https://music.youtube.com/watch?v=x');
-    expect(quotaPercent(50), 50);
-    expect(quotaPercent(500), 100);
+  test('the search text for a missing song', () {
     expect(linkQuery(const Track(id: 'm', uri: '', title: '【MV】怪物 / YOASOBI', artist: 'YOASOBI - Topic')), '怪物 YOASOBI');
-    expect(suggestSoundiiz(5, 20), isFalse);
-    expect(suggestSoundiiz(12, 20), isTrue);
-    expect(suggestSoundiiz(30, 1000), isTrue);
   });
 }

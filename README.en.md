@@ -120,8 +120,8 @@ Get it from [Releases](https://github.com/HowardWang818/OuOPlayer/releases/lates
 - In-app updates (Android and the Windows installer)
 
 **Downloads**
-- Paste a link to download its audio (using [yt-dlp](https://github.com/yt-dlp/yt-dlp)); finished files go straight into your library.
-- Only download what you have the right to keep, and follow the source site's terms of service.
+- Search YouTube Music in Search → Online and download, or paste a link (using [yt-dlp](https://github.com/yt-dlp/yt-dlp)); finished files go straight into your library and the playlist you picked.
+- Only download content you have the rights to or that is free of copyright restrictions, and follow the source site's terms of service; you are responsible for what you download.
 
 ## FAQ
 
@@ -176,8 +176,8 @@ It only goes online for the following, and only sends what's listed:
 |---|---|---|---|
 | Lyrics | LRCLIB | Title, artist, album, length | 設定 → 歌詞 (Settings → Lyrics) |
 | Artist photos | Deezer | Artist name | 設定 → 音樂庫 (Settings → Library) |
-| Cover art, online search, podcast search | Apple iTunes | Title and artist, or your search text | Only when you use them |
-| YouTube Music links | YouTube Data API | Title and artist | Only if you enter your own API key |
+| Cover art, podcast search | Apple iTunes | Title and artist, or your search text | Only when you use them |
+| Online search, downloading missing songs | YouTube Music | Your search text, or title and artist | Only when you use them |
 | Sync | Your own Google Drive | Chosen playlists, song details and files, lyrics, listening history | Off by default, 設定 → 同步 (Settings → Sync) |
 | Update checks | OuOPlayer's update server | An update request only | 設定 → 關於與更新 (Settings → About and updates) |
 | Anonymous user count | OuOPlayer's update server | Once a day: a random id, the version, the platform (no IP kept, deleted after 90 days) | — |

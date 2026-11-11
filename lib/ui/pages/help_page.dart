@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/download_actions.dart' show downloadTerms;
 import '../widgets/links.dart';
 import 'onboarding_page.dart';
 
@@ -9,7 +10,11 @@ class HelpPage extends StatelessWidget {
   const HelpPage({super.key});
 
   static const sections = <(IconData, String, List<String>)>[
-    (Icons.link, '下載歌曲', [
+    (Icons.search, '搜尋並下載', [
+      '在「搜尋」頁切換到「網路」。',
+      '輸入歌名，點一下試聽，點下載按鈕下載。',
+    ]),
+    (Icons.link, '貼上連結下載', [
       '在 YouTube 或 YouTube Music 開啟歌曲或播放清單。',
       '點「分享」→「複製連結」。',
       '回到 OuOPlayer 的「下載」頁貼上。',
@@ -57,6 +62,8 @@ class HelpPage extends StatelessWidget {
             ),
           ),
         ),
+        const SizedBox(height: 16),
+        Text(downloadTerms, style: t.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
         const SizedBox(height: 24),
         FilledButton.tonalIcon(
           onPressed: () => Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => const OnboardingPage())),

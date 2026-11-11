@@ -158,7 +158,6 @@ Future<void> importSpotify(BuildContext context, WidgetRef ref) async {
   final allowDup = ref.read(settingsProvider).allowPlaylistDuplicates;
   final report = <String>[];
   final missing = <String>[];
-  var total = 0;
   for (final i in chosen.toList()..sort()) {
     final pl = playlists[i];
     // Spotify's order, with placeholders where the song isn't here yet.
@@ -174,7 +173,6 @@ Future<void> importSpotify(BuildContext context, WidgetRef ref) async {
       }
     }
     final onDevice = found[i].whereType<Track>().length;
-    total += pl.songs.length;
     if (pl.liked && likedToFavorites) {
       final liked = await db.favoriteIds();
       var added = 0;
@@ -214,7 +212,6 @@ Future<void> importSpotify(BuildContext context, WidgetRef ref) async {
               constraints: const BoxConstraints(maxHeight: 220),
               child: ListView(shrinkWrap: true, children: [for (final m in missing) Text(m, style: const TextStyle(fontSize: 13))]),
             ),
-            if (suggestSoundiiz(missing.length, total)) const SoundiizTip(),
           ],
         ]),
       ),

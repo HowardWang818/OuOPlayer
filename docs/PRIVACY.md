@@ -14,8 +14,8 @@ OuOPlayer 是在 Android 和 Windows 上播放本機音樂的開源 App。它沒
 |---|---|---|
 | 找歌詞 | LRCLIB | 歌名、歌手、專輯、長度 |
 | 歌手照片 | Deezer | 歌手名字 |
-| 找封面、線上搜尋、Podcast 搜尋 | Apple iTunes | 歌名、歌手或搜尋文字 |
-| 取得 YouTube Music 連結 | YouTube Data API | 歌名和歌手（只有你自己填了 API 金鑰才會用） |
+| 找封面、Podcast 搜尋 | Apple iTunes | 歌名、歌手或搜尋文字 |
+| 線上搜尋、補下載缺少的歌曲 | YouTube Music | 搜尋文字，或歌名和歌手 |
 | 找原文歌名 | mora、OTOTOY、YouTube Music | 歌名和歌手 |
 | 播放記錄（你自己登入才會用） | Last.fm、ListenBrainz | 聽過的歌名、歌手、專輯、長度和播放時間 |
 | 檢查更新、下載元件 | OuOPlayer 的更新伺服器 | 只送出更新檢查請求，不含你的音樂或帳號資料 |
@@ -89,8 +89,8 @@ The app goes online only in these cases, and sends only what is listed:
 |---|---|---|
 | Finding lyrics | LRCLIB | Title, artist, album, length |
 | Artist photos | Deezer | Artist name |
-| Finding covers, online search, podcast search | Apple iTunes | Title, artist or search text |
-| YouTube Music links | YouTube Data API | Title and artist (only with your own API key) |
+| Finding covers, podcast search | Apple iTunes | Title, artist or search text |
+| Online search, downloading missing songs | YouTube Music | Search text, or title and artist |
 | Original-language titles | mora, OTOTOY, YouTube Music | Title and artist |
 | Scrobbling (only if you sign in) | Last.fm, ListenBrainz | Title, artist, album, length and time of songs you heard |
 | Checking for updates, download parts | OuOPlayer's update server | An update request only, with none of your music or account data |

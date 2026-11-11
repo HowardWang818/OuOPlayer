@@ -3,21 +3,19 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'podcast_search_page.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../services/network_check.dart';
 import '../../services/download_service.dart';
-import '../../services/online/itunes.dart';
+import '../../services/online/ytmusic.dart';
 import '../widgets/art_image.dart';
 import '../widgets/dialogs.dart';
-import '../widgets/links.dart';
 import '../widgets/track_selection.dart';
 import '../widgets/track_tile.dart';
-import 'youtube_key_guide_page.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/download_actions.dart';
 
 /// The search shortcut: the search box takes the cursor once the page is there.
 final searchFocusWanted = ValueNotifier(false);
@@ -189,16 +187,14 @@ class _UrlActions extends ConsumerWidget {
         title: const Text('下載到本機'),
         subtitle: const Text('直連檔案直接下載，其他網址交給 yt-dlp'),
         onTap: () async {
-          if (!await okToDownload(context, warn: ref.read(settingsProvider).wifiWarning) || !context.mounted) return;
-          ref.read(downloadServiceProvider).add(url, format: ref.read(settingsProvider).ytFormat);
-          toast(context, '已加入下載佇列');
-          ref.read(tabProvider.notifier).set(3);
+          if (await startDownload(context, url) && context.mounted) ref.read(tabProvider.notifier).set(3);
         },
       ),
       ListTile(
         leading: const Icon(Icons.file_download_outlined),
         title: const Text('以直接下載方式下載'),
         onTap: () async {
+          if (!await acceptDownloadTerms(context) || !context.mounted) return;
           if (!await okToDownload(context, warn: ref.read(settingsProvider).wifiWarning) || !context.mounted) return;
           ref.read(downloadServiceProvider).add(url, kind: DownloadKind.direct);
           toast(context, '已加入下載佇列');
@@ -208,7 +204,7 @@ class _UrlActions extends ConsumerWidget {
   }
 }
 
-/// iTunes results: tap plays the 30-second preview, ⋮ opens link actions.
+/// YouTube Music songs: tap plays a preview, the button downloads.
 class _OnlineResults extends ConsumerWidget {
   const _OnlineResults({required this.query, required this.pending, required this.onSearch});
   final String query;
@@ -217,194 +213,80 @@ class _OnlineResults extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     if (pending) {
       return Center(
-        child: FilledButton.icon(onPressed: onSearch, icon: const Icon(Icons.travel_explore), label: const Text('在網路上搜尋')),
+        child: FilledButton.icon(onPressed: onSearch, icon: const Icon(Icons.travel_explore), label: const Text('搜尋')),
       );
     }
     if (query.isEmpty) {
-      return const EmptyState(icon: Icons.travel_explore_rounded, title: '搜尋 iTunes，可試聽 30 秒');
+      return const EmptyState(icon: Icons.travel_explore_rounded, title: '搜尋 YouTube Music');
     }
-    final async = ref.watch(onlineSearchProvider(query));
+    final async = ref.watch(ytMusicSearchProvider(query));
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => EmptyState.error(e, onRetry: () => ref.invalidate(onlineSearchProvider(query))),
+      error: (e, _) => EmptyState.error(e, onRetry: () => ref.invalidate(ytMusicSearchProvider(query))),
       data: (songs) => songs.isEmpty
           ? EmptyState(icon: Icons.search_off_rounded, title: '找不到「$query」')
           : ListView.builder(
-              itemCount: songs.length + 2,
-              itemBuilder: (_, i) => i == 0
-                  ? Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-                      child: Text('共 ${songs.length} 首', style: TextStyle(fontSize: 12, color: muted)),
-                    )
-                  : i == songs.length + 1
-                  ? Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text('資料來源：iTunes Search API', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: muted)),
-                    )
-                  : _OnlineSongTile(song: songs[i - 1]),
+              itemCount: songs.length,
+              itemBuilder: (_, i) => _OnlineSongTile(song: songs[i]),
             ),
     );
   }
 }
 
-class _OnlineSongTile extends ConsumerWidget {
+class _OnlineSongTile extends ConsumerStatefulWidget {
   const _OnlineSongTile({required this.song});
-  final ITunesSong song;
+  final YtMusicSong song;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
-    final preview = song.previewTrack;
-    final duration = song.durationMs == null ? '' : ' • ${formatDuration(Duration(milliseconds: song.durationMs!))}';
-    return ListTile(
-      leading: ArtImage(song.artwork, size: 48),
-      title: Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text('${song.artist} • ${song.album}$duration', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted)),
-      trailing: IconButton(icon: const Icon(Icons.more_vert), onPressed: () => _showMenu(context, ref, song)),
-      onTap: preview == null
-          ? () => toast(context, '這首歌沒有提供試聽')
-          : () {
-              ref.read(audioHandlerProvider).playTracks([preview]);
-              toast(context, '試聽 30 秒');
-            },
-    );
-  }
+  ConsumerState<_OnlineSongTile> createState() => _OnlineSongTileState();
 }
 
-Future<void> _showMenu(BuildContext context, WidgetRef ref, ITunesSong song) {
-  return showModalBottomSheet(
-    context: context,
-    useRootNavigator: true,
-    showDragHandle: true,
-    builder: (ctx) {
-      void act(VoidCallback f) {
-        Navigator.pop(ctx);
-        f();
+class _OnlineSongTileState extends ConsumerState<_OnlineSongTile> {
+  bool _loading = false;
+
+  Future<void> _preview() async {
+    final song = widget.song;
+    setState(() => _loading = true);
+    try {
+      final stream = await ref.read(downloadServiceProvider).streamUrl(song.url);
+      if (!mounted) return;
+      if (stream == null) {
+        toast(context, '無法試聽');
+        return;
       }
-
-      return SafeArea(
-        child: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            ListTile(
-              leading: ArtImage(song.artwork, size: 48),
-              title: Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-              subtitle: Text(song.artist, maxLines: 1),
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.link),
-              title: const Text('取得 YouTube Music 連結'),
-              onTap: () => act(() => _getYouTubeLink(context, ref, song)),
-            ),
-            ListTile(
-              leading: const Icon(Icons.music_note_outlined),
-              title: const Text('在 Apple Music 開啟'),
-              onTap: () => act(() => openExternal(context, song.appleMusicUrl)),
-            ),
-            ListTile(
-              leading: const Icon(Icons.hub_outlined),
-              title: const Text('所有平台（song.link）'),
-              subtitle: const Text('Spotify、YouTube Music、KKBOX…'),
-              onTap: () => act(() => openExternal(context, song.songLinkUrl)),
-            ),
-            ListTile(
-              leading: const Icon(Icons.shopping_bag_outlined),
-              title: const Text('在 mora 搜尋購買'),
-              onTap: () => act(() => openExternal(context, song.moraUrl)),
-            ),
-            ListTile(
-              leading: const Icon(Icons.shopping_bag_outlined),
-              title: const Text('在 OTOTOY 搜尋購買'),
-              onTap: () => act(() => openExternal(context, song.ototoyUrl)),
-            ),
-            ListTile(
-              leading: const Icon(Icons.shopping_bag_outlined),
-              title: const Text('在 iTunes Store 購買'),
-              onTap: () => act(() => openExternal(context, song.iTunesStoreUrl)),
-            ),
-            ListTile(
-              leading: const Icon(Icons.copy),
-              title: const Text('複製「歌名 - 歌手」'),
-              onTap: () => act(() {
-                Clipboard.setData(ClipboardData(text: '${song.title} - ${song.artist}'));
-                toast(context, '已複製');
-              }),
-            ),
-          ]),
-        ),
-      );
-    },
-  );
-}
-
-/// Looks up the song on YouTube Music and shows + copies the link. Never opens it.
-Future<void> _getYouTubeLink(BuildContext context, WidgetRef ref, ITunesSong song) async {
-  final key = ref.read(settingsProvider).youtubeApiKey;
-  if (key.isEmpty) {
-    await showDialog(
-      context: context,
-      useRootNavigator: true,
-      builder: (ctx) => AlertDialog(
-        title: const Text('需要 YouTube 金鑰'),
-        content: const Text('「取得 YouTube Music 連結」需要一組免費的 YouTube Data API 金鑰，申請約 5 分鐘。'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => const YouTubeKeyGuidePage()));
-            },
-            child: const Text('查看申請步驟'),
-          ),
-        ],
-      ),
-    );
-    return;
-  }
-
-  showDialog(
-    context: context,
-    useRootNavigator: true,
-    barrierDismissible: false,
-    builder: (_) => const Center(child: CircularProgressIndicator()),
-  );
-  String? error;
-  String? url;
-  String? detail;
-  var official = false;
-  try {
-    final video = await ref.read(youTubeLinkFinderProvider).find(key, song.query);
-    if (video == null) {
-      error = '找不到對應的影片';
-    } else {
-      url = video.url;
-      official = video.isOfficialAudio;
-      detail = '${video.title}\n${video.channel}';
-      await Clipboard.setData(ClipboardData(text: url));
+      await ref.read(audioHandlerProvider).playTracks([
+        Track.fromUrl(stream, title: song.title, artist: song.artist, album: song.album ?? '', art: song.artwork, durationMs: song.durationMs, source: TrackSource.preview),
+      ]);
+    } catch (_) {
+      if (mounted) toast(context, '無法試聽');
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
-  } catch (e) {
-    error = e.toString();
   }
-  if (!context.mounted) return;
-  Navigator.of(context, rootNavigator: true).pop();
-  await showDialog(
-    context: context,
-    useRootNavigator: true,
-    builder: (ctx) => AlertDialog(
-      title: Text(error == null ? '已複製 YouTube Music 連結' : '無法取得連結'),
-      content: error != null
-          ? Text(error)
-          : Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              SelectableText(url!, style: const TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Text(detail!, style: TextStyle(color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
-              const SizedBox(height: 8),
-              Text(official ? '官方音源（自動比對，偶爾會對到同名的其他歌）。' : '找不到官方音源，這是第一個搜尋結果，可能是 MV、現場版或翻唱。', style: TextStyle(fontSize: 12, color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
-            ]),
-      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('好'))],
-    ),
-  );
+
+  @override
+  Widget build(BuildContext context) {
+    final song = widget.song;
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final info = [
+      if (song.artist.isNotEmpty) song.artist,
+      if (song.album != null) song.album!,
+      if (song.durationMs != null) formatDuration(Duration(milliseconds: song.durationMs!)),
+    ].join(' • ');
+    return ListTile(
+      leading: _loading
+          ? const SizedBox(width: 48, height: 48, child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))))
+          : ArtImage(song.artwork, size: 48),
+      title: Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(info, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted)),
+      trailing: IconButton(
+        tooltip: '下載',
+        icon: const Icon(Icons.download_rounded),
+        onPressed: () => startDownload(context, song.url, title: song.title),
+      ),
+      onTap: _loading ? null : _preview,
+    );
+  }
 }

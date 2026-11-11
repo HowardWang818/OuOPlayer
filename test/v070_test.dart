@@ -3,26 +3,10 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ouoplayer/data/db/database.dart';
 import 'package:ouoplayer/data/models/track.dart';
-import 'package:ouoplayer/services/online/youtube_link.dart';
 import 'package:ouoplayer/services/playlist_export.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
-  test('YouTube Music link prefers the official "- Topic" audio', () {
-    Map<String, dynamic> item(String id, String channel) => {
-          'id': {'kind': 'youtube#video', 'videoId': id},
-          'snippet': {'title': id, 'channelTitle': channel},
-        };
-    final v = YouTubeLinkFinder.parse({
-      'items': [item('mv', 'Ayase / YOASOBI'), item('cover', 'Someone'), item('audio', 'YOASOBI - Topic')],
-    })!;
-    expect(v.id, 'audio');
-    expect(v.isOfficialAudio, isTrue);
-    expect(v.url, 'https://music.youtube.com/watch?v=audio');
-    final first = YouTubeLinkFinder.parse({'items': [item('mv', 'Ayase / YOASOBI')]})!;
-    expect((first.id, first.isOfficialAudio), ('mv', false));
-  });
-
   group('copy / export playlist', () {
     final tracks = [
       const Track(id: '1', uri: '/storage/emulated/0/Music/群青.mp3', title: '群青', artist: 'YOASOBI', album: 'THE BOOK', durationMs: 248000),

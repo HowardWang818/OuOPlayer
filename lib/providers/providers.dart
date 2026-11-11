@@ -22,7 +22,7 @@ import '../services/lyrics/lrc.dart';
 import '../services/lyrics/lyrics_service.dart';
 import '../services/native_names.dart';
 import '../services/online/itunes.dart';
-import '../services/online/youtube_link.dart';
+import '../services/online/ytmusic.dart';
 import '../services/podcast_service.dart';
 
 // ---------- core singletons (overridden in main) ----------
@@ -32,7 +32,6 @@ final scannerProvider = Provider<LibraryScanner>((ref) => LibraryScanner(ref.wat
 final podcastServiceProvider = Provider<PodcastService>((ref) => PodcastService());
 final iTunesSearchProvider = Provider<ITunesSearch>((ref) => ITunesSearch());
 final nativeNamesProvider = Provider<NativeNames>((ref) => NativeNames(ref.watch(iTunesSearchProvider)));
-final youTubeLinkFinderProvider = Provider<YouTubeLinkFinder>((ref) => YouTubeLinkFinder());
 final Provider<LyricsService> lyricsServiceProvider = Provider<LyricsService>((ref) {
   final names = ref.watch(nativeNamesProvider);
   final svc = LyricsService(ref.watch(scannerProvider), nativeName: names.find);
@@ -72,11 +71,9 @@ class ShowLyricsNotifier extends Notifier<bool> {
 }
 
 final showLyricsProvider = NotifierProvider<ShowLyricsNotifier, bool>(ShowLyricsNotifier.new);
-final onlineSearchProvider = FutureProvider.family<List<ITunesSong>, String>(
-  (ref, q) {
-    if (q.trim().isEmpty) return Future.value(const []);
-    return ref.watch(iTunesSearchProvider).search(q.trim());
-  },
+/// YouTube Music songs for the search page's online tab (cached per query).
+final ytMusicSearchProvider = FutureProvider.family<List<YtMusicSong>, String>(
+  (ref, q) => YtMusicSearch().search(q.trim()),
   // Show network errors right away instead of retrying in the background.
   retry: (_, __) => null,
 );
@@ -152,7 +149,6 @@ class AppSettings {
   final bool podcastSkipSilence;
   final bool continueAfterQueue;
   final int seekSeconds;
-  final String youtubeApiKey;
 
   /// Manual 加入播放清單 may add a song that is already in the playlist.
   final bool allowPlaylistDuplicates;
@@ -244,7 +240,6 @@ class AppSettings {
     required this.podcastSkipSilence,
     required this.continueAfterQueue,
     required this.seekSeconds,
-    required this.youtubeApiKey,
     this.allowPlaylistDuplicates = false,
     this.autoCleanMissing = true,
     this.lyricsOnline = true,
@@ -288,7 +283,6 @@ class AppSettings {
     bool? podcastSkipSilence,
     bool? continueAfterQueue,
     int? seekSeconds,
-    String? youtubeApiKey,
     bool? allowPlaylistDuplicates,
     bool? autoCleanMissing,
     bool? lyricsOnline,
@@ -330,7 +324,6 @@ class AppSettings {
         podcastSkipSilence: podcastSkipSilence ?? this.podcastSkipSilence,
         continueAfterQueue: continueAfterQueue ?? this.continueAfterQueue,
         seekSeconds: seekSeconds ?? this.seekSeconds,
-        youtubeApiKey: youtubeApiKey ?? this.youtubeApiKey,
         allowPlaylistDuplicates: allowPlaylistDuplicates ?? this.allowPlaylistDuplicates,
         autoCleanMissing: autoCleanMissing ?? this.autoCleanMissing,
         lyricsOnline: lyricsOnline ?? this.lyricsOnline,
@@ -383,7 +376,6 @@ class AppSettings {
       podcastSkipSilence: m['podcast_skip_silence'] == 'true',
       continueAfterQueue: m['continue_after_queue'] != 'false',
       seekSeconds: int.tryParse(m['seek_seconds'] ?? '') ?? 15,
-      youtubeApiKey: m['youtube_api_key'] ?? '',
       allowPlaylistDuplicates: m['allow_playlist_duplicates'] == 'true',
       autoCleanMissing: m['auto_clean_missing'] != 'false',
       lyricsOnline: !isDemo && m['lyrics_online'] != 'false',
@@ -662,10 +654,6 @@ class SettingsNotifier extends Notifier<AppSettings> {
   }
 
   /// Stored only in the local database, never in source code.
-  void setYoutubeApiKey(String v) {
-    state = state.copyWith(youtubeApiKey: v.trim());
-    _db.setSetting('youtube_api_key', v.trim());
-  }
 }
 
 final settingsProvider = NotifierProvider<SettingsNotifier, AppSettings>(SettingsNotifier.new);

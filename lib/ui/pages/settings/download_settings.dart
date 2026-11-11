@@ -5,10 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../providers/providers.dart';
-import '../youtube_key_guide_page.dart';
 import 'section_page.dart';
 
-/// 下載與線上: where downloads go, mobile data, yt-dlp and the YouTube key.
+/// 下載與線上: where downloads go, mobile data and yt-dlp.
 class DownloadSettingsPage extends ConsumerWidget {
   const DownloadSettingsPage({super.key});
 
@@ -51,20 +50,6 @@ class DownloadSettingsPage extends ConsumerWidget {
             '${Platform.isAndroid ? '。開啟「沒有 Wi-Fi 時下載前提醒」時只在 Wi-Fi 下更新' : ''}'),
         value: s.ytAutoUpdate,
         onChanged: n.setYtAutoUpdate,
-      ),
-      SettingTile(
-        leading: const Icon(Icons.key_outlined),
-        title: const Text('YouTube Data API 金鑰'),
-        subtitle: Text(
-            s.youtubeApiKey.isEmpty
-                ? '未設定（用於「取得 YouTube Music 連結」）'
-                : '已設定 •••${s.youtubeApiKey.substring(s.youtubeApiKey.length > 4 ? s.youtubeApiKey.length - 4 : 0)}',
-            style: TextStyle(color: muted)),
-        trailing: TextButton(
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const YouTubeKeyGuidePage())),
-          child: const Text('如何申請？'),
-        ),
-        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const YouTubeKeyGuidePage())),
       ),
     ]);
   }
