@@ -13,8 +13,8 @@ import 'tag_editor.dart';
 
 /// After every download (1.20.0), before 原文歌名 and 歌詞: the names the
 /// song was found by (a search result, or the missing song it fills), and a
-/// square cover — the search result's when it is square, otherwise one
-/// found by name when it is surely the same song. Written into the file too.
+/// square cover: the official one when surely the same song, else the search
+/// result's square one. Written into the file too.
 class DownloadFinish {
   /// Covers that are square already: YT Music's and SoundCloud's.
   static bool squareArt(String? url) =>
@@ -39,16 +39,20 @@ class DownloadFinish {
     var named = Track(
         id: t.id, uri: t.uri, title: n.title, artist: n.artist, album: n.album, durationMs: t.durationMs, art: t.art, source: t.source, trackNo: t.trackNo, addedAt: t.addedAt);
     Uint8List? cover;
+    // The official cover when surely the same song (sharp, 封面大小);
+    // otherwise the search result's square one (YT Music / SoundCloud, often
+    // small); otherwise the thumbnail that came with the download.
     try {
-      if (squareArt(task.art)) {
+      await CoverFinder.loadSize(db);
+      final hit = await finder.find(named);
+      if (hit != null && hit.level == MatchLevel.sure) cover = await finder.download(hit.url);
+    } catch (_) {}
+    if (cover == null && squareArt(task.art)) {
+      try {
         final res = await (dio ?? Dio()).get<List<int>>(_bigger(task.art!), options: Options(responseType: ResponseType.bytes));
         cover = Uint8List.fromList(res.data!);
-      } else if (CoverFinder.wantsCover(named)) {
-        // A video's thumbnail: a square cover only when surely the same song.
-        final hit = await finder.find(named);
-        if (hit != null && hit.level == MatchLevel.sure) cover = await finder.download(hit.url);
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
     final art = cover == null ? t.art : await storeArt(cover, 'image/jpeg');
     if (n.title == t.title && n.artist == t.artist && n.album == t.album && art == t.art) return t;
     named = Track(

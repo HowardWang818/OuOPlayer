@@ -103,9 +103,10 @@ class CoverFinder {
 
   /// The best iTunes song for [t], or null.
   Future<CoverHit?> find(Track t) async {
+    // Every song by its own title first: album tags from downloads are often
+    // wrong (three singles tagged with one of them), so an album is never
+    // taken as proof of the cover.
     final albumKey = t.album == '未知專輯' ? null : '${foldText(t.album)}|${foldText(t.artist)}';
-    final cached = albumKey == null ? null : _byAlbum[albumKey];
-    if (cached != null) return CoverHit(t, cached, MatchLevel.sure);
     final artist = t.artist == '未知演出者' ? '' : SongMatcher.searchArtist(t.artist);
     final query = [SongMatcher.searchTitle(t.title, t.artist), artist].where((s) => s.isNotEmpty).join(' ');
     final order = storesFor(japanese: hasKana('${t.title} ${t.artist}') || (await japaneseLyrics?.call(t) ?? false));
@@ -114,21 +115,21 @@ class CoverFinder {
       if (i > 0) await Future.delayed(pause);
       final (song, result) = pick(t, await _search.search(query, limit: 15, store: store));
       if (song == null) continue;
-      if (result.level == MatchLevel.sure) {
-        if (albumKey != null) _byAlbum[albumKey] = song;
-        return CoverHit(t, song, result.level);
-      }
+      if (result.level == MatchLevel.sure) return CoverHit(t, song, result.level);
       maybe ??= CoverHit(t, song, result.level);
     }
     if (maybe != null) return maybe;
-    // Not found by its title: its album's cover (album name + artist).
+    // Not found by its title: its album's cover (album name + artist), only
+    // as a 「可能是」 for the user to confirm.
     if (albumKey == null || artist.isEmpty) return null;
+    final known = _byAlbum[albumKey];
+    if (known != null) return CoverHit(t, known, MatchLevel.maybe);
     for (final store in order) {
       await Future.delayed(pause);
       final album = pickAlbum(t, await _search.search('${t.album} $artist', limit: 15, store: store));
       if (album != null) {
         _byAlbum[albumKey] = album;
-        return CoverHit(t, album, MatchLevel.sure);
+        return CoverHit(t, album, MatchLevel.maybe);
       }
     }
     return null;
