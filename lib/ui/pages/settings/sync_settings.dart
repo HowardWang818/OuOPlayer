@@ -7,6 +7,7 @@ import '../../../providers/providers.dart';
 import '../../../providers/sync_provider.dart';
 import '../../../services/sync2/now_playing.dart';
 import '../../widgets/dialogs.dart';
+import '../../widgets/power_tile.dart';
 import 'section_page.dart';
 import 'sync_log_page.dart';
 
@@ -113,6 +114,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
           enabled: !sync.running,
           onTap: n.run,
         ),
+        if (Platform.isAndroid) const PowerTile(),
         settingsSubheader(context, '同步的播放清單'),
         SettingCheck(
           secondary: const Icon(Icons.favorite),
@@ -168,6 +170,12 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
               await _load();
             },
           ),
+        if (_s['sync_now'] != 'false')
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('接續播放狀態'),
+            subtitle: Text(resumeStatus(_s), style: TextStyle(color: muted)),
+          ),
         if (_s['sync_plays'] != 'false' && !ref.watch(settingsProvider).recordPlays)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -201,4 +209,29 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
       ),
     ]);
   }
+}
+
+/// 接續播放狀態: when this device last sent what it plays, and what the last
+/// check of the other device's found.
+String resumeStatus(Map<String, String> s) {
+  String when(DateTime d) => '${d.month}/${d.day} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  final pushed = int.tryParse(s['sync_now_pushed'] ?? '');
+  final lines = <String>['上次上傳：${pushed == null ? '尚未上傳' : when(DateTime.fromMillisecondsSinceEpoch(pushed))}'];
+  final debug = s['sync_resume_debug'];
+  if (debug != null && debug.length > 27) {
+    final why = debug.substring(27);
+    final at = RegExp(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2})').firstMatch(why)?.group(1);
+    final text = switch (why) {
+      _ when why.startsWith('older than 12 h') => '另一台的播放超過 12 小時${at == null ? '' : '（$at）'}',
+      _ when why.startsWith('this device is newer') => '這台的播放較新',
+      _ when why.startsWith('already asked') => '已詢問過',
+      _ when why.startsWith('playing here') => '這台正在播放',
+      _ when why.startsWith('nothing from another device') => '另一台沒有播放紀錄',
+      _ when why.startsWith('loaded') || why.startsWith('asked') => '已接續',
+      _ when why.startsWith('set to never') => '設為不接續',
+      _ => '無法檢查',
+    };
+    lines.add('上次檢查：$text');
+  }
+  return lines.join('\n');
 }

@@ -168,6 +168,7 @@ class SyncNotifier extends Notifier<SyncState> {
     }
     _endedAt = DateTime.now();
     state = state.copyWith(running: false, last: DateTime.now(), message: message);
+    if (nowPending) unawaited(pushNowPlaying());
     unawaited(_tagBacklog());
     if (_again) {
       _again = false;
@@ -272,8 +273,18 @@ class SyncNotifier extends Notifier<SyncState> {
         original: h.originalOrder,
         loop: h.player.loopMode.name,
       ));
-    } catch (_) {}
+      nowPending = false;
+      await ref.read(dbProvider).setSetting(nowPushedKey, '${DateTime.now().millisecondsSinceEpoch}');
+    } catch (_) {
+      // No network (power saving cuts it in the background): sent again as
+      // soon as one gets through (the minute timer, coming back, a sync).
+      nowPending = true;
+    }
   }
+
+  /// The last 接續播放 state didn't reach Drive yet.
+  bool nowPending = false;
+  static const nowPushedKey = 'sync_now_pushed';
 
   bool _asking = false;
 
@@ -459,6 +470,7 @@ final syncTriggersProvider = Provider<void>((ref) {
     },
     onShow: () {
       front = true;
+      if (notifier.nowPending) unawaited(notifier.pushNowPlaying());
       look();
     },
   );
@@ -475,6 +487,8 @@ final syncTriggersProvider = Provider<void>((ref) {
   // data (the phone then syncs on opening, coming to the front, after a
   // change here, and every 15 minutes).
   final retry = Timer.periodic(const Duration(minutes: 1), (_) async {
+    // 接續播放 that didn't get through: tiny, so tried even on mobile data.
+    if (notifier.nowPending) unawaited(notifier.pushNowPlaying());
     if (await everyMinuteSkipped()) return;
     if (notifier.incomplete) {
       notifier.run(auto: true, retry: true);

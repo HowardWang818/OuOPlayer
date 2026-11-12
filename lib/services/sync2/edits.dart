@@ -143,7 +143,9 @@ class EditSync {
     var changed = 0;
     final library = await db.tracks();
     final roots = await this.roots(library);
-    final mine = {for (final r in await db.db.query('track_edits')) '${r['root']}': r};
+    final rows = await db.db.query('track_edits');
+    final mine = {for (final r in rows) '${r['root']}': r};
+    final mineByTrack = {for (final r in rows) '${r['track_id']}': r};
     // Latest edit of each root over all the other devices.
     final latest = <String, Map>{};
     for (final dev in theirs) {
@@ -153,13 +155,28 @@ class EditSync {
         if (cur == null || _newer(m, cur)) latest['${e.key}'] = m;
       }
     }
+    // One edit per song here: several roots can point at the same song (old
+    // records named it differently), and applying each in turn made it flip
+    // between names on every sync. Only the newest of them counts.
+    final perTrack = <String, (String, Map)>{};
     for (final MapEntry(key: root, value: m) in latest.entries) {
       final t = roots[root];
       if (t == null || t.isRemote) continue;
       final ms = m['ms'] as int?;
-      if (mine[root] == null && ms != null && t.durationMs != null && (t.durationMs! - ms).abs() > 3000) continue;
-      final here = mine[root];
+      if (mine[root] == null && mineByTrack[t.id] == null && ms != null && t.durationMs != null && (t.durationMs! - ms).abs() > 3000) continue;
+      final cur = perTrack[t.id];
+      if (cur == null || _newer(m, cur.$2)) perTrack[t.id] = (root, m);
+    }
+    final byId = {for (final t in library) t.id: t};
+    for (final MapEntry(key: id, value: (root, m)) in perTrack.entries) {
+      final t = byId[id]!;
+      final ms = m['ms'] as int?;
+      // Compared with this song's own latest edit, whatever root it has.
+      final here = mineByTrack[id] ?? mine[root];
       if (here != null && !_newer(m, {'at': here['at'], 'd': here['device']})) continue;
+      // Nothing would change: no write, no log line.
+      final sameNames = '${m['t'] ?? t.title}' == t.title && '${m['a'] ?? t.artist}' == t.artist && '${m['al'] ?? t.album}' == t.album;
+      if (sameNames && (m['c'] == null || m['c'] == here?['cover'])) continue;
       var art = t.art;
       Uint8List? cover;
       final c = m['c'] as String?;

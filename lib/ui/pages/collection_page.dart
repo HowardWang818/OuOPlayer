@@ -414,7 +414,9 @@ class CollectionPage extends ConsumerWidget {
               if (kind == CollectionKind.playlist)
                 IconButton(
                   tooltip: '下載到這個播放清單',
-                  icon: const Icon(Icons.download_for_offline_outlined),
+                  // In the theme colour while the list has missing songs.
+                  icon: Icon(Icons.download_for_offline_outlined,
+                      color: source.any((t) => t.source == TrackSource.missing) ? AppTheme.accent(context) : null),
                   onPressed: () => _downloadToPlaylist(context, ref),
                 ),
               TrackSortButton(

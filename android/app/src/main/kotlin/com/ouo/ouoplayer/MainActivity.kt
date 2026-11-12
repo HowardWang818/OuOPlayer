@@ -58,6 +58,23 @@ class MainActivity : AudioServiceActivity() {
                 ),
             )
         }
+        // 不受省電限制: off the battery optimisation list, so power saving
+        // doesn't cut the network while the app is in the background.
+        MethodChannel(messenger, "ouo/power").setMethodCallHandler { call, result ->
+            val power = getSystemService(android.os.PowerManager::class.java)
+            when (call.method) {
+                "unrestricted" -> result.success(power?.isIgnoringBatteryOptimizations(packageName) == true)
+                "ask" -> try {
+                    @android.annotation.SuppressLint("BatteryLife")
+                    val intent = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:$packageName"))
+                    startActivity(intent)
+                    result.success(true)
+                } catch (e: Exception) {
+                    result.error("power", e.message, null)
+                }
+                else -> result.notImplemented()
+            }
+        }
         // Lyrics can keep the screen on while they are shown.
         MethodChannel(messenger, "ouo/screen").setMethodCallHandler { call, result ->
             if (call.method != "keepOn") return@setMethodCallHandler result.notImplemented()
