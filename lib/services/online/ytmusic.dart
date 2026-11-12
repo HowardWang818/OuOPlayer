@@ -3,15 +3,18 @@ import '../song_matcher.dart';
 
 /// A song found on YouTube Music.
 class YtMusicSong {
-  const YtMusicSong({required this.videoId, required this.title, required this.artist, this.album, this.durationMs, this.artwork});
+  const YtMusicSong({required this.videoId, required this.title, required this.artist, this.album, this.durationMs, this.artwork, this.link});
   final String videoId;
+
+  /// The page to download (YouTube, SoundCloud); YT Music's when null.
+  final String? link;
   final String title;
   final String artist;
   final String? album;
   final int? durationMs;
   final String? artwork;
 
-  String get url => 'https://music.youtube.com/watch?v=$videoId';
+  String get url => link ?? 'https://music.youtube.com/watch?v=$videoId';
 }
 
 /// Searches YouTube Music's songs the way its web player does (no key).

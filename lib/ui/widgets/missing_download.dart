@@ -22,7 +22,8 @@ Future<MissingFind> findMissing(Track t) async {
 /// Queues [song] for the missing song [t] (its place fills itself once the
 /// file is in the library).
 void queueMissing(ProviderContainer c, Track t, YtMusicSong song) =>
-    c.read(downloadServiceProvider).add(song.url, format: c.read(settingsProvider).ytFormat, title: t.title, art: t.art ?? song.artwork);
+    c.read(downloadServiceProvider).add(song.url,
+        format: c.read(settingsProvider).ytFormat, title: t.title, artist: t.artist, album: t.album == '未知專輯' ? song.album : t.album, art: song.artwork ?? t.art);
 
 /// 選擇版本: the search results for [t]; the one tapped, or null.
 Future<YtMusicSong?> pickVersion(BuildContext context, Track t, List<YtMusicSong> results) {

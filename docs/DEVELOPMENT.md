@@ -91,7 +91,6 @@ keytool -keypasswd -alias androiddebugkey -keystore D:\dev\ouoplayer-keys\ouopla
 都放在 `D:\dev\ouoplayer-keys\`，由 `release.ps1` 帶進去，不進 git：
 
 - `google_oauth.json`：Windows 版的 Google 登入（`desktopClientId`、`desktopClientSecret`）。
-- `lastfm.json`：Last.fm 播放記錄（`apiKey`、`sharedSecret`，到 last.fm/api/account/create 申請）。沒有這個檔案時，App 不顯示 Last.fm 選項；ListenBrainz 不需要任何金鑰。
 
 ## App 內更新與更新伺服器
 

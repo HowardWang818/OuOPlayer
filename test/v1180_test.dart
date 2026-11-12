@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart' show CancelToken, DioException, DioExceptionType, RequestOptions, Response;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ouoplayer/config/version.dart';
@@ -11,7 +10,6 @@ import 'package:ouoplayer/services/auto_backup.dart';
 import 'package:ouoplayer/services/bug_report.dart';
 import 'package:ouoplayer/services/download_service.dart';
 import 'package:ouoplayer/services/network_check.dart';
-import 'package:ouoplayer/services/scrobble.dart';
 import 'package:ouoplayer/services/sync/drive_client.dart';
 import 'package:ouoplayer/services/usage_stats.dart';
 import 'package:ouoplayer/ui/widgets/empty_state.dart';
@@ -51,28 +49,6 @@ class CountingDrive implements DriveStore {
       File(path).writeAsBytes(files[id]!.$2);
   @override
   Future<void> delete(String id) async => files.remove(id);
-}
-
-/// A scrobble service that records what it got, and can fail.
-class FakeService implements ScrobbleService {
-  FakeService(this.id);
-  @override
-  final String id;
-  final sent = <Heard>[];
-  final playing = <String>[];
-  Object? failWith;
-
-  @override
-  Future<void> nowPlaying(Heard h) async {
-    if (failWith != null) throw failWith!;
-    playing.add(h.title);
-  }
-
-  @override
-  Future<void> submit(List<Heard> batch) async {
-    if (failWith != null) throw failWith!;
-    sent.addAll(batch);
-  }
 }
 
 Track song(String title, {int ms = 200000, String album = 'Al'}) =>
@@ -187,86 +163,6 @@ void main() {
     });
   });
 
-  group('播放記錄', () {
-    test('counts after half the song or 4 minutes, never for 30 seconds or less', () {
-      expect(Scrobbler.counts(const Duration(seconds: 30), const Duration(seconds: 30)), isFalse);
-      expect(Scrobbler.counts(const Duration(minutes: 3), const Duration(seconds: 89)), isFalse);
-      expect(Scrobbler.counts(const Duration(minutes: 3), const Duration(seconds: 90)), isTrue);
-      expect(Scrobbler.counts(const Duration(minutes: 20), const Duration(minutes: 3, seconds: 59)), isFalse);
-      expect(Scrobbler.counts(const Duration(minutes: 20), const Duration(minutes: 4)), isTrue);
-    });
-
-    test('heard songs go out; offline they wait and go later', () async {
-      final db = await openDb();
-      final lb = FakeService('listenbrainz');
-      final s = Scrobbler(db, make: (_) => [lb]);
-      lb.failWith = const SocketException('offline');
-      await s.heard(song('一'), DateTime(2026, 11, 10, 8));
-      await s.heard(song('二'), DateTime(2026, 11, 10, 9));
-      expect(lb.sent, isEmpty);
-      expect(await s.waiting('listenbrainz'), 2);
-      lb.failWith = null;
-      await s.flush();
-      expect(lb.sent.map((h) => h.title), ['一', '二']);
-      expect(lb.sent.first.at, DateTime(2026, 11, 10, 8));
-      expect(lb.sent.first.album, 'Al');
-      expect(await s.waiting('listenbrainz'), 0);
-    });
-
-    test('a sign-in that no longer works is dropped with what waited', () async {
-      final db = await openDb();
-      await db.setSetting(Scrobbler.listenBrainzKey, 'tok');
-      final lb = FakeService('listenbrainz')..failWith = const ScrobbleSignedOut();
-      final s = Scrobbler(db, make: (_) => [lb]);
-      await s.heard(song('一'), DateTime(2026, 11, 10));
-      final settings = await db.allSettings();
-      expect(settings[Scrobbler.listenBrainzKey], '');
-      expect(settings[Scrobbler.queueKey('listenbrainz')], '');
-    });
-
-    test('now playing is sent to every account', () async {
-      final db = await openDb();
-      final a = FakeService('lastfm');
-      final b = FakeService('listenbrainz');
-      await Scrobbler(db, make: (_) => [a, b]).nowPlaying(song('三'));
-      expect(a.playing, ['三']);
-      expect(b.playing, ['三']);
-    });
-
-    test('nothing is queued without an account', () async {
-      final db = await openDb();
-      await Scrobbler(db).heard(song('一'), DateTime(2026, 11, 10));
-      final s = await db.allSettings();
-      expect(s.keys.where((k) => k.startsWith('scrobble_queue_')), isEmpty);
-    });
-
-    test('Last.fm signature: md5 of sorted name+value pairs and the secret', () {
-      final sig = LastFm.sign({'method': 'auth.getToken', 'api_key': 'KEY', 'format': 'json'}, 'SECRET');
-      expect(sig, md5.convert(utf8.encode('api_keyKEYmethodauth.getTokenSECRET')).toString());
-    });
-
-    test('ListenBrainz listens carry the song, album, length and player', () {
-      final m = ListenBrainz.listen(Heard.of(song('四', ms: 181000), DateTime.fromMillisecondsSinceEpoch(1762732800000)));
-      expect(m['listened_at'], 1762732800);
-      final meta = m['track_metadata'] as Map;
-      expect(meta['artist_name'], 'Ar');
-      expect(meta['track_name'], '四');
-      expect(meta['release_name'], 'Al');
-      expect((meta['additional_info'] as Map)['duration_ms'], 181000);
-      expect((meta['additional_info'] as Map)['media_player'], 'OuOPlayer');
-      expect(ListenBrainz.listen(Heard.of(song('四'), DateTime.now()), withTime: false).containsKey('listened_at'), isFalse);
-    });
-
-    test('a waiting song survives being written and read back', () {
-      final h = Heard.of(song('五', album: ''), DateTime.fromMillisecondsSinceEpoch(1762732800000));
-      final back = Heard.fromJson(jsonDecode(jsonEncode(h.toJson())) as Map);
-      expect(back.title, '五');
-      expect(back.album, isNull);
-      expect(back.at, h.at);
-      expect(back.seconds, 200);
-    });
-  });
-
   group('匿名使用人數統計', () {
     test('a random id is 16 hex characters and differs each time', () {
       final a = UsageStats.newId();
@@ -322,7 +218,6 @@ void main() {
         expect(text, contains('90 天'));
       }
       expect(md, contains('Anonymous user count'));
-      expect(md, contains('Last.fm'));
     });
 
     test('share cards: tall for stories, square for posts, saved at 1080 px wide', () {

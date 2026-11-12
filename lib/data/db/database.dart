@@ -298,6 +298,23 @@ class AppDatabase {
     _notify();
   }
 
+  /// 刪除檔案 (1.20.0): the songs leave every playlist and the likes as the
+  /// user's own action, so synced devices take them out of their lists too
+  /// (their files stay). Folder removal and hiding don't do this.
+  Future<void> takeOutOfLists(Iterable<String> ids) => exclusive(() async {
+    final gone = ids.toSet();
+    if (gone.isEmpty) return;
+    final marks = List.filled(gone.length, '?').join(',');
+    final lists = {for (final r in await db.query('playlist_tracks', columns: ['playlist_id'], where: 'track_id IN ($marks)', whereArgs: gone.toList())) r['playlist_id'] as int};
+    for (final id in lists) {
+      final rows = await playlistRows(id);
+      await _rewritePlaylist(id, [for (final r in rows) if (!gone.contains(r.$1)) r]);
+    }
+    for (final t in await tracksByIds(gone.toList())) {
+      if ((await db.query('favorites', where: 'track_id = ?', whereArgs: [t.id])).isNotEmpty) await setFavorite(t, false);
+    }
+  });
+
   Future<void> deleteTracks(Iterable<String> ids) => exclusive(() async {
     final list = ids.toList();
     if (list.isEmpty) return;

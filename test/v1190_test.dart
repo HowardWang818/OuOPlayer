@@ -120,7 +120,7 @@ void main() {
       expect(File('lib/services/online/youtube_link.dart').existsSync(), isFalse);
       final search = File('lib/ui/pages/search_page.dart').readAsStringSync();
       expect(search, isNot(contains('ITunesSong')));
-      expect(search, contains('ytMusicSearchProvider'));
+      expect(search, contains('onlineSongsProvider'));
       final missing = File('lib/ui/pages/missing_songs_page.dart').readAsStringSync();
       expect(missing, isNot(contains('youtubeApiKey')));
       expect(missing, contains('全部下載'));

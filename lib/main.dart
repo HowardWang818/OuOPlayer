@@ -8,7 +8,6 @@ import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 
 import 'app.dart';
 import 'ui/pages/onboarding_page.dart' show firstRunProvider;
-import 'ui/pages/settings/scrobble_section.dart' show scrobblerProvider;
 import 'data/db/database.dart';
 import 'config/demo.dart';
 import 'config/demo_seed.dart';
@@ -52,6 +51,8 @@ Future<void> main(List<String> args) async {
   await DesktopTray.finishStart(args).catchError((Object e) => debugPrint('window: $e'));
 
   final saved = await db.allSettings();
+  // 播放記錄 was removed in 1.20.0: its sign-ins and waiting plays go.
+  await db.db.delete('settings', where: "key IN ('lastfm_session', 'lastfm_user', 'listenbrainz_token', 'listenbrainz_user', 'scrobble_queue_lastfm', 'scrobble_queue_listenbrainz')");
   // A new install (no songs yet, never through the guide): 第一次使用 shows.
   final firstRun = !isDemo && !saved.containsKey('onboarded') && (await db.trackIds()).isEmpty;
   final container = ProviderContainer(overrides: [
@@ -62,12 +63,6 @@ Future<void> main(List<String> args) async {
     initialThemeChoiceProvider.overrideWithValue(ThemeChoice.fromSettings(saved)),
     initialLooksProvider.overrideWithValue(Looks.fromSettings(saved)),
   ]);
-
-  // 播放記錄: Last.fm / ListenBrainz, if signed in (waiting ones go now).
-  final scrobbler = container.read(scrobblerProvider);
-  handler.onNowPlaying = (t) => unawaited(scrobbler.nowPlaying(t));
-  handler.onHeard = (t, at) => unawaited(scrobbler.heard(t, at));
-  unawaited(scrobbler.flush());
 
   // Android Auto browsing; podcast episodes come from their feeds.
   handler.carBrowser = CarBrowser(db, episodes: (url) async => (await container.read(podcastServiceProvider).fetch(url)).episodes);

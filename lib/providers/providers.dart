@@ -12,6 +12,8 @@ import 'package:path_provider/path_provider.dart';
 import '../data/db/database.dart';
 import '../data/models/track.dart';
 import '../config/demo.dart';
+import '../services/cover_finder.dart';
+import '../services/download_finish.dart';
 import '../services/artist_images.dart';
 import '../services/artists.dart';
 import '../services/audio_handler.dart';
@@ -22,6 +24,7 @@ import '../services/lyrics/lrc.dart';
 import '../services/lyrics/lyrics_service.dart';
 import '../services/native_names.dart';
 import '../services/online/itunes.dart';
+import '../services/online/online_search.dart';
 import '../services/online/ytmusic.dart';
 import '../services/podcast_service.dart';
 
@@ -71,9 +74,9 @@ class ShowLyricsNotifier extends Notifier<bool> {
 }
 
 final showLyricsProvider = NotifierProvider<ShowLyricsNotifier, bool>(ShowLyricsNotifier.new);
-/// YouTube Music songs for the search page's online tab (cached per query).
-final ytMusicSearchProvider = FutureProvider.family<List<YtMusicSong>, String>(
-  (ref, q) => YtMusicSearch().search(q.trim()),
+/// 線上搜尋 results for (source, query), cached per pair.
+final onlineSongsProvider = FutureProvider.family<List<YtMusicSong>, (OnlineSource, String)>(
+  (ref, k) => searchOnline(k.$1, k.$2.trim(), ref.read(downloadServiceProvider).ytdlp),
   // Show network errors right away instead of retrying in the background.
   retry: (_, __) => null,
 );
@@ -89,8 +92,14 @@ final downloadServiceProvider = Provider<DownloadService>((ref) {
   final svc = DownloadService(ref.watch(scannerProvider), ref.watch(dbProvider));
   svc.outDir = ref.read(settingsProvider).downloadDir;
   // 下載歌曲時改成日文原名 (only when certain), then 自動找歌詞 by that name.
-  svc.onImported = (t) async {
+  svc.onImported = (t, task) async {
     var track = t;
+    // Names and a square cover first (DownloadFinish).
+    try {
+      track = await DownloadFinish.apply(t, task,
+          db: ref.read(dbProvider), storeArt: ref.read(scannerProvider).storeArt, finder: CoverFinder(ref.read(iTunesSearchProvider)));
+      if (!identical(track, t)) ref.read(audioHandlerProvider).updateTrackInfo(track);
+    } catch (_) {}
     if (ref.read(settingsProvider).nativeNamesOnDownload && NativeNames.wants(t)) {
       try {
         final n = await ref.read(nativeNamesProvider).find(t);
@@ -890,3 +899,22 @@ class SearchStateNotifier extends Notifier<SearchState> {
 }
 
 final searchStateProvider = NotifierProvider<SearchStateNotifier, SearchState>(SearchStateNotifier.new);
+
+/// The platform 線上搜尋 uses: picked the first time, then the last one used.
+final onlineSourceProvider = NotifierProvider<OnlineSourceNotifier, OnlineSource?>(OnlineSourceNotifier.new);
+
+class OnlineSourceNotifier extends Notifier<OnlineSource?> {
+  @override
+  OnlineSource? build() {
+    ref.read(dbProvider).allSettings().then((s) {
+      final saved = OnlineSource.byName(s[OnlineSource.key]);
+      if (saved != null) state = saved;
+    });
+    return null;
+  }
+
+  Future<void> set(OnlineSource s) async {
+    state = s;
+    await ref.read(dbProvider).setSetting(OnlineSource.key, s.name);
+  }
+}

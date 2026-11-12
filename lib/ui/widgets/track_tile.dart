@@ -1,4 +1,3 @@
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,18 +9,12 @@ import '../../providers/providers.dart';
 import '../../services/file_trash.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/looks.dart';
-import '../pages/collection_page.dart';
-import '../pages/cover_fix_page.dart';
-import '../pages/native_name_page.dart';
-import '../../services/native_names.dart';
 import '../pages/pick_replacement_page.dart';
 import 'art_image.dart';
 import 'dialogs.dart';
-import 'download_actions.dart';
 import 'missing_download.dart';
-import 'edit_track_dialog.dart';
 import 'removal_summary.dart';
-import 'track_links.dart';
+import 'song_actions.dart';
 import 'track_selection.dart';
 
 class TrackTile extends ConsumerWidget {
@@ -189,160 +182,9 @@ Future<void> showMissingSongMenu(BuildContext context, WidgetRef ref, Track trac
       ),
     );
 
-Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {VoidCallback? onRemove, String removeLabel = '移除'}) async {
-  final handler = ref.read(audioHandlerProvider);
-  final db = ref.read(dbProvider);
-  final favs = ref.read(favoriteIdsProvider).value ?? {};
-  final isFav = favs.contains(track.id);
-  final preview = previewSourceOf(track.id);
-  await showModalBottomSheet(
-    context: context,
-    useRootNavigator: true,
-    showDragHandle: true,
-    builder: (ctx) => SafeArea(
-      child: SingleChildScrollView(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(
-            leading: ArtImage(track.art, size: 48),
-            title: Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text(track.artist, maxLines: 1),
-          ),
-          const Divider(),
-          ListTile(
-            leading: Icon(isFav ? Icons.favorite : Icons.favorite_border, color: isFav ? AppTheme.accent(context) : null),
-            title: Text(isFav ? '從已按讚的歌曲移除' : '加到已按讚的歌曲'),
-            onTap: () {
-              Navigator.pop(ctx);
-              // A preview: download the song, then like it.
-              if (preview != null) {
-                downloadPreview(context, preview, like: true);
-              } else {
-                db.setFavorite(track, !isFav);
-              }
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.playlist_add),
-            title: const Text('加入播放清單'),
-            onTap: () {
-              Navigator.pop(ctx);
-              // A preview: download the song into the playlist picked.
-              if (preview != null) {
-                downloadPreview(context, preview, like: false);
-              } else {
-                showAddToPlaylist(context, ref, [track]);
-              }
-            },
-          ),
-          // Only 加入佇列 (like Spotify): it plays after the current song and
-          // the ones queued before, so 「下一首播放」 isn't needed.
-          ListTile(
-            leading: const Icon(Icons.queue_music),
-            title: const Text('加入佇列'),
-            onTap: () async {
-              Navigator.pop(ctx);
-              await handler.enqueue([track]);
-              if (context.mounted) toast(context, '已加入佇列');
-            },
-          ),
-          if (track.source != TrackSource.url && track.source != TrackSource.podcast && track.source != TrackSource.preview) ...[
-            ListTile(
-              leading: const Icon(Icons.album),
-              title: const Text('前往專輯'),
-              onTap: () {
-                Navigator.pop(ctx);
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => CollectionPage.album(track.album)));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.person),
-              title: const Text('前往演出者'),
-              onTap: () {
-                Navigator.pop(ctx);
-                openArtist(context, track);
-              },
-            ),
-          ],
-          if (isLocalFile(track))
-            ListTile(
-              leading: const Icon(Icons.folder_open),
-              title: const Text('在資料夾中顯示'),
-              subtitle: Text(Platform.isWindows ? '用檔案總管開啟並選取這首歌' : '在「瀏覽資料夾」打開這首歌所在的資料夾'),
-              onTap: () {
-                Navigator.pop(ctx);
-                showInFolder(context, track);
-              },
-            ),
-          if (onRemove != null)
-            ListTile(
-              leading: const Icon(Icons.remove_circle_outline),
-              title: Text(removeLabel),
-              onTap: () async {
-                Navigator.pop(ctx);
-                if (await confirmDelete(context, title: '$removeLabel？', message: track.title)) onRemove();
-              },
-            ),
-          if (track.source == TrackSource.local || track.source == TrackSource.download)
-            ListTile(
-              leading: const Icon(Icons.image_search_outlined),
-              title: const Text('找正式封面'),
-              onTap: () {
-                Navigator.pop(ctx);
-                Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => CoverFixPage(tracks: [track])));
-              },
-            ),
-          if (NativeNames.wants(track))
-            ListTile(
-              leading: const Icon(Icons.translate),
-              title: const Text('找原文歌名'),
-              subtitle: const Text('羅馬拼音或英文的歌名，查日文或中文的原名'),
-              onTap: () {
-                Navigator.pop(ctx);
-                Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => NativeNamePage(tracks: [track])));
-              },
-            ),
-          if (track.source == TrackSource.local || track.source == TrackSource.download)
-            ListTile(
-              leading: const Icon(Icons.edit_outlined),
-              title: const Text('編輯資訊'),
-              subtitle: const Text('歌名、歌手、專輯、封面'),
-              onTap: () {
-                Navigator.pop(ctx);
-                showEditTrack(context, ref, track);
-              },
-            ),
-          if (track.source == TrackSource.local || track.source == TrackSource.download)
-            ListTile(
-              leading: const Icon(Icons.hide_source),
-              title: const Text('從音樂庫隱藏'),
-              subtitle: const Text('不會刪除檔案；重新掃描後會再出現'),
-              onTap: () async {
-                Navigator.pop(ctx);
-                final where = await removalLines(ref, [track]);
-                if (!context.mounted) return;
-                if (await confirmDelete(context,
-                    title: '從音樂庫隱藏「${track.title}」？',
-                    message: '檔案不會被刪除，重新掃描後會再出現在音樂庫。會從以下地方移除：\n${where.map((l) => '• $l').join('\n')}',
-                    action: '隱藏')) {
-                  await db.deleteTracks([track.id]);
-                }
-              },
-            ),
-          if (track.source == TrackSource.local || track.source == TrackSource.download)
-            ListTile(
-              leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
-              title: Text(ref.read(settingsProvider).deletePermanently ? '永久刪除檔案' : '刪除檔案', style: const TextStyle(color: Colors.redAccent)),
-              subtitle: Text(ref.read(settingsProvider).deletePermanently ? '無法還原' : '移到$trashName，可以還原'),
-              onTap: () {
-                Navigator.pop(ctx);
-                deleteTrackFiles(context, ref, [track]);
-              },
-            ),
-        ]),
-      ),
-    ),
-  );
-}
+/// The song menu for one song: the same entries as for selected songs.
+Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {VoidCallback? onRemove, String removeLabel = '移除'}) =>
+    showSongMenu(context, ref, track, onRemove: onRemove == null ? null : () async => onRemove(), removeLabel: removeLabel);
 
 /// Where removing [tracks] takes them out of (see [describeRemoval]).
 Future<List<String>> removalLines(WidgetRef ref, List<Track> tracks) async {
@@ -375,7 +217,7 @@ Future<bool> deleteTrackFiles(BuildContext context, WidgetRef ref, List<Track> t
               ? const Text('檔案會永久刪除，無法還原。', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))
               : Text('檔案會移到$trashName，可以還原。'),
           const SizedBox(height: 4),
-          const Text('並從以下地方移除：'),
+          const Text('並從以下地方移除，同步的播放清單在另一台也會移除：'),
           RemovalList(where),
         ]),
       ),
@@ -400,7 +242,10 @@ Future<bool> deleteTrackFiles(BuildContext context, WidgetRef ref, List<Track> t
     for (final t in tracks) {
       await handler.removeTrack(t.id);
     }
-    await ref.read(dbProvider).deleteTracks(tracks.map((t) => t.id));
+    final db = ref.read(dbProvider);
+    // Out of the playlists and likes here and on synced devices, then gone.
+    await db.takeOutOfLists(tracks.map((t) => t.id));
+    await db.deleteTracks(tracks.map((t) => t.id));
     if (context.mounted) toast(context, forever ? '已永久刪除' : '已移到$trashName');
     return true;
   } catch (e) {

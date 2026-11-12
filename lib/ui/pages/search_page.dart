@@ -10,6 +10,7 @@ import '../../providers/providers.dart';
 import '../../services/network_check.dart';
 import '../../services/download_service.dart';
 import '../../services/online/preview_match.dart';
+import '../../services/online/online_search.dart';
 import '../../services/online/ytmusic.dart';
 import '../widgets/art_image.dart';
 import '../widgets/dialogs.dart';
@@ -91,7 +92,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: TextField(
+          child: Row(children: [
+          Expanded(child: TextField(
             controller: _ctrl,
             focusNode: _box,
             textInputAction: TextInputAction.search,
@@ -114,7 +116,13 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                       },
                     ),
             ),
-          ),
+          )),
+          // 網路 only: the platform it searches, switchable.
+          if (online && !s.podcast) ...[
+            const SizedBox(width: 8),
+            const _SourceButton(),
+          ],
+          ]),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -129,7 +137,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                   labelStyle: TextStyle(color: online == tabOnline && s.podcast == tabPodcast ? Colors.black : null),
                   onSelected: (_) {
                     _search.setOnline(tabOnline, podcast: tabPodcast);
-                    if (tabOnline && !tabPodcast) explainLocalPlayer(context, ref);
+                    if (tabOnline && !tabPodcast) firstOnlineVisit(context, ref);
                     if (tabOnline && q.isNotEmpty && !isUrl) _search.setOnlineQuery(q);
                   },
                 ),
@@ -207,7 +215,7 @@ class _UrlActions extends ConsumerWidget {
   }
 }
 
-/// YouTube Music songs: tap plays a preview, the button downloads.
+/// 線上搜尋 results: tap plays a preview, the button downloads.
 class _OnlineResults extends ConsumerWidget {
   const _OnlineResults({required this.query, required this.pending, required this.onSearch});
   final String query;
@@ -224,10 +232,15 @@ class _OnlineResults extends ConsumerWidget {
     if (query.isEmpty) {
       return const EmptyState(icon: Icons.travel_explore_rounded, title: '線上搜尋');
     }
-    final async = ref.watch(ytMusicSearchProvider(query));
+    final source = ref.watch(onlineSourceProvider);
+    if (source == null) {
+      return EmptyState(icon: Icons.travel_explore_rounded, title: '選擇搜尋平台', action: '選擇', onAction: () => pickOnlineSource(context, ref));
+    }
+    final key = (source, query);
+    final async = ref.watch(onlineSongsProvider(key));
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => EmptyState.error(e, onRetry: () => ref.invalidate(ytMusicSearchProvider(query))),
+      error: (e, _) => EmptyState.error(e, onRetry: () => ref.invalidate(onlineSongsProvider(key))),
       data: (songs) => songs.isEmpty
           ? EmptyState(icon: Icons.search_off_rounded, title: '找不到「$query」')
           : ListView.builder(
@@ -293,7 +306,7 @@ class _OnlineSongTileState extends ConsumerState<_OnlineSongTile> {
       trailing: IconButton(
         tooltip: '下載',
         icon: const Icon(Icons.download_rounded),
-        onPressed: () => startDownload(context, song.url, title: song.title, art: song.artwork),
+        onPressed: () => startDownload(context, song.url, title: song.title, artist: song.artist, album: song.album, art: song.artwork),
       ),
       onTap: _loading ? null : _preview,
     );
@@ -339,4 +352,51 @@ Future<void> explainLocalPlayer(BuildContext context, WidgetRef ref) async {
       actions: [FilledButton(autofocus: true, onPressed: () => Navigator.pop(ctx), child: const Text('好'))],
     ),
   );
+}
+
+/// The platform button at the right of the search box (網路 only).
+class _SourceButton extends ConsumerWidget {
+  const _SourceButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final source = ref.watch(onlineSourceProvider);
+    return OutlinedButton(
+      style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12), minimumSize: const Size(0, 48)),
+      onPressed: () => pickOnlineSource(context, ref),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Text(source?.label ?? '平台'),
+        const Icon(Icons.arrow_drop_down),
+      ]),
+    );
+  }
+}
+
+/// 選擇搜尋平台: the user's pick, remembered.
+Future<void> pickOnlineSource(BuildContext context, WidgetRef ref) async {
+  final current = ref.read(onlineSourceProvider);
+  final picked = await showModalBottomSheet<OnlineSource>(
+    context: context,
+    useRootNavigator: true,
+    showDragHandle: true,
+    builder: (ctx) => SafeArea(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const ListTile(title: Text('搜尋平台', style: TextStyle(fontWeight: FontWeight.w600))),
+        for (final s in OnlineSource.values)
+          ListTile(
+            leading: Icon(s == current ? Icons.radio_button_checked : Icons.radio_button_unchecked),
+            title: Text(s.label),
+            onTap: () => Navigator.pop(ctx, s),
+          ),
+      ]),
+    ),
+  );
+  if (picked != null) await ref.read(onlineSourceProvider.notifier).set(picked);
+}
+
+/// The first time 網路 opens: what OuOPlayer is, then which platform.
+Future<void> firstOnlineVisit(BuildContext context, WidgetRef ref) async {
+  await explainLocalPlayer(context, ref);
+  final saved = (await ref.read(dbProvider).allSettings())[OnlineSource.key];
+  if (saved == null && context.mounted) await pickOnlineSource(context, ref);
 }

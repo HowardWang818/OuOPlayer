@@ -11,7 +11,6 @@ import 'package:rxdart/rxdart.dart' show BehaviorSubject, ValueStream;
 import '../data/db/database.dart';
 import '../data/models/track.dart';
 import 'car_browser.dart';
-import 'scrobble.dart';
 
 /// Bridges just_audio to audio_service so playback shows up in the Android
 /// notification / lock screen, Bluetooth AVRCP and Windows SMTC.
@@ -377,24 +376,6 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   // ---- Listening log: how long each play was really heard ----
   int? _logId;
-
-  /// 播放記錄 (Last.fm / ListenBrainz): a song started, and a song heard long
-  /// enough to count ([Scrobbler.counts]). Set in main.
-  void Function(Track t)? onNowPlaying;
-  void Function(Track t, DateTime startedAt)? onHeard;
-  Track? _logTrack;
-  DateTime? _logStartedAt;
-  bool _heardSent = false;
-
-  void _checkHeard() {
-    final t = _logTrack;
-    final at = _logStartedAt;
-    if (_heardSent || t == null || at == null || t.source == TrackSource.podcast) return;
-    final length = player.duration ?? (t.durationMs == null ? null : Duration(milliseconds: t.durationMs!));
-    if (length == null || !Scrobbler.counts(length, _heardNow)) return;
-    _heardSent = true;
-    onHeard?.call(t, at);
-  }
   Duration _heard = Duration.zero;
   DateTime? _playingSince;
   Timer? _logTimer;
@@ -422,7 +403,6 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   void _flushLog() {
     final id = _logId;
     if (id != null) _db.updateListening(id, _heardNow).catchError((_) {});
-    _checkHeard();
   }
 
   /// A new song: close the previous entry and open one (previews aren't logged).
@@ -435,7 +415,6 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     _logId = null;
     _heard = Duration.zero;
     _playingSince = null;
-    _logTrack = null;
   }
 
   Future<void> _startLog(Track t) async {
@@ -444,21 +423,15 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     _logId = null;
     _heard = Duration.zero;
     _playingSince = player.playing ? DateTime.now() : null;
-    _logTrack = null;
     if (t.source == TrackSource.preview) return;
-    _logTrack = t;
-    _logStartedAt = DateTime.now();
-    _heardSent = false;
-    if (t.source != TrackSource.podcast) onNowPlaying?.call(t);
     _logStarting = true;
     try {
       _logId = await _db.startListening(t, DateTime.now());
     } finally {
       _logStarting = false;
     }
-    // Also saved now and then, in case the app is closed while playing
-    // (and 播放記錄 checks whether the song counts yet).
-    _logTimer = Timer.periodic(const Duration(seconds: 15), (_) => _flushLog());
+    // Also saved now and then, in case the app is closed while playing.
+    _logTimer = Timer.periodic(const Duration(seconds: 30), (_) => _flushLog());
   }
 
   // ---- Android Auto / media browsers ----

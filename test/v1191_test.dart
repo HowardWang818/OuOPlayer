@@ -13,7 +13,7 @@ void main() {
       expect(previewSourceOf('https://rr1.googlevideo.com/x')!.url, 'https://music.youtube.com/watch?v=abc');
       expect(previewSourceOf('/storage/emulated/0/Music/a.mp3'), isNull);
       // Asks first (1.19.4), then downloads.
-      final menu = File('lib/ui/widgets/track_tile.dart').readAsStringSync();
+      final menu = File('lib/ui/widgets/song_actions.dart').readAsStringSync();
       expect(menu, contains('downloadPreview(context, preview, like: false)'));
       expect(menu, contains('downloadPreview(context, preview, like: true)'));
       expect(File('lib/ui/widgets/player_controls.dart').readAsStringSync(), contains('downloadPreview(context, preview, like: true)'));

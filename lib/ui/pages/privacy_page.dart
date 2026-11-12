@@ -10,7 +10,7 @@ class PrivacyPage extends StatelessWidget {
   static const sections = <(String, String)>[
     ('概要', '不需要帳號、無廣告，不收集個人資料。'),
     ('同步', '同步資料儲存在使用者的 Google 雲端硬碟，開發者無法存取。'),
-    ('網路服務', '僅在使用相關功能時連線：LRCLIB、Apple iTunes、Deezer、mora、OTOTOY、YouTube、ListenBrainz、Last.fm、Google 雲端硬碟。'),
+    ('網路服務', '僅在使用相關功能時連線：LRCLIB、Apple iTunes、Deezer、mora、OTOTOY、YouTube、SoundCloud、Google 雲端硬碟。'),
     ('開源', 'OuOPlayer 以 GPL-3.0 授權開源。'),
   ];
 

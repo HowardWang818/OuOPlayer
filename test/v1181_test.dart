@@ -64,7 +64,6 @@ void main() {
       'lib/ui/pages/privacy_page.dart',
       'lib/ui/pages/settings/about_settings.dart',
       'lib/ui/pages/settings/app_icon_setting.dart',
-      'lib/ui/pages/settings/scrobble_section.dart',
       'lib/ui/widgets/share_card.dart',
       'lib/ui/widgets/empty_state.dart',
       'assets/whats_new.txt',

@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/providers.dart';
 import '../../widgets/clear_play_data.dart';
 import '../stats_page.dart';
-import 'scrobble_section.dart';
 import 'section_page.dart';
 
 /// 播放紀錄與統計.
@@ -40,7 +39,6 @@ class HistorySettingsPage extends ConsumerWidget {
         subtitle: const Text('可以選擇清除收聽統計、播放次數、最近播放或 Podcast 進度'),
         onTap: () => showClearPlayData(context, ref),
       ),
-      const ScrobbleSection(),
     ]);
   }
 }

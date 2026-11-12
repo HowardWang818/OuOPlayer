@@ -41,6 +41,10 @@ class DownloadTask {
   /// The cover shown while it downloads (the search result's), then the
   /// song's own once it is in the library.
   String? art;
+
+  /// The names it was found by (a search result, or the missing song it is
+  /// for): written into the file once downloaded (DownloadFinish).
+  String? metaTitle, metaArtist, metaAlbum;
   String? playlistName;
 
   /// Files that already existed and were kept instead of the new copy.
@@ -98,7 +102,7 @@ class DownloadService {
   DownloadService(this._scanner, this._db) : ytdlp = YtDlpBackend.create();
 
   /// A new song from a download is in the library (e.g. to look its lyrics up).
-  void Function(Track)? onImported;
+  void Function(Track track, DownloadTask task)? onImported;
 
   final LibraryScanner _scanner;
   final AppDatabase _db;
@@ -164,6 +168,8 @@ class DownloadService {
     String? playlistName,
     bool like = false,
     String? art,
+    String? artist,
+    String? album,
   }) {
     final k = kind ?? (_looksLikeAudioFile(url) || ytdlp == null ? DownloadKind.direct : DownloadKind.ytdlp);
     final task = DownloadTask(
@@ -180,7 +186,10 @@ class DownloadService {
       playlistName: playlistName,
     )
       ..like = like
-      ..art = art;
+      ..art = art
+      ..metaTitle = artist == null ? null : title
+      ..metaArtist = artist
+      ..metaAlbum = album;
     tasks.insert(0, task);
     _emit();
     _pump();
@@ -336,7 +345,7 @@ class DownloadService {
     }
     if (track == null) {
       track = await _scanner.importFile(target, source: TrackSource.download);
-      if (track != null) onImported?.call(track);
+      if (track != null) onImported?.call(track, t);
     }
     t.files.add(target);
     // One source → one file; whole-playlist runs can't tell which is which.

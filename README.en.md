@@ -95,7 +95,7 @@ Get it from [Releases](https://github.com/HowardWang818/OuOPlayer/releases/lates
 **Playlists**
 - Your own playlists and playlist folders, with custom covers
 - Smart playlists: most played, recently added, not played lately, never played
-- Share the song you're playing as a story or square card; scrobble to Last.fm or ListenBrainz
+- Share the song you're playing as a story or square card
 - Import M3U and Spotify playlists (Spotify data export or Exportify CSV); songs you don't have yet keep their place and are filled in once they show up
 
 **Lyrics**
@@ -120,7 +120,7 @@ Get it from [Releases](https://github.com/HowardWang818/OuOPlayer/releases/lates
 - In-app updates (Android and the Windows installer)
 
 **Downloads**
-- Search YouTube Music in Search → Online and download, or paste a link (using [yt-dlp](https://github.com/yt-dlp/yt-dlp)); finished files go straight into your library and the playlist you picked.
+- Search online in Search → Online and download, or paste a link (using [yt-dlp](https://github.com/yt-dlp/yt-dlp)); finished files go straight into your library and the playlist you picked.
 - Only download content you have the rights to or that is free of copyright restrictions, and follow the source site's terms of service; you are responsible for what you download.
 
 ## FAQ
@@ -177,12 +177,11 @@ It only goes online for the following, and only sends what's listed:
 | Lyrics | LRCLIB | Title, artist, album, length | 設定 → 歌詞 (Settings → Lyrics) |
 | Artist photos | Deezer | Artist name | 設定 → 音樂庫 (Settings → Library) |
 | Cover art, podcast search | Apple iTunes | Title and artist, or your search text | Only when you use them |
-| Online search, downloading missing songs | YouTube Music | Your search text, or title and artist | Only when you use them |
+| Online search, downloading missing songs | The platform you pick (YT Music, YouTube, SoundCloud) | Your search text, or title and artist | Only when you use them |
 | Sync | Your own Google Drive | Chosen playlists, song details and files, lyrics, listening history | Off by default, 設定 → 同步 (Settings → Sync) |
 | Update checks | OuOPlayer's update server | An update request only | 設定 → 關於與更新 (Settings → About and updates) |
 | Anonymous user count | OuOPlayer's update server | Once a day: a random id, the version, the platform (no IP kept, deleted after 90 days) | — |
 | Original-language titles | mora, OTOTOY, YouTube Music | Title and artist | Only when you use it |
-| Scrobbling | Last.fm, ListenBrainz | Title, artist, album and time of songs you heard | Off by default, 設定 → 播放紀錄與統計 (Settings → History and stats) |
 | Downloads, streams, podcasts | The links you paste or subscribe to | — | Only when you use them |
 
 ## License

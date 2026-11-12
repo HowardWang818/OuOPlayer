@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/auto_backup_provider.dart';
 import '../../services/auto_backup.dart';
+import '../../services/file_trash.dart' show hasAllFilesAccess;
 import '../../services/storage_usage.dart';
 import '../widgets/backup_actions.dart';
 import '../widgets/dialogs.dart';
@@ -45,7 +46,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
   void _refresh(String dir) {
     _listed = dir;
     final tree = BackupTree.isTree(dir);
-    _picked = !Platform.isAndroid ? Future.value(true) : (tree ? BackupTree.allowed(dir) : Future.value(false));
+    // 所有檔案存取權 shows every backup in a plain folder too.
+    _picked = !Platform.isAndroid ? Future.value(true) : (tree ? BackupTree.allowed(dir) : hasAllFilesAccess());
     _label = tree ? BackupTree.label(dir) : Future.value(dir);
     _files = _picked!.then<List<BackupFile>>((ok) => tree && !ok ? const <BackupFile>[] : AutoBackup.list(dir)).catchError((_) => const <BackupFile>[]);
   }

@@ -74,4 +74,23 @@ Future<bool> openManageMediaSettings() async {
   }
 }
 
+/// Whether 所有檔案存取權 is on (Android 11+): no system confirmations.
+Future<bool> hasAllFilesAccess() async {
+  if (!Platform.isAndroid) return true;
+  try {
+    return await const MethodChannel('ouo/trash').invokeMethod<bool>('allFiles') ?? false;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Opens the system page where 所有檔案存取權 is turned on.
+Future<bool> openAllFilesSettings() async {
+  try {
+    return await const MethodChannel('ouo/trash').invokeMethod<bool>('openAllFiles') ?? false;
+  } catch (_) {
+    return false;
+  }
+}
+
 String get trashName => Platform.isWindows ? '資源回收筒' : '垃圾桶';

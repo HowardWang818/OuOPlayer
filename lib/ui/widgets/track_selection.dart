@@ -3,15 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
-import '../../services/file_trash.dart';
-import '../pages/cover_fix_page.dart';
-import '../pages/lyrics_batch_page.dart';
-import '../pages/native_name_page.dart';
-import 'batch_edit_dialog.dart';
-import 'dialogs.dart';
-import 'export_sheet.dart';
-import 'folder_actions.dart';
-import 'track_tile.dart';
+import 'song_actions.dart';
 
 /// Which rows of a track list are selected (by index, since a playlist can
 /// hold the same song twice). Long-press (or right-click) starts selecting.
@@ -152,13 +144,7 @@ class _SelectionBar extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final indexes = selection.selected.where((i) => i < scope.tracks.length).toList()..sort();
     final picked = [for (final i in indexes) scope.tracks[i]];
-    final local = picked.where((t) => t.source == TrackSource.local || t.source == TrackSource.download).toList();
     final handler = ref.read(audioHandlerProvider);
-
-    void done(String msg) {
-      selection.clear();
-      toast(context, msg);
-    }
 
     return Material(
       elevation: 4,
@@ -186,80 +172,15 @@ class _SelectionBar extends ConsumerWidget {
             PopupMenuButton<String>(
               tooltip: '更多',
               onSelected: (v) async {
-                switch (v) {
-                  case 'queue':
-                    await handler.enqueue(picked);
-                    if (context.mounted) done('已加入佇列');
-                  case 'playlist':
-                    await showAddToPlaylist(context, ref, picked);
-                    selection.clear();
-                  case 'like':
-                    final db = ref.read(dbProvider);
-                    for (final t in picked) {
-                      await db.setFavorite(t, true);
-                    }
-                    if (context.mounted) done('已加到已按讚的歌曲');
-                  case 'remove':
-                    if (!await confirmDelete(context, title: '${scope.removeLabel ?? '從此播放清單移除'} ${indexes.length} 首？')) return;
-                    await scope.onRemove!(indexes);
-                    if (context.mounted) done('已移除 ${indexes.length} 首');
-                  case 'export':
-                    await showExportSheet(context, '已選的 ${picked.length} 首', picked);
-                    selection.clear();
-                  case 'edit':
-                    await showBatchEdit(context, ref, local);
-                    selection.clear();
-                  case 'covers':
-                    selection.clear();
-                    await Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => CoverFixPage(tracks: local)));
-                  case 'hide':
-                    final where = await removalLines(ref, local);
-                    if (!context.mounted) return;
-                    if (!await confirmDelete(context,
-                        title: '從音樂庫隱藏 ${local.length} 首？',
-                        message: '檔案不會被刪除，重新掃描後會再出現在音樂庫。會從以下地方移除：\n${where.map((l) => '• $l').join('\n')}',
-                        action: '隱藏')) {
-                      return;
-                    }
-                    for (final t in local) {
-                      await handler.removeTrack(t.id);
-                    }
-                    await ref.read(dbProvider).deleteTracks(local.map((t) => t.id));
-                    if (context.mounted) done('已隱藏 ${local.length} 首');
-                  // Cleared afterwards: clearing first takes this bar (and its
-                  // context) away before the 開始？ dialog can open.
-                  case 'native':
-                    await findNativeNames(context, ref, [...local]);
-                    selection.clear();
-                  case 'lyrics':
-                    await findLyrics(context, ref, [...local], title: '已選的 ${local.length} 首');
-                    selection.clear();
-                  case 'move':
-                    if (await moveTracksDialog(context, ref, local)) selection.clear();
-                  case 'delete':
-                    if (await deleteTrackFiles(context, ref, local)) selection.clear();
-                }
+                // The selection clears afterwards: clearing first takes this
+                // bar (and its context) away before a dialog can open.
+                final ok = await runSongAction(context, ref, v, picked,
+                    onRemove: scope.onRemove == null ? null : () => scope.onRemove!(indexes), removeLabel: scope.removeLabel);
+                if (ok && context.mounted) selection.clear();
               },
               itemBuilder: (_) => [
-                const PopupMenuItem(value: 'queue', child: Text('加入佇列')),
-                const PopupMenuItem(value: 'playlist', child: Text('加入播放清單')),
-                const PopupMenuItem(value: 'like', child: Text('加到已按讚的歌曲')),
-                if (scope.onRemove != null) PopupMenuItem(value: 'remove', child: Text(scope.removeLabel ?? '從此播放清單移除')),
-                const PopupMenuItem(value: 'export', child: Text('複製／匯出資訊')),
-                if (local.isNotEmpty) ...[
-                  PopupMenuItem(value: 'edit', child: Text('編輯資訊（${local.length} 首）')),
-                  PopupMenuItem(value: 'covers', child: Text('找正式封面（${local.length} 首）')),
-                  PopupMenuItem(value: 'move', child: Text('移到資料夾…（${local.length} 首）')),
-                  PopupMenuItem(value: 'lyrics', child: Text('找歌詞（${local.length} 首）')),
-                  PopupMenuItem(value: 'native', child: Text('找原文歌名（${local.length} 首）')),
-                  PopupMenuItem(value: 'hide', child: Text('從音樂庫隱藏（${local.length} 首）')),
-                ],
-                if (local.isNotEmpty)
-                  PopupMenuItem(
-                    value: 'delete',
-                    child: Text(ref.read(settingsProvider).deletePermanently ? '永久刪除檔案（${local.length} 首）' : '刪除檔案（${local.length} 首，移到$trashName）',
-                        style: const TextStyle(color: Colors.redAccent)),
-                  ),
+                for (final a in songActions(ref, picked, removeLabel: scope.onRemove == null ? null : (scope.removeLabel ?? '從此播放清單移除')))
+                  PopupMenuItem(value: a.id, child: Text(a.label, style: a.danger ? const TextStyle(color: Colors.redAccent) : null)),
               ],
             ),
           ]),

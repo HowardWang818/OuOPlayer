@@ -45,6 +45,22 @@ class TrashPlugin(private val context: Context, messenger: BinaryMessenger) : Me
         if (call.method == "canManageMedia") {
             return result.success(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && MediaStore.canManageMedia(context))
         }
+        // 所有檔案存取權 (Android 11+): files are written, moved and deleted
+        // directly, so Android never asks.
+        if (call.method == "allFiles") {
+            return result.success(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && android.os.Environment.isExternalStorageManager())
+        }
+        if (call.method == "openAllFiles") {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return result.success(false)
+            val intent = android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}"))
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            return try {
+                context.startActivity(intent)
+                result.success(true)
+            } catch (e: Exception) {
+                result.error("settings", e.message, null)
+            }
+        }
         if (call.method == "openManageMedia") {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return result.success(false)
             val intent = android.content.Intent(android.provider.Settings.ACTION_REQUEST_MANAGE_MEDIA, Uri.parse("package:${context.packageName}"))

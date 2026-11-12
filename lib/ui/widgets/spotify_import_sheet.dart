@@ -22,8 +22,8 @@ import '../../config/device_words.dart';
 /// only once the user confirms them); the others stay in the playlist as
 /// greyed placeholders that fill in when the song turns up. Nothing is
 /// downloaded.
-Future<void> importSpotify(BuildContext context, WidgetRef ref) async {
-  final picked = await FilePicker.pickFiles(dialogTitle: '選擇 Spotify 匯出的檔案（可多選）', type: FileType.any);
+Future<void> importSpotify(BuildContext context, WidgetRef ref, {List<PlatformFile>? files}) async {
+  final picked = files ?? await FilePicker.pickFiles(dialogTitle: '選擇 Spotify 匯出的檔案（可多選）', type: FileType.any);
   if (picked.isEmpty) return;
   final playlists = <SpotifyPlaylist>[];
   for (final f in picked) {

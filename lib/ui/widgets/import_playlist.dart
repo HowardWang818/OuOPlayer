@@ -12,12 +12,31 @@ import '../../services/missing_songs.dart';
 import '../../services/playlist_import.dart';
 import '../pages/collection_page.dart';
 import 'dialogs.dart';
+import 'spotify_import_sheet.dart';
 
 /// 匯入播放清單: pick an .m3u / .m3u8 file and make a playlist of the songs
 /// found in the library (online links are added as streams).
-Future<void> importM3uPlaylist(BuildContext context, WidgetRef ref) async {
-  final picked = await FilePicker.pickFiles(dialogTitle: '選擇 M3U 播放清單', type: FileType.any);
-  final path = picked.firstOrNull?.path;
+/// 匯入播放清單: one picker for every kind; M3U/M3U8 files and Spotify
+/// exports (JSON, Exportify CSV) each go to their own import.
+Future<void> importPlaylists(BuildContext context, WidgetRef ref) async {
+  final picked = await FilePicker.pickFiles(dialogTitle: '選擇播放清單檔案（M3U、CSV、JSON）', type: FileType.any);
+  if (picked.isEmpty || !context.mounted) return;
+  String ext(PlatformFile f) => p.extension(f.path ?? f.name).toLowerCase();
+  final m3u = picked.where((f) => {'.m3u', '.m3u8'}.contains(ext(f))).toList();
+  final spotify = picked.where((f) => {'.json', '.csv'}.contains(ext(f))).toList();
+  if (m3u.isEmpty && spotify.isEmpty) {
+    toast(context, '請選擇 M3U、CSV 或 JSON 檔案');
+    return;
+  }
+  for (final f in m3u) {
+    if (!context.mounted) return;
+    await importM3uPlaylist(context, ref, path: f.path);
+  }
+  if (spotify.isNotEmpty && context.mounted) await importSpotify(context, ref, files: spotify);
+}
+
+Future<void> importM3uPlaylist(BuildContext context, WidgetRef ref, {String? path}) async {
+  path ??= (await FilePicker.pickFiles(dialogTitle: '選擇 M3U 播放清單', type: FileType.any)).firstOrNull?.path;
   if (path == null) return;
   if (!{'.m3u', '.m3u8'}.contains(p.extension(path).toLowerCase())) {
     if (context.mounted) toast(context, '請選擇 .m3u 或 .m3u8 檔案');
