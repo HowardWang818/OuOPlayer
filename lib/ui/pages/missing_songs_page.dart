@@ -86,8 +86,7 @@ class _MissingSongsPageState extends ConsumerState<MissingSongsPage> {
   Future<bool> _download(Track t) async {
     setState(() => _busy.add(t.id));
     try {
-      final results = await YtMusicSearch().search(linkQuery(t));
-      final song = sureMatch(t.title, t.artist, t.durationMs, results);
+      final (sure: song, :results) = await findMissing(t);
       if (song != null) {
         _queue(t, song);
         _unsure.remove(t.id);

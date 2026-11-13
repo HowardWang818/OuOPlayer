@@ -14,10 +14,7 @@ import 'download_actions.dart';
 /// otherwise [results] are offered to pick from.
 typedef MissingFind = ({YtMusicSong? sure, List<YtMusicSong> results});
 
-Future<MissingFind> findMissing(Track t) async {
-  final results = await YtMusicSearch().search(linkQuery(t));
-  return (sure: sureMatch(t.title, t.artist, t.durationMs, results), results: results);
-}
+Future<MissingFind> findMissing(Track t) => YtMusicSearch().find(t.title, t.artist, t.durationMs, linkQuery(t));
 
 /// Queues [song] for the missing song [t] (its place fills itself once the
 /// file is in the library).

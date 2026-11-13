@@ -27,12 +27,18 @@ class YtMusicSearch {
   /// The "songs" filter of the search page.
   static const _songsOnly = 'EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D';
 
-  Future<List<YtMusicSong>> search(String query) async {
+  /// Japanese names (kana) are searched in Japanese: in Taiwan's locale YT
+  /// Music gives Japanese songs romanised titles and artists ("Rokudenashi"
+  /// for ロクデナシ), while karaoke and cover uploads keep the Japanese.
+  static String localeFor(String text) => RegExp(r'[\u3040-\u30ff\u31f0-\u31ff]').hasMatch(text) ? 'ja' : 'zh-TW';
+
+  Future<List<YtMusicSong>> search(String query, {String? hl}) async {
+    final lang = hl ?? localeFor(query);
     final res = await _dio.post<Map<String, dynamic>>(
       _endpoint,
       data: {
         'context': {
-          'client': {'clientName': 'WEB_REMIX', 'clientVersion': '1.20241106.01.00', 'hl': 'zh-TW', 'gl': 'TW'},
+          'client': {'clientName': 'WEB_REMIX', 'clientVersion': '1.20241106.01.00', 'hl': lang, 'gl': lang == 'ja' ? 'JP' : 'TW'},
         },
         'query': query,
         'params': _songsOnly,
@@ -40,6 +46,24 @@ class YtMusicSearch {
       options: Options(headers: {'Origin': 'https://music.youtube.com', 'User-Agent': 'Mozilla/5.0'}),
     );
     return parse(res.data ?? const {});
+  }
+
+  /// One song ([title] by [artist]): searched in the locale its names call
+  /// for, then in the other when that finds nothing sure. The results come
+  /// originals first, for picking by hand.
+  Future<({YtMusicSong? sure, List<YtMusicSong> results})> find(String title, String artist, int? durationMs, String query) async {
+    final first = localeFor('$title $artist');
+    final a = await search(query, hl: first);
+    final sa = sureMatch(title, artist, durationMs, a);
+    if (sa != null) return (sure: sa, results: originalsFirst(title, artist, a));
+    List<YtMusicSong> b = const [];
+    try {
+      b = await search(query, hl: first == 'ja' ? 'zh-TW' : 'ja');
+    } catch (_) {
+      if (a.isEmpty) rethrow;
+    }
+    final sb = sureMatch(title, artist, durationMs, b);
+    return (sure: sb, results: originalsFirst(title, artist, sb != null || a.isEmpty ? b : a));
   }
 
   /// The best match for a song, or null.
@@ -116,10 +140,36 @@ class YtMusicSearch {
 /// 缺少的歌曲: the search result that is surely [title] by [artist] (same
 /// artist, title close enough, length within 10 seconds when both are
 /// known), or null when none is sure.
+/// Karaoke, covers, live / acoustic takes are never sure unless asked for by
+/// name, and the artist has to be the song's (not just named in the title).
 YtMusicSong? sureMatch(String title, String artist, int? durationMs, List<YtMusicSong> results) {
   final want = SongKey(title, artist, durationMs: durationMs);
-  final (song, result) = SongMatcher.best(want, results, (YtMusicSong s) => SongKey(s.title, s.artist, durationMs: s.durationMs));
+  final candidates = [
+    for (final s in results)
+      if (sameVersion(title, s.title) && SongMatcher.sameArtistField(want, SongKey(s.title, s.artist))) s,
+  ];
+  final (song, result) = SongMatcher.best(want, candidates, (YtMusicSong s) => SongKey(s.title, s.artist, durationMs: s.durationMs));
   if (song == null || result.level != MatchLevel.sure) return null;
   if (durationMs != null && song.durationMs != null && (durationMs - song.durationMs!).abs() > 10000) return null;
   return song;
+}
+
+/// [found] is the same take as [wanted]: the same version marks.
+bool sameVersion(String wanted, String found) {
+  final a = versionMarks(wanted), b = versionMarks(found);
+  return a.length == b.length && a.containsAll(b);
+}
+
+/// 選擇版本: the song's own artist and take first, then its artist's other
+/// takes, then everyone else's (otherwise in YT Music's order).
+List<YtMusicSong> originalsFirst(String title, String artist, List<YtMusicSong> results) {
+  final want = SongKey(title, artist);
+  int rank(YtMusicSong s) {
+    final mine = SongMatcher.sameArtistField(want, SongKey(s.title, s.artist));
+    return mine && sameVersion(title, s.title) ? 0 : (mine ? 1 : 2);
+  }
+
+  final indexed = [for (var i = 0; i < results.length; i++) (i, rank(results[i]), results[i])]
+    ..sort((x, y) => x.$2 != y.$2 ? x.$2.compareTo(y.$2) : x.$1.compareTo(y.$1));
+  return [for (final x in indexed) x.$3];
 }

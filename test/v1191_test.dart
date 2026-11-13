@@ -46,7 +46,7 @@ void main() {
 
     test('unsure songs are offered to pick by hand', () {
       final page = File('lib/ui/pages/missing_songs_page.dart').readAsStringSync();
-      expect(page, contains('sureMatch('));
+      expect(page, contains('findMissing('));
       expect(page, contains("child: const Text('選擇')"));
     });
   });

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
+import '../../providers/sync_provider.dart';
 import '../../services/file_trash.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/looks.dart';
@@ -169,6 +170,15 @@ Future<void> showMissingSongMenu(BuildContext context, WidgetRef ref, Track trac
               downloadMissingSong(context, track);
             },
           ),
+          if (syncAvailable && ref.read(syncProvider).signedIn)
+            ListTile(
+              leading: const Icon(Icons.cloud_sync_outlined),
+              title: const Text('重新傳送'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await resendSongs(context, ref, [track]);
+              },
+            ),
           if (onRemove != null)
             ListTile(
               leading: const Icon(Icons.remove_circle_outline),

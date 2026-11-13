@@ -278,6 +278,17 @@ class SyncEngine implements SyncHooks {
     await edits.recorded(before, after, await deviceId(), _clock());
   }
 
+  /// 重新傳送: greyed songs this device let go of (file deleted, folder
+  /// removed, hidden) are wanted here again, so another device sends them.
+  /// Returns how many were let go of.
+  Future<int> resend(Iterable<Track> songs) async {
+    final keys = {for (final t in songs) songKey(t.title, t.artist)};
+    final removed = await _set(_removedKey);
+    final back = removed.intersection(keys).length;
+    await _unremove(keys);
+    return back;
+  }
+
   Future<void> _unremove(Set<String> keys) async {
     if (keys.isEmpty) return;
     final removed = await _set(_removedKey);

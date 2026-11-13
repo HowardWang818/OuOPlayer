@@ -745,6 +745,39 @@ void main() {
     });
   });
 
+  group('8c 重新傳送', () {
+    test('8.7 電腦清空音樂資料夾：不會自己傳回來；按「重新傳送」就傳回來', () async {
+      final a = await phone.song('a'), b = await phone.song('b');
+      await phone.playlist('通勤', [a, b]);
+      await settle([phone, pc]);
+      // Every file on the PC goes (folder emptied, rescan).
+      await pc.db.deleteTracks([for (final t in await pc.db.tracks()) t.id]);
+      for (final f in Directory('${pc.dir.path}/dl').listSync()) {
+        f.deleteSync();
+      }
+      await settle([phone, pc]);
+      expect(await pc.titles('通勤'), ['~a', '~b']);
+      await pc.engine.resend([for (final t in await pc.db.playlistTracks(await pc.listId('通勤'))) t]);
+      await settle([phone, pc]);
+      expect(await pc.titles('通勤'), ['a', 'b']);
+      expect(cloud.count('v2-song-'), 0);
+      await expectStable([phone, pc]);
+    });
+
+    test('8.8 只重新傳送其中一首：只有那首回來', () async {
+      final a = await phone.song('a'), b = await phone.song('b');
+      await phone.playlist('通勤', [a, b]);
+      await settle([phone, pc]);
+      await pc.db.deleteTracks([for (final t in await pc.db.tracks()) t.id]);
+      await settle([phone, pc]);
+      final grey = (await pc.db.playlistTracks(await pc.listId('通勤'))).firstWhere((t) => t.title == 'b');
+      await pc.engine.resend([grey]);
+      await settle([phone, pc]);
+      expect(await pc.titles('通勤'), ['~a', 'b']);
+      await expectStable([phone, pc], complete: false);
+    });
+  });
+
   group('9 同步紀錄', () {
     test('9.1 收到的變更都寫進紀錄，而且寫出來自哪一台', () async {
       final a = await phone.song('a'), b = await phone.song('b');

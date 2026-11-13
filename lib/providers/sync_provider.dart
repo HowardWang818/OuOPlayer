@@ -16,6 +16,7 @@ import '../services/sync/drive_client.dart';
 import '../services/sync/google_auth.dart';
 import '../services/sync2/engine.dart';
 import '../services/sync2/now_playing.dart';
+import '../services/sync2/sync_log.dart';
 import '../services/tag_backlog.dart';
 import '../services/tag_editor.dart';
 import '../ui/widgets/dialogs.dart';
@@ -162,8 +163,12 @@ class SyncNotifier extends Notifier<SyncState> {
     } on SignedOut {
       message = 'Google 登入已過期，請重新登入';
       state = state.copyWith(signedIn: false);
+      await SyncLog.add(ref.read(dbProvider), [SyncLogEntry(DateTime.now(), message)]);
     } catch (e) {
-      message = '${e is SocketException || '$e'.contains('Socket') || '$e'.contains('connection') ? '網路連線中斷' : '同步失敗：$e'}，稍後會自動再同步';
+      final offline = e is SocketException || '$e'.contains('Socket') || '$e'.contains('connection');
+      message = '${offline ? '網路連線中斷' : '同步失敗：$e'}，稍後會自動再同步';
+      // 同步紀錄 keeps it (the line on the 同步 page is replaced by the next sync).
+      if (!offline) await SyncLog.add(ref.read(dbProvider), [SyncLogEntry(DateTime.now(), '同步失敗：$e')]);
     }
     _endedAt = DateTime.now();
     state = state.copyWith(running: false, last: DateTime.now(), message: message);
@@ -504,6 +509,14 @@ final syncTriggersProvider = Provider<void>((ref) {
     changes.cancel();
   });
 });
+
+/// 重新傳送: the greyed songs come from another device again, even those
+/// this device let go of (file deleted, folder removed).
+Future<void> resendSongs(BuildContext context, WidgetRef ref, List<Track> songs) async {
+  await ref.read(syncEngineProvider).resend(songs);
+  if (context.mounted) toast(context, '重新傳送 ${songs.length} 首');
+  await ref.read(syncProvider.notifier).run();
+}
 
 /// A playlist was just made: when signed in, ask whether to sync it.
 Future<void> offerSync(BuildContext context, WidgetRef ref, int playlistId) async {

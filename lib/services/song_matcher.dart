@@ -56,6 +56,21 @@ List<String> _words(String spaced) => spaced.split(' ').where((w) => w.isNotEmpt
 bool _isCjk(String s) => RegExp(r'[぀-ヿ㐀-鿿가-힯]').hasMatch(s);
 
 /// Long enough for a 「starts with」 or 「contains」 match to mean something.
+/// Version marks in titles: another take of a song (live, acoustic, remix),
+/// or someone else's (karaoke, cover). Lower-cased.
+const _versionMarks = [
+  'live', '現場', 'ライブ', 'first take', 'acoustic', 'アコースティック', 'remix', 'instrumental', 'inst.', 'off vocal', 'karaoke',
+  'カラオケ', 'cover', 'カバー', '翻唱', 'sped up', 'slowed', 'nightcore', 'ver.', 'version', 'edit', 'demo', 'mix',
+  '原曲歌手', 'originally performed', 'ガイド無し', 'ガイドなし', 'オルゴール', 'music box', 'tv size', 'lofi', 'lo-fi', '8bit',
+];
+final _keyShift = RegExp(r'[+\-]\s?\d+\s?key', caseSensitive: false);
+
+/// The version marks in [title].
+Set<String> versionMarks(String title) {
+  final t = title.toLowerCase();
+  return {for (final m in _versionMarks) if (t.contains(m)) m, if (_keyShift.hasMatch(t)) 'key'};
+}
+
 bool _longEnough(String folded) => _isCjk(folded) ? folded.runes.length >= 2 : folded.length >= 4;
 
 // 「Official Music Video」, 「MV」, 「中文字幕」… — words that are about the upload,
@@ -205,6 +220,26 @@ class SongMatcher {
 
   /// Same artist: one of the names equal, or one containing the other, or
   /// the artist named in the other song's title (「YOASOBI - 群青 / THE FIRST TAKE」).
+  /// The artist fields alone name the same artist (a name only found in the
+  /// other's title, like 「原曲歌手:なるみや」 of a karaoke upload, doesn't count).
+  static bool sameArtistField(SongKey a, SongKey b) {
+    for (final x in a.artists) {
+      for (final y in b.artists) {
+        if (x == y) return true;
+        final s = x.length <= y.length ? x : y, l = x.length <= y.length ? y : x;
+        if (_longEnough(s) && l.contains(s)) return true;
+      }
+    }
+    if (wordOrderChecks) {
+      for (final words in a.artistWordLists) {
+        for (final other in b.artistWordLists) {
+          if (fuzz.tokenSortRatio(words.join(' '), other.join(' ')) >= 95) return true;
+        }
+      }
+    }
+    return false;
+  }
+
   static bool sameArtist(SongKey a, SongKey b) {
     for (final x in a.artists) {
       for (final y in b.artists) {

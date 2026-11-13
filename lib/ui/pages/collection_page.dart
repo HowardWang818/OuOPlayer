@@ -295,6 +295,8 @@ class CollectionPage extends ConsumerWidget {
                       if (context.mounted) toast(context, '已開始同步這個播放清單');
                     }
                     await ref.read(syncProvider.notifier).run();
+                  } else if (v == 'resend') {
+                    await resendSongs(context, ref, [for (final t in source) if (t.source == TrackSource.missing) t]);
                   } else if (v == 'export') {
                     await showExportSheet(context, info?.name ?? name, tracks);
                   } else if (v == 'lyrics') {
@@ -323,6 +325,8 @@ class CollectionPage extends ConsumerWidget {
                   const PopupMenuItem(value: 'queue', child: Text('加入佇列')),
                   if (syncAvailable && ref.read(syncProvider).signedIn)
                     PopupMenuItem(value: 'sync', child: Text(synced ? '停止同步' : '同步這個清單')),
+                  if (synced && ref.read(syncProvider).signedIn && source.any((t) => t.source == TrackSource.missing))
+                    const PopupMenuItem(value: 'resend', child: Text('重新傳送缺少的歌曲')),
                   const PopupMenuItem(value: 'cover', child: Text('更換播放清單圖片')),
                   if (info?.cover != null) const PopupMenuItem(value: 'resetCover', child: Text('移除播放清單圖片')),
                   const PopupMenuItem(value: 'folder', child: Text('移到資料夾')),

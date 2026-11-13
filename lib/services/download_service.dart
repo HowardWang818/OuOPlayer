@@ -311,19 +311,28 @@ class DownloadService {
     return [if (code != null) 'HTTP $code', e.message ?? e.type.name].join(' · ');
   }
 
+  /// The file name of a download: the song's name when it was downloaded as
+  /// a song (a missing song, a search result), else the name it came with.
+  static String fileNameFor(String? title, String path) {
+    var name = (title ?? '').replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1f]'), '_').trim();
+    if (name.isEmpty) return p.basename(path);
+    if (name.length > 150) name = name.substring(0, 150).trim();
+    return '$name${p.extension(path)}';
+  }
+
   /// Moves a finished file into [outDir] (or keeps the existing copy if one
   /// with the same name is already there), adds it to the library and the
   /// task's playlist, and returns the library path.
   Future<String> _finish(DownloadTask t, String path) async {
-    var target = p.join(outDir, p.basename(path));
+    var target = p.join(outDir, fileNameFor(t.metaTitle, path));
     if (File(target).existsSync()) {
       // Same title by another artist (natori's and 9Lana's 「propose」): keep
       // both, naming the new one 「title - artist」.
-      final mine = await _scanner.readArtist(path);
+      final mine = t.metaArtist ?? await _scanner.readArtist(path);
       final theirs = await _artistOf(target);
       if (mine != null && theirs != null && !SongMatcher.sameArtist(SongKey('', mine), SongKey('', theirs))) {
         final safe = mine.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
-        target = p.join(outDir, '${p.basenameWithoutExtension(path)} - $safe${p.extension(path)}');
+        target = p.join(outDir, '${p.basenameWithoutExtension(target)} - $safe${p.extension(path)}');
         t.addLog('同名但歌手不同（$theirs），存成：${p.basename(target)}');
       }
     }
