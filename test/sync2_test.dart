@@ -96,7 +96,7 @@ class Device {
     return id;
   }
 
-  Future<SyncResult> sync({bool deleteOk = true}) => engine.sync(confirmDelete: (_) async => deleteOk);
+  Future<SyncResult> sync() => engine.sync();
   Future<void> transfer() => engine.runTransfers(relayCap: 1 << 30);
 
   Future<int?> idOf(String name) async =>
@@ -147,9 +147,12 @@ void main() {
     await settle();
     // The phone hides a song from its library (or its folder is removed).
     await phone.db.deleteTracks([a.id]);
-    await settle();
+    await phone.sync();
     expect(await phone.titles('Drive'), ['~a', 'b']);
+    await settle();
     expect(await pc.titles('Drive'), ['a', 'b']);
+    // Still in the playlist: sent back (1.20.6).
+    expect(await phone.titles('Drive'), ['a', 'b']);
   });
 
   test('removing, adding, moving and renaming go both ways', () async {
@@ -177,27 +180,17 @@ void main() {
     expect((await phone.db.playlists()).where((l) => l.name == 'Drive').length, 1);
   });
 
-  test('a playlist deleted on one device is deleted on the other only when the user agrees', () async {
+  test('a playlist deleted on one device stays on the other and comes back', () async {
     final a = await phone.song('a');
     final id = await phone.playlist('Drive', [a]);
     await settle();
     await phone.db.deletePlaylist(id);
     await phone.sync();
-    await pc.sync(deleteOk: false);
-    // Kept on the computer as an ordinary playlist.
+    await pc.sync();
     expect(await pc.titles('Drive'), ['a']);
-    expect(await pc.engine.isSynced((await pc.idOf('Drive'))!), isFalse);
-  });
-
-  test('deleting with the user OK, and the same batch twice changes nothing', () async {
-    final a = await phone.song('a');
-    final id = await phone.playlist('Drive', [a]);
-    await settle();
-    await phone.db.deletePlaylist(id);
+    expect(await pc.engine.isSynced((await pc.idOf('Drive'))!), isTrue);
     await phone.sync();
-    final r = await pc.sync();
-    expect(r.deleted, ['Drive']);
-    expect(await pc.idOf('Drive'), isNull);
+    expect(await phone.titles('Drive'), ['a']);
     final again = await pc.sync();
     expect(again.changed, 0);
   });
@@ -252,14 +245,14 @@ void main() {
     expect(await pc.titles('Drive'), ['a']);
   });
 
-  test('a song removed from a library is not downloaded back there', () async {
+  test('a song removed from a library comes back while it is in a synced playlist', () async {
     final a = await phone.song('a');
     await phone.playlist('Drive', [a]);
     await settle();
     final pcA = (await pc.db.tracks()).firstWhere((t) => t.title == 'a');
     await pc.db.deleteTracks([pcA.id]);
     await settle();
-    expect(await pc.titles('Drive'), ['~a']);
+    expect(await pc.titles('Drive'), ['a']);
     expect(await phone.titles('Drive'), ['a']);
     expect(drive.songs, 0);
   });

@@ -91,12 +91,6 @@ class Dev {
   late SyncEngine engine;
   final lyrics = <String, ({String lrc, bool manual, int at})>{};
 
-  /// Names of the playlists the other device deleted that this one was asked about.
-  final asked = <String>[];
-
-  /// What the user answers when asked to delete a playlist.
-  bool deleteOk = true;
-
   static Future<Dev> make(String name, Cloud cloud, {String? id, Directory? dir}) async {
     final db = await openDb();
     final d = Dev._(name, id ?? name, db, dir ?? await Directory.systemTemp.createTemp('ouo_$name'), cloud);
@@ -227,10 +221,7 @@ class Dev {
   Future<List<String>> log() async => [for (final e in await SyncLog.read(db)) e.text];
 
   /// 立即同步.
-  Future<SyncResult> sync() => engine.sync(confirmDelete: (n) async {
-        asked.add(n);
-        return deleteOk;
-      });
+  Future<SyncResult> sync() => engine.sync();
 
   Future<int> transfer({int cap = 1 << 30}) => engine.runTransfers(relayCap: cap);
 

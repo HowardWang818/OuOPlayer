@@ -71,7 +71,7 @@ class Dev {
     return t;
   }
 
-  Future<void> sync() => engine.sync(confirmDelete: (_) async => true);
+  Future<void> sync() => engine.sync();
 
   Future<int?> idOf(String name) async => (await db.db.query('playlists', where: 'name = ?', whereArgs: [name])).firstOrNull?['id'] as int?;
 

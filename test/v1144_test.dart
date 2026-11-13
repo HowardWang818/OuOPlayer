@@ -150,13 +150,12 @@ void main() {
       expect(await again.titles('Liked'), ['a']);
     });
 
-    test('deleting the only list after that asks the other device as usual', () async {
+    test('deleting the only list after that leaves the other device its list', () async {
       final again = await reinstall(_old(await _backup(phone.db, tmp)));
       await again.sync();
       await again.db.deletePlaylist((await again.idOf('Liked'))!);
       await again.sync();
-      await pc.sync(deleteOk: false);
-      // The answer was 保留.
+      await pc.sync();
       expect(await pc.titles('Liked'), ['a']);
     });
   });

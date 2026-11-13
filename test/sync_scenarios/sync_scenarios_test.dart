@@ -215,36 +215,40 @@ void main() {
       await expectStable([phone, pc]);
     });
 
-    test('2.9 刪除清單，另一台按「刪除」：只問一次', () async {
+    test('2.9 刪除清單只刪這台（1.20.6）：另一台保留，再同步整份回來', () async {
       await phone.db.deletePlaylist(id);
-      await settle([phone, pc]);
-      expect(pc.asked, ['通勤']);
-      expect(await pc.listNames(), isEmpty);
-      expect(await pc.library(), ['a', 'b', 'c'], reason: 'song files are never deleted');
-      await expectStable([phone, pc]);
-      expect(pc.asked, ['通勤']);
-    });
-
-    test('2.10 刪除清單，另一台按「保留」：留下一般清單、只問一次、不會回到手機', () async {
-      pc.deleteOk = false;
-      await phone.db.deletePlaylist(id);
-      await settle([phone, pc]);
-      expect(pc.asked, ['通勤']);
-      expect(await pc.titles('通勤'), ['a', 'b', 'c']);
-      expect(await pc.engine.isSynced(await pc.listId('通勤')), isFalse);
       expect(await phone.listNames(), isEmpty);
+      await settle([phone, pc]);
+      expect(await pc.titles('通勤'), ['a', 'b', 'c']);
+      expect(await phone.titles('通勤'), ['a', 'b', 'c']);
+      expect((await phone.listNames()).where((n) => n == '通勤').length, 1);
+      expect(await phone.engine.isSynced(await phone.listId('通勤')), isTrue);
       await expectStable([phone, pc]);
-      expect(pc.asked, ['通勤']);
     });
 
-    test('2.11 一台刪除、另一台同時加歌：問要不要刪', () async {
+    test('2.10 舊版標成「刪除」的清單：還有這個清單的那台把它送回去', () async {
+      // The PC deleted it with a version before 1.20.6: marked deleted for everyone.
+      final row = (await pc.db.db.query('playlists', where: 'name = ?', whereArgs: ['通勤'])).single;
+      final sid = '${row['uid']}';
+      final j = jsonDecode('${(await pc.db.db.query('sync_lists', where: 'sid = ?', whereArgs: [sid])).single['state']}') as Map;
+      j['d'] = [true, Clock.tick(), pc.id];
+      await pc.db.db.update('sync_lists', {'state': jsonEncode(j)}, where: 'sid = ?', whereArgs: [sid]);
+      await pc.db.db.delete('playlist_tracks', where: 'playlist_id = ?', whereArgs: [row['id']]);
+      await pc.db.db.delete('playlists', where: 'id = ?', whereArgs: [row['id']]);
+      await settle([pc, phone]);
+      expect(await phone.titles('通勤'), ['a', 'b', 'c']);
+      expect(await pc.titles('通勤'), ['a', 'b', 'c']);
+      await expectStable([phone, pc]);
+    });
+
+    test('2.11 一台刪除、另一台同時加歌：清單回來，新加的歌也在', () async {
       final d = await pc.song('d');
       await pc.db.addToPlaylist(await pc.listId('通勤'), [d]);
       await phone.db.deletePlaylist(id);
       await phone.sync();
       await settle([pc, phone]);
-      expect(pc.asked, ['通勤']);
-      expect(await phone.listNames(), isEmpty);
+      expect(await phone.titles('通勤'), ['a', 'b', 'c', 'd']);
+      expect(await pc.titles('通勤'), ['a', 'b', 'c', 'd']);
       await expectStable([phone, pc]);
     });
 
@@ -268,29 +272,26 @@ void main() {
       await expectStable([phone, pc]);
     });
 
-    test('2.14 刪除檔案（1.20.5 只刪檔案）：兩台的清單都保留，這台顯示灰色，不自己下載回來', () async {
+    test('2.14 刪除檔案：兩台的清單都保留，另一台把歌傳回來（1.20.6 沒有「不要了」）', () async {
       final a = await phone.track('a');
       await MissingSongs.keepPlaces(phone.db, [a]);
       await phone.db.deleteTracks([a.id]);
-      await settle([phone, pc]);
+      await phone.sync();
       expect(await phone.titles('通勤'), ['~a', 'b', 'c']);
-      expect(await pc.titles('通勤'), ['a', 'b', 'c']);
-      expect(await phone.library(), ['b', 'c']);
-      await expectStable([phone, pc], complete: false);
-      // 重新傳送 brings it back.
-      await phone.engine.resend([(await phone.db.playlistTracks(id)).first]);
       await settle([phone, pc]);
+      expect(await pc.titles('通勤'), ['a', 'b', 'c']);
       expect(await phone.titles('通勤'), ['a', 'b', 'c']);
+      expect(await phone.library(), ['a', 'b', 'c']);
       await expectStable([phone, pc]);
     });
 
-    test('2.15 隱藏歌曲或移除資料夾：這台顯示灰色，另一台不受影響，不下載回來', () async {
+    test('2.15 隱藏歌曲或移除資料夾：另一台不受影響，歌還在清單裡就傳回來', () async {
       final a = await phone.track('a');
       await phone.db.deleteTracks([a.id]);
       await settle([phone, pc]);
-      expect(await phone.titles('通勤'), ['~a', 'b', 'c']);
       expect(await pc.titles('通勤'), ['a', 'b', 'c']);
-      await expectStable([phone, pc], complete: false);
+      expect(await phone.titles('通勤'), ['a', 'b', 'c']);
+      await expectStable([phone, pc]);
     });
 
     test('2.16 兩台都勾選新的同名清單（不是剛安裝）：合併成一份', () async {
@@ -314,14 +315,15 @@ void main() {
       expect(cloud.files.values.any((f) => String.fromCharCodes(f.$2).contains('secret')), isFalse);
     });
 
-    test('2.19 兩台同時刪除同一個清單：不用再問', () async {
+    // Deleted on both before either synced: each still sees the other's
+    // copy, so it comes back on both (only here = only here).
+    test('2.19 兩台都刪除同一個清單：兩台結果一樣、不會一直變', () async {
       await phone.db.deletePlaylist(id);
       await pc.db.deletePlaylist(await pc.listId('通勤'));
       await settle([phone, pc]);
-      expect(await phone.listNames(), isEmpty);
-      expect(await pc.listNames(), isEmpty);
-      expect(phone.asked + pc.asked, isEmpty);
+      expect(await phone.listNames(), await pc.listNames());
       await expectStable([phone, pc]);
+      expect((await phone.listNames()).where((n) => n == '通勤').length, lessThanOrEqualTo(1));
     });
 
     test('2.18 空的清單也會同步', () async {
@@ -753,7 +755,7 @@ void main() {
   });
 
   group('8c 重新傳送', () {
-    test('8.7 電腦清空音樂資料夾：不會自己傳回來；按「重新傳送」就傳回來', () async {
+    test('8.7 電腦清空音樂資料夾：手機自動把清單裡的歌傳回來', () async {
       final a = await phone.song('a'), b = await phone.song('b');
       await phone.playlist('通勤', [a, b]);
       await settle([phone, pc]);
@@ -763,25 +765,61 @@ void main() {
         f.deleteSync();
       }
       await settle([phone, pc]);
-      expect(await pc.titles('通勤'), ['~a', '~b']);
-      await pc.engine.resend([for (final t in await pc.db.playlistTracks(await pc.listId('通勤'))) t]);
-      await settle([phone, pc]);
       expect(await pc.titles('通勤'), ['a', 'b']);
       expect(cloud.count('v2-song-'), 0);
       await expectStable([phone, pc]);
     });
 
-    test('8.8 只重新傳送其中一首：只有那首回來', () async {
+    test('8.8 舊版留下的「不要了」標記：同步後清掉，歌照樣傳回來', () async {
       final a = await phone.song('a'), b = await phone.song('b');
       await phone.playlist('通勤', [a, b]);
       await settle([phone, pc]);
+      await pc.set('sync2_removed', jsonEncode(['a|a', 'b|a']));
+      await pc.set('sync_skip', '[]');
       await pc.db.deleteTracks([for (final t in await pc.db.tracks()) t.id]);
+      for (final f in Directory('${pc.dir.path}/dl').listSync()) {
+        f.deleteSync();
+      }
       await settle([phone, pc]);
-      final grey = (await pc.db.playlistTracks(await pc.listId('通勤'))).firstWhere((t) => t.title == 'b');
-      await pc.engine.resend([grey]);
+      expect(await pc.titles('通勤'), ['a', 'b']);
+      expect(await pc.setting('sync2_removed'), isNull);
+      expect(await pc.setting('sync_skip'), isNull);
+      await expectStable([phone, pc]);
+    });
+
+    test('8.9 同一首歌兩台名字不同（電腦清單是羅馬拼音、手機改成原文）：傳得過去，電腦改成原文', () async {
+      final ao = await phone.song('Ao');
+      await phone.playlist('通勤', [ao]);
       await settle([phone, pc]);
-      expect(await pc.titles('通勤'), ['~a', 'b']);
-      await expectStable([phone, pc], complete: false);
+      expect(await pc.titles('通勤'), ['Ao']);
+      // The phone renamed it to its original name; the PC lost its file.
+      await phone.rename('Ao', '青');
+      await pc.db.deleteTracks([for (final t in await pc.db.tracks()) t.id]);
+      for (final f in Directory('${pc.dir.path}/dl').listSync()) {
+        f.deleteSync();
+      }
+      await settle([phone, pc]);
+      expect(await phone.titles('通勤'), ['青']);
+      expect(await pc.titles('通勤'), ['青']);
+      expect(await pc.library(), ['青']);
+      expect(cloud.count('v2-song-'), 0);
+      await expectStable([phone, pc]);
+    });
+
+    test('8.10 名字不同、歌曲資料不同步：還是傳得過去，用手機的原文名字', () async {
+      final ao = await phone.song('Ao');
+      await phone.playlist('通勤', [ao]);
+      await settle([phone, pc]);
+      await pc.set('sync_edits', 'false');
+      await phone.rename('Ao', '青');
+      await pc.db.deleteTracks([for (final t in await pc.db.tracks()) t.id]);
+      for (final f in Directory('${pc.dir.path}/dl').listSync()) {
+        f.deleteSync();
+      }
+      await settle([phone, pc]);
+      expect(await pc.titles('通勤'), ['青']);
+      expect(cloud.count('v2-song-'), 0);
+      await expectStable([phone, pc]);
     });
   });
 

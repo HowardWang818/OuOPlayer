@@ -144,9 +144,10 @@ class SyncEngine implements SyncHooks {
 
   Future<void> _putSet(String key, Set<String> v) => db.setSetting(key, jsonEncode(v.toList()));
 
-  /// Songs removed from this device's library ('sync2_removed', song keys):
-  /// not downloaded back here. Cleared when the user adds the song again.
-  static const _removedKey = 'sync2_removed';
+  /// Marks of songs 'not wanted' (1.20.6: gone). A song in a synced
+  /// playlist always comes to the device that lacks it; to not have it,
+  /// it's taken out of the playlist. Cleared on the first sync.
+  static const _oldMarks = ['sync2_cancelled', 'sync2_removed', 'sync_skip', 'sync_declined'];
 
   /// This device's relay index on Drive is read and written one at a time
   /// (an upload and a sync's clean-up writing it together lost entries).
@@ -219,8 +220,6 @@ class SyncEngine implements SyncHooks {
     final local = [for (final (tid, item) in rows) LocalRow(item, tracks[tid] == null ? const {} : ref(tracks[tid]!))];
     final rec = recordRows(state, local, now, me, _newId);
     state = rec.state;
-    // Songs the user adds again aren't 'removed here' any more.
-    await _unremove({for (var i = 0; i < rows.length; i++) if (rows[i].$2 != rec.ids[i]) songKey('${local[i].song['t']}', '${local[i].song['a']}')});
     if (state.name?.value != row['name']) state = ListState(name: Stamped('${row['name']}', now, me), deleted: state.deleted, items: state.items);
     await _save(sid, state);
     // New entries get their ids in the library too.
@@ -231,12 +230,12 @@ class SyncEngine implements SyncHooks {
     }
   }
 
+  /// 刪除 a synced playlist (1.20.6): only here. The other devices keep it,
+  /// and the next sync brings it back here whole.
   @override
   Future<void> playlistDeleted(String? uid) async {
     if (_own || uid == null) return;
-    final state = (await states())[uid];
-    if (state == null) return;
-    await _save(uid, ListState(name: state.name, deleted: Stamped(true, _clock(), await deviceId()), items: state.items));
+    await _drop(uid);
   }
 
   @override
@@ -248,7 +247,6 @@ class SyncEngine implements SyncHooks {
     final liked = {for (final t in await db.favorites()) songKey(t.title, t.artist): t};
     final items = Map.of(state.items);
     final shown = {for (final e in state.shown) e.value.key: e.key};
-    await _unremove({for (final k in liked.keys) if (!shown.containsKey(k)) k});
     for (final MapEntry(key: k, value: t) in liked.entries) {
       if (shown.containsKey(k)) continue;
       final id = items.containsKey('L|$k') ? 'L|$k|$now' : 'L|$k';
@@ -261,12 +259,11 @@ class SyncEngine implements SyncHooks {
   }
 
   /// Songs left the library here (hidden, folder removed, file gone): the
-  /// synced playlists keep them, greyed — never an action for the other device.
-  /// Not downloaded back here; a copy still here is still sent to the others.
+  /// synced playlists keep them, greyed — never an action for the other
+  /// device — and another device sends them again.
   @override
   Future<void> songsRemoved(List<(String, String)> songs) async {
     if (_own) return;
-    await _putSet(_removedKey, {...await _set(_removedKey), for (final (t, a) in songs) songKey(t, a)});
     await applyAll();
   }
 
@@ -276,24 +273,6 @@ class SyncEngine implements SyncHooks {
   Future<void> trackEdited(Track before, Track after) async {
     if (_own || (await _settings())['sync_edits'] == 'false') return;
     await edits.recorded(before, after, await deviceId(), _clock());
-  }
-
-  /// 重新傳送: greyed songs this device let go of (file deleted, folder
-  /// removed, hidden) are wanted here again, so another device sends them.
-  /// Returns how many were let go of.
-  Future<int> resend(Iterable<Track> songs) async {
-    final keys = {for (final t in songs) songKey(t.title, t.artist)};
-    final removed = await _set(_removedKey);
-    final back = removed.intersection(keys).length;
-    await _unremove(keys);
-    return back;
-  }
-
-  Future<void> _unremove(Set<String> keys) async {
-    if (keys.isEmpty) return;
-    final removed = await _set(_removedKey);
-    if (!removed.any(keys.contains)) return;
-    await _putSet(_removedKey, removed..removeAll(keys));
   }
 
   // ---------- making the library match the states ----------
@@ -382,9 +361,7 @@ class SyncEngine implements SyncHooks {
   // ---------- one sync ----------
 
   /// Reads the other devices' states, merges, applies, writes this device's.
-  /// [confirmDelete] is asked when the other device deleted a playlist that
-  /// is still here (false: it stays here as an unsynced playlist).
-  Future<SyncResult> sync({Future<bool> Function(String name)? confirmDelete, int relayCap = 5 << 30}) async {
+  Future<SyncResult> sync({int relayCap = 5 << 30}) async {
     final me = await deviceId();
     final mine = 'v2-state-$me.json';
     final files = await drive.list();
@@ -409,7 +386,6 @@ class SyncEngine implements SyncHooks {
           j['name'] as String?,
           (j['updated'] as num?)?.toInt() ?? 0,
           {...((j['have'] as List?) ?? const []).cast<String>()},
-          {...((j['skip'] as List?) ?? const []).cast<String>()},
           {for (final e in ((j['lists'] as Map?) ?? const {}).entries) '${e.key}': ListState.fromJson(e.value as Map)},
           since: (j['since'] as num?)?.toInt() ?? 0,
         );
@@ -504,24 +480,19 @@ class SyncEngine implements SyncHooks {
           if (await _apply(sid, s, r)) applied++;
           continue;
         }
+        // Marked deleted by a version before 1.20.6: still here, so it stays
+        // and goes back to the device that deleted it.
         final row = (await db.db.query('playlists', where: 'uid = ? AND synced = 1', whereArgs: [sid])).firstOrNull;
         if (row == null) continue;
-        final name = '${row['name']}';
-        if (confirmDelete != null && await confirmDelete(name)) {
-          await db.db.delete('playlists', where: 'id = ?', whereArgs: [row['id']]);
-          await db.db.delete('playlist_tracks', where: 'playlist_id = ?', whereArgs: [row['id']]);
-          deleted.add(name);
-        } else {
-          // Kept here: no longer synced (and no longer the deleted one).
-          await db.db.update('playlists', {'synced': 0, 'uid': _newId()}, where: 'id = ?', whereArgs: [row['id']]);
-        }
-        applied++;
+        final back = ListState(name: s.name, deleted: Stamped(false, _clock(), me), items: s.items);
+        await _save(sid, back);
+        all[sid] = back;
+        if (await _apply(sid, back, r)) applied++;
       }
     });
     if (applied > 0) db.notifyChanged();
 
-    // What this device has of the synced playlists' songs, and what it
-    // removed itself (the others don't send those).
+    // What this device has of the synced playlists' songs.
     final have = <String>{};
     final lacking = <String>{};
     for (final s in all.values.where((s) => !s.isDeleted)) {
@@ -530,14 +501,14 @@ class SyncEngine implements SyncHooks {
         (t != null ? have : lacking).add(e.value.key);
       }
     }
-    // Before v1.11.2 a cancelled song was never sent again: that list is gone.
-    if ((await _settings()).containsKey('sync2_cancelled')) await db.db.delete('settings', where: 'key = ?', whereArgs: ['sync2_cancelled']);
-    final removed = (await _set(_removedKey)).intersection(lacking);
+    final old = await _settings();
+    for (final k in _oldMarks) {
+      if (old.containsKey(k)) await db.db.delete('settings', where: 'key = ?', whereArgs: [k]);
+    }
     final now = _clock();
     final content = {
       'lists': {for (final e in all.entries) e.key: e.value.pruned(now).toJson()},
       'have': have.toList(),
-      'skip': removed.toList(),
       'since': _since,
     };
     // Written only when something changed (once a day anyway, as a sign of
@@ -567,11 +538,11 @@ class SyncEngine implements SyncHooks {
 
     // Songs: tidy the relay (checked against what is really on Drive), plan.
     await _cleanRelay(me, remote, all);
-    _plan = await _planTransfers(me, all, remote, await drive.list(), r, removed);
+    _plan = await _planTransfers(me, all, remote, await drive.list(), r);
     final active = _activeOf(remote, now);
     // Still to come here: songs another device has (or that are on the relay).
     final owned = {for (final d in active) ...d.owns};
-    final fetchable = _plan.any((t) => !t.upload) || lacking.difference(removed).any(owned.contains);
+    final fetchable = _plan.any((t) => !t.upload) || lacking.any(owned.contains);
     // Still to go: songs here a device in use lacks.
     final waiting = active.any((d) => all.entries.any((e) => !e.value.isDeleted && e.value.shown.any((i) => have.contains(i.value.key) && d.lacks(e.key, i.value.key))));
     final incomplete = fetchable || waiting;
@@ -832,7 +803,7 @@ class SyncEngine implements SyncHooks {
   }
 
   Future<List<_Transfer>> _planTransfers(
-      String me, Map<String, ListState> all, Map<String, _Remote> remote, List<DriveFile> files, _Resolver r, Set<String> removed) async {
+      String me, Map<String, ListState> all, Map<String, _Remote> remote, List<DriveFile> files, _Resolver r) async {
     final now = _clock();
     final others = _activeOf(remote, now);
     final indexes = await _indexes(files);
@@ -852,8 +823,6 @@ class SyncEngine implements SyncHooks {
         final t = r.real(e.value.song);
         if (t != null) {
           if (!onRelay.containsKey(key) && others.any((d) => d.lacks(sid, key))) out[key] = _Transfer.up(key, t);
-        } else if (removed.contains(key)) {
-          continue;
         } else if (onRelay[key] case (final dev, final meta) when dev != me) {
           out[key] = _Transfer.down(key, meta);
         }
@@ -887,16 +856,22 @@ class SyncEngine implements SyncHooks {
             ? <String, Map>{}
             : (jsonDecode(utf8.decode(await drive.download(indexFile.id))) as Map).map((k, v) => MapEntry('$k', v as Map));
         var dropped = false;
+        final unused = <String>{};
         for (final key in [...index.keys]) {
           final m = index[key]!;
           final gone = !names.containsKey('${m['file']}');
           if (!gone && needed(key)) continue;
           index.remove(key);
-          for (final n in [m['file'], m['art']]) {
-            final id = names['$n'];
-            if (id != null) await drive.delete(id);
-          }
+          unused.addAll(['${m['file']}', '${m['art']}']);
           dropped = true;
+        }
+        // The same file can be listed under two names (each device's).
+        for (final m in index.values) {
+          unused.removeAll(['${m['file']}', '${m['art']}']);
+        }
+        for (final n in unused) {
+          final id = names[n];
+          if (id != null) await drive.delete(id);
         }
         if (dropped) await drive.upload(indexName, utf8.encode(jsonEncode(index)), id: indexFile!.id, mime: 'application/json');
         // Files of no index, a day old: nobody is going to fetch them.
@@ -935,13 +910,13 @@ class SyncEngine implements SyncHooks {
           _token = CancelToken();
           try {
             if (t.upload) {
-              final full = !await _upload(me, t.track!, relayCap, progress);
+              final full = !await _upload(me, t.key, t.track!, relayCap, progress);
               if (full) {
                 onProgress?.call(TransferProgress(done: i, total: plan.length, title: t.title, upload: true, fraction: 0, full: true));
                 return done;
               }
             } else {
-              await _download(t.meta!, progress);
+              await _download(t.key, t.meta!, progress);
             }
             _plan.remove(t);
             done++;
@@ -972,8 +947,10 @@ class SyncEngine implements SyncHooks {
   bool get transfersRunning => _running;
   int get pending => _plan.length;
 
-  /// Up to the relay (false: it's full). Its meta goes into this device's index.
-  Future<bool> _upload(String me, Track t, int cap, void Function(int, int) progress) async {
+  /// Up to the relay (false: it's full). Its meta goes into this device's
+  /// index under [key], the name the playlist knows it by (1.20.6: the
+  /// song's name here can differ, e.g. original vs romaji).
+  Future<bool> _upload(String me, String key, Track t, int cap, void Function(int, int) progress) async {
     final file = File(t.uri);
     final size = await file.length();
     final files = await drive.list();
@@ -997,7 +974,7 @@ class SyncEngine implements SyncHooks {
       final fresh = await drive.list();
       final indexFile = fresh.where((f) => f.name == indexName).firstOrNull;
       final index = indexFile == null ? <String, Object?>{} : (jsonDecode(utf8.decode(await drive.download(indexFile.id))) as Map).cast<String, Object?>();
-      index[songKey(t.title, t.artist)] = {
+      index[key] = {
         't': t.title, 'a': t.artist, 'al': t.album, 'ms': t.durationMs, 'size': size, 'sha': sha, 'file': name, if (art != null) 'art': art,
       };
       await drive.upload(indexName, utf8.encode(jsonEncode(index)), id: indexFile?.id, mime: 'application/json');
@@ -1006,8 +983,9 @@ class SyncEngine implements SyncHooks {
   }
 
   /// From the relay into the download folder, checked against its SHA-256,
-  /// with the sender's names and cover; it then fills the greyed entries.
-  Future<void> _download(Map meta, void Function(int, int) progress) async {
+  /// with the sender's names and cover; it then fills the greyed entries,
+  /// those of the playlist's name for it ([key]) too.
+  Future<void> _download(String key, Map meta, void Function(int, int) progress) async {
     final files = {for (final f in await drive.list()) f.name: f.id};
     final id = files['${meta['file']}'];
     if (id == null) throw StateError('not on Drive');
@@ -1046,8 +1024,19 @@ class SyncEngine implements SyncHooks {
       );
       await _asSync(() async {
         await db.updateTrackInfo(named);
-        await MissingSongs.fillExact(db, named);
+        await MissingSongs.fillExact(db, named, listedAs: key);
         await MissingSongs.adoptPlays(db, named);
+        // Listed under another name (romaji here, the original there): the
+        // song is known by that name from now on, as if renamed from it.
+        if (key != songKey(named.title, named.artist)) {
+          await db.db.insert(
+              'track_edits',
+              {
+                'track_id': named.id, 'root': key, 'root_ms': meta['ms'] ?? named.durationMs, 'title': named.title, 'artist': named.artist,
+                'album': named.album, 'at': 1, 'device': await deviceId(),
+              },
+              conflictAlgorithm: ConflictAlgorithm.ignore);
+        }
       });
     } finally {
       final f = File(part);
@@ -1066,16 +1055,15 @@ class SyncEngine implements SyncHooks {
 }
 
 class _Remote {
-  _Remote(this.name, this.updated, this.owns, this.skip, this.lists, {this.since = 0});
+  _Remote(this.name, this.updated, this.owns, this.lists, {this.since = 0});
   final String? name;
   final int updated;
 
   /// When that install first synced.
   final int since;
 
-  /// Songs it has, and songs it doesn't want (cancelled / removed there).
+  /// Songs it has.
   final Set<String> owns;
-  final Set<String> skip;
   final Map<String, ListState> lists;
 
   late final Set<String> _listed = {
@@ -1087,9 +1075,9 @@ class _Remote {
   bool syncs(String sid) => lists[sid] != null && !lists[sid]!.isDeleted;
 
   /// It lacks [key] of this device's list [sid]: it syncs that list (or
-  /// already lists the song) and has neither the song nor a reason to skip it.
-  /// A list it doesn't sync (stopped, likes off) is no reason to send songs.
-  bool lacks(String sid, String key) => !owns.contains(key) && !skip.contains(key) && (syncs(sid) || _listed.contains(key));
+  /// already lists the song) and doesn't have the song. A list it doesn't
+  /// sync (stopped, likes off) is no reason to send songs.
+  bool lacks(String sid, String key) => !owns.contains(key) && (syncs(sid) || _listed.contains(key));
 }
 
 class _Transfer {

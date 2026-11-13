@@ -155,7 +155,7 @@ class SyncNotifier extends Notifier<SyncState> {
     String message;
     var downloads = 0;
     try {
-      final r = await _engine.sync(confirmDelete: _confirmDelete, relayCap: relayCap);
+      final r = await _engine.sync(relayCap: relayCap);
       message = r.sent == 0 && r.received == 0 ? '已同步，沒有變更' : '已同步：送出 ${r.sent} 項、收到 ${r.received} 項';
       downloads = r.downloads;
       incomplete = r.incomplete;
@@ -212,23 +212,6 @@ class SyncNotifier extends Notifier<SyncState> {
       final after = rootNavigatorKey.currentContext;
       if (after != null && after.mounted) toast(after, n > 0 ? '已把 $n 首歌的歌名寫進檔案' : '沒有寫入檔案');
     } catch (_) {}
-  }
-
-  Future<bool> _confirmDelete(String name) async {
-    final ctx = rootNavigatorKey.currentContext;
-    if (ctx == null || !ctx.mounted) return false;
-    final ok = await showDialog<bool>(
-      context: ctx,
-      builder: (c) => AlertDialog(
-        title: Text('另一台刪除了播放清單「$name」'),
-        content: const Text('要在這台也刪除嗎？選「保留」會留下這台的清單，改成不同步的一般播放清單。歌曲檔案都不會被刪除。'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('刪除')),
-          FilledButton(autofocus: true, onPressed: () => Navigator.pop(c, false), child: const Text('保留')),
-        ],
-      ),
-    );
-    return ok ?? false;
   }
 
   Future<void> _transfers({bool then = false}) async {
@@ -510,10 +493,8 @@ final syncTriggersProvider = Provider<void>((ref) {
   });
 });
 
-/// 重新傳送: the greyed songs come from another device again, even those
-/// this device let go of (file deleted, folder removed).
+/// 重新傳送: a sync now, so another device sends the greyed songs.
 Future<void> resendSongs(BuildContext context, WidgetRef ref, List<Track> songs) async {
-  await ref.read(syncEngineProvider).resend(songs);
   if (context.mounted) toast(context, '重新傳送 ${songs.length} 首');
   await ref.read(syncProvider.notifier).run();
 }

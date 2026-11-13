@@ -135,12 +135,13 @@ class MissingSongs {
 
   /// A song sent from another device: it takes the place of every
   /// placeholder with its exact title and artist (the names that device
-  /// shows), then of any it surely matches.
-  static Future<void> fillExact(AppDatabase app, Track song) async {
-    final key = '${foldText(song.title)}|${foldText(song.artist)}';
+  /// shows) or the playlist's name for it ([listedAs], a song key), then of
+  /// any it surely matches.
+  static Future<void> fillExact(AppDatabase app, Track song, {String? listedAs}) async {
+    final keys = {'${foldText(song.title)}|${foldText(song.artist)}', if (listedAs != null) listedAs};
     var swapped = <String>[];
     for (final m in await all(app)) {
-      if ('${foldText(m.title)}|${foldText(m.artist)}' == key) swapped.addAll(await _swap(app, m.id, song));
+      if (keys.contains('${foldText(m.title)}|${foldText(m.artist)}')) swapped.addAll(await _swap(app, m.id, song));
     }
     if (swapped.isNotEmpty) {
       app.notifyChanged();
