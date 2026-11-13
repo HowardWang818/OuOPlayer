@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 import '../data/db/database.dart';
 import '../data/models/track.dart';
 import 'song_matcher.dart';
+import 'sync2/merge.dart' show songKey;
 
 /// A song that filled in a missing playlist entry.
 class FilledSong {
@@ -45,6 +46,54 @@ class MissingSongs {
     );
     await app.db.insert('tracks', t.toMap(), conflictAlgorithm: ConflictAlgorithm.ignore);
     return t;
+  }
+
+  /// 刪除檔案 (1.20.5): the songs keep their places in playlists and likes,
+  /// greyed, so they can be downloaded or sent again. Not a playlist action:
+  /// synced devices keep the songs too.
+  /// Its plays too: on the greyed song, or (in no playlist or likes) kept
+  /// under its names, and they go to the song downloaded again.
+  static Future<void> keepPlaces(AppDatabase app, List<Track> songs) async {
+    for (final t in songs) {
+      final listed = await app.db.query('playlist_tracks', columns: ['track_id'], where: 'track_id = ?', whereArgs: [t.id], limit: 1);
+      final liked = await app.db.query('favorites', columns: ['track_id'], where: 'track_id = ?', whereArgs: [t.id], limit: 1);
+      if (listed.isEmpty && liked.isEmpty) {
+        final played = await app.db.query('listening_log', columns: ['id'], where: 'track_id = ?', whereArgs: [t.id], limit: 1);
+        final counted = await app.db.query('plays', columns: ['track_id'], where: 'track_id = ?', whereArgs: [t.id], limit: 1);
+        if (played.isEmpty && counted.isEmpty) continue;
+        final id = _byName(t);
+        await app.db.rawInsert('INSERT OR IGNORE INTO remote_songs(id, title, artist, album, duration_ms) VALUES(?, ?, ?, ?, ?)',
+            [id, t.title, t.artist, t.album, t.durationMs]);
+        await _movePlays(app, t.id, id);
+        continue;
+      }
+      final hole = await create(app, t.title, t.artist, album: t.album, durationMs: t.durationMs);
+      await app.db.update('playlist_tracks', {'track_id': hole.id}, where: 'track_id = ?', whereArgs: [t.id]);
+      await app.db.update('favorites', {'track_id': hole.id}, where: 'track_id = ?', whereArgs: [t.id]);
+      await _movePlays(app, t.id, hole.id);
+    }
+  }
+
+  /// Plays kept under a song's names (deleted here, or only played on
+  /// another device): the id they wait under.
+  static String _byName(Track t) => 'remote:${songKey(t.title, t.artist)}';
+
+  /// A song just came into the library: plays waiting under its names are its.
+  static Future<void> adoptPlays(AppDatabase app, Track song) async {
+    if (song.source != TrackSource.local && song.source != TrackSource.download) return;
+    await _movePlays(app, _byName(song), song.id);
+  }
+
+  /// Play counts, recently played and the listening log of [from] go to [to].
+  static Future<void> _movePlays(AppDatabase app, String from, String to) async {
+    await app.db.update('history', {'track_id': to}, where: 'track_id = ?', whereArgs: [from]);
+    await app.db.update('listening_log', {'track_id': to}, where: 'track_id = ?', whereArgs: [from]);
+    final p = (await app.db.query('plays', where: 'track_id = ?', whereArgs: [from])).firstOrNull;
+    if (p == null) return;
+    await app.db.rawInsert('INSERT OR IGNORE INTO plays(track_id, count, last_played) VALUES(?, 0, NULL)', [to]);
+    await app.db.rawUpdate('UPDATE plays SET count = count + ?, last_played = MAX(COALESCE(last_played, 0), ?) WHERE track_id = ?',
+        [p['count'], p['last_played'] ?? 0, to]);
+    await app.db.delete('plays', where: 'track_id = ?', whereArgs: [from]);
   }
 
   static Future<List<Track>> all(AppDatabase app) async {
@@ -143,6 +192,7 @@ class MissingSongs {
       await app.db.insert('favorites', {'track_id': song.id, 'added_at': liked.first['added_at']}, conflictAlgorithm: ConflictAlgorithm.ignore);
       names.add('已按讚的歌曲');
     }
+    await _movePlays(app, missingId, song.id);
     await app.db.delete('tracks', where: 'id = ?', whereArgs: [missingId]);
     return names;
   }

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/providers.dart';
 import '../../widgets/download_actions.dart' show downloadTerms;
 import 'section_page.dart';
+import 'tidy_names_page.dart';
 
 /// 下載與線上: where downloads go, mobile data and yt-dlp.
 class DownloadSettingsPage extends ConsumerWidget {
@@ -42,6 +43,13 @@ class DownloadSettingsPage extends ConsumerWidget {
         subtitle: const Text('羅馬拼音或英文的歌名（例如「Yoru ni Kakeru」）下載完改回日文或中文的原名，只有很確定時才改。每首多花幾秒'),
         value: s.nativeNamesOnDownload,
         onChanged: n.setNativeNamesOnDownload,
+      ),
+      SettingTile(
+        action: '整理',
+        leading: const Icon(Icons.drive_file_rename_outline),
+        title: const Text('整理檔名'),
+        subtitle: const Text('下載的檔名改成正式歌名'),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TidyNamesPage())),
       ),
       SettingSwitch(
         secondary: const Icon(Icons.system_update_alt),

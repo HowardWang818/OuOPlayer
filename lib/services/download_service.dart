@@ -102,7 +102,10 @@ class DownloadService {
   DownloadService(this._scanner, this._db) : ytdlp = YtDlpBackend.create();
 
   /// A new song from a download is in the library (e.g. to look its lyrics up).
-  void Function(Track track, DownloadTask task)? onImported;
+  /// Names, cover and file name settled after import; returns the song as it
+  /// then is (its file may have been renamed). Awaited, so the playlist, like
+  /// and download record get the final file.
+  Future<Track> Function(Track track, DownloadTask task)? onImported;
 
   final LibraryScanner _scanner;
   final AppDatabase _db;
@@ -354,7 +357,12 @@ class DownloadService {
     }
     if (track == null) {
       track = await _scanner.importFile(target, source: TrackSource.download);
-      if (track != null) onImported?.call(track, t);
+      if (track != null && onImported != null) {
+        try {
+          track = await onImported!(track, t);
+          target = track.uri;
+        } catch (_) {}
+      }
     }
     t.files.add(target);
     // One source → one file; whole-playlist runs can't tell which is which.

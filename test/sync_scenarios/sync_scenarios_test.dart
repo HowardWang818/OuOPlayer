@@ -18,6 +18,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ouoplayer/data/models/track.dart';
+import 'package:ouoplayer/services/missing_songs.dart';
 import 'package:ouoplayer/services/sync2/now_playing.dart';
 
 import 'harness.dart';
@@ -267,14 +268,19 @@ void main() {
       await expectStable([phone, pc]);
     });
 
-    test('2.14 刪除檔案：另一台從清單移除，但不刪檔案；這台不再下載回來', () async {
+    test('2.14 刪除檔案（1.20.5 只刪檔案）：兩台的清單都保留，這台顯示灰色，不自己下載回來', () async {
       final a = await phone.track('a');
-      await phone.db.takeOutOfLists([a.id]);
+      await MissingSongs.keepPlaces(phone.db, [a]);
       await phone.db.deleteTracks([a.id]);
       await settle([phone, pc]);
-      expect(await pc.titles('通勤'), ['b', 'c']);
-      expect(await pc.library(), ['a', 'b', 'c']);
+      expect(await phone.titles('通勤'), ['~a', 'b', 'c']);
+      expect(await pc.titles('通勤'), ['a', 'b', 'c']);
       expect(await phone.library(), ['b', 'c']);
+      await expectStable([phone, pc], complete: false);
+      // 重新傳送 brings it back.
+      await phone.engine.resend([(await phone.db.playlistTracks(id)).first]);
+      await settle([phone, pc]);
+      expect(await phone.titles('通勤'), ['a', 'b', 'c']);
       await expectStable([phone, pc]);
     });
 
@@ -374,15 +380,16 @@ void main() {
       await expectStable([phone, pc]);
     });
 
-    test('3.5 刪除檔案：另一台也取消按讚', () async {
+    test('3.5 刪除檔案（1.20.5 只刪檔案）：兩台的按讚都保留', () async {
       await phone.like('a');
       await settle([phone, pc]);
       final a = await phone.track('a');
-      await phone.db.takeOutOfLists([a.id]);
+      await MissingSongs.keepPlaces(phone.db, [a]);
       await phone.db.deleteTracks([a.id]);
       await settle([phone, pc]);
-      expect(await pc.liked(), isEmpty);
-      await expectStable([phone, pc]);
+      expect(await pc.liked(), ['a']);
+      expect(await phone.liked(), ['a']);
+      await expectStable([phone, pc], complete: false);
     });
   });
 

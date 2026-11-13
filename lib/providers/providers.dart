@@ -14,6 +14,8 @@ import '../data/models/track.dart';
 import '../config/demo.dart';
 import '../services/cover_finder.dart';
 import '../services/download_finish.dart';
+import '../services/file_names.dart';
+import '../services/missing_songs.dart';
 import '../services/artist_images.dart';
 import '../services/artists.dart';
 import '../services/audio_handler.dart';
@@ -110,7 +112,17 @@ final downloadServiceProvider = Provider<DownloadService>((ref) {
         }
       } catch (_) {}
     }
+    // Plays kept from an earlier copy of the song (deleted, downloaded again).
+    try {
+      await MissingSongs.adoptPlays(ref.read(dbProvider), track);
+    } catch (_) {}
+    // The file named after the song (iTunes' official name when sure).
+    try {
+      final name = await FileNames.nameFor(track, ref.read(iTunesSearchProvider));
+      track = await FileNames.rename(ref.read(dbProvider), track, name);
+    } catch (_) {}
     if (ref.read(settingsProvider).lyricsOnDownload) ref.read(lyricsServiceProvider).fetchLater(track);
+    return track;
   };
   ref.listen(settingsProvider.select((s) => s.downloadDir), (_, dir) => svc.outDir = dir);
   return svc;

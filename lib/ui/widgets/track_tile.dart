@@ -8,6 +8,7 @@ import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../providers/sync_provider.dart';
 import '../../services/file_trash.dart';
+import '../../services/missing_songs.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/looks.dart';
 import '../pages/pick_replacement_page.dart';
@@ -197,11 +198,11 @@ Future<void> showTrackMenu(BuildContext context, WidgetRef ref, Track track, {Vo
     showSongMenu(context, ref, track, onRemove: onRemove == null ? null : () async => onRemove(), removeLabel: removeLabel);
 
 /// Where removing [tracks] takes them out of (see [describeRemoval]).
-Future<List<String>> removalLines(WidgetRef ref, List<Track> tracks) async {
+Future<List<String>> removalLines(WidgetRef ref, List<Track> tracks, {bool keepPlaces = false}) async {
   final impact = await ref.read(dbProvider).removalImpact(tracks.map((t) => t.id).toList());
   final ids = {for (final t in tracks) t.id};
   final inQueue = ref.read(audioHandlerProvider).tracks.where((t) => ids.contains(t.id)).length;
-  return describeRemoval(impact, songs: tracks.length, inQueue: inQueue);
+  return describeRemoval(impact, songs: tracks.length, inQueue: inQueue, keepPlaces: keepPlaces);
 }
 
 /// Asks first (listing everywhere the songs will be removed from), moves the
@@ -211,7 +212,7 @@ Future<List<String>> removalLines(WidgetRef ref, List<Track> tracks) async {
 Future<bool> deleteTrackFiles(BuildContext context, WidgetRef ref, List<Track> tracks, {String? title}) async {
   if (tracks.isEmpty) return false;
   final forever = ref.read(settingsProvider).deletePermanently;
-  final where = await removalLines(ref, tracks);
+  final where = await removalLines(ref, tracks, keepPlaces: true);
   if (!context.mounted) return false;
   final ok = await showDialog<bool>(
     context: context,
@@ -227,8 +228,10 @@ Future<bool> deleteTrackFiles(BuildContext context, WidgetRef ref, List<Track> t
               ? const Text('檔案會永久刪除，無法還原。', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))
               : Text('檔案會移到$trashName，可以還原。'),
           const SizedBox(height: 4),
-          const Text('並從以下地方移除，同步的播放清單在另一台也會移除：'),
+          const Text('並從以下地方移除：'),
           RemovalList(where),
+          const SizedBox(height: 4),
+          const Text('播放清單裡的位置會保留。'),
         ]),
       ),
       actions: [
@@ -253,8 +256,8 @@ Future<bool> deleteTrackFiles(BuildContext context, WidgetRef ref, List<Track> t
       await handler.removeTrack(t.id);
     }
     final db = ref.read(dbProvider);
-    // Out of the playlists and likes here and on synced devices, then gone.
-    await db.takeOutOfLists(tracks.map((t) => t.id));
+    // Only the files go: their places in playlists and likes stay, greyed.
+    await MissingSongs.keepPlaces(db, tracks);
     await db.deleteTracks(tracks.map((t) => t.id));
     if (context.mounted) toast(context, forever ? '已永久刪除' : '已移到$trashName');
     return true;

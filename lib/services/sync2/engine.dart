@@ -1047,6 +1047,7 @@ class SyncEngine implements SyncHooks {
       await _asSync(() async {
         await db.updateTrackInfo(named);
         await MissingSongs.fillExact(db, named);
+        await MissingSongs.adoptPlays(db, named);
       });
     } finally {
       final f = File(part);
