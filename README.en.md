@@ -78,6 +78,8 @@ Get it from [Releases](https://github.com/HowardWang818/OuOPlayer/releases/lates
 
 **Phone and PC sync**
 - Syncs the playlists you choose through your own Google Drive, and moves songs between devices by itself
+- A song missing from a synced playlist always goes to the device without it, even when the two name it differently (romaji vs. the original)
+- Deleting a synced playlist deletes it on that device only; the other keeps it
 - Edited song details, lyrics and listening history sync too
 - Resume: carry on from the same song and position on the other device
 
@@ -91,6 +93,7 @@ Get it from [Releases](https://github.com/HowardWang818/OuOPlayer/releases/lates
 - Browse by folder, and create, rename or delete folders and move songs between them right in the app
 - Finds proper cover art for songs without one; artist photos fetched automatically, or pick your own and rename artists
 - Select several songs to edit their details, add them to a playlist, hide or delete them at once
+- Deleting removes only the file: playlists and likes keep a greyed spot to fill again later, and play history carries over
 
 **Playlists**
 - Your own playlists and playlist folders, with custom covers
@@ -121,6 +124,8 @@ Get it from [Releases](https://github.com/HowardWang818/OuOPlayer/releases/lates
 
 **Downloads**
 - Search online in Search → Online and download, or paste a link (using [yt-dlp](https://github.com/yt-dlp/yt-dlp)); finished files go straight into your library and the playlist you picked.
+- Finds the right version: Japanese songs are searched in Japanese, covers and karaoke are left out.
+- Files are named after the official title; 設定 → 下載與線上 → 整理檔名 (Settings → Downloads → Tidy file names) renames older ones.
 - Only download content you have the rights to or that is free of copyright restrictions, and follow the source site's terms of service; you are responsible for what you download.
 
 ## FAQ
@@ -128,7 +133,7 @@ Get it from [Releases](https://github.com/HowardWang818/OuOPlayer/releases/lates
 <details>
 <summary>How do I sync my phone and PC?</summary>
 
-Sign in with the same Google account in 設定 → 同步 (Settings → Sync) on both, then tick the playlists to sync. The data stays in an app-only folder in your own Drive, and the app can't see your other files. Songs on their way take up Drive space for a while and are removed once the other device has them.
+Sign in with the same Google account in 設定 → 同步 (Settings → Sync) on both, then tick the playlists to sync. The data stays in an app-only folder in your own Drive, and the app can't see your other files. Songs on their way take up Drive space for a while and are removed once the other device has them. To not have a song, take it out of the synced playlist.
 </details>
 
 <details>
@@ -151,7 +156,7 @@ When deleting or moving songs OuOPlayer didn't download, Android asks for confir
 <details>
 <summary>Where do deleted songs go?</summary>
 
-On Android, to the system trash by default, where the Files app can restore them for about 30 days; on Windows, to the Recycle Bin. With "delete permanently" switched on in 設定 → 音樂庫, they can't be restored.
+Playlists and likes keep a greyed spot for them, to download or receive again later. The file goes, on Android, to the system trash by default, where the Files app can restore them for about 30 days; on Windows, to the Recycle Bin. With "delete permanently" switched on in 設定 → 音樂庫, they can't be restored.
 </details>
 
 <details>
