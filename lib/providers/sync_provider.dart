@@ -15,7 +15,6 @@ import '../services/network_check.dart';
 import '../services/sync/drive_client.dart';
 import '../services/sync/google_auth.dart';
 import '../services/sync2/engine.dart';
-import '../services/sync2/merge.dart' show songKey;
 import '../services/sync2/now_playing.dart';
 import '../services/tag_backlog.dart';
 import '../services/tag_editor.dart';
@@ -375,16 +374,7 @@ class SyncNotifier extends Notifier<SyncState> {
   Future<void> _pickUp(NowPlaying latest) async {
     final db = ref.read(dbProvider);
     final h = ref.read(audioHandlerProvider);
-    final library = await db.tracks();
-    final byKey = <String, Track>{};
-    for (final t in library) {
-      byKey.putIfAbsent(songKey(t.title, t.artist), () => t);
-    }
-    for (final r in await db.db.query('track_edits')) {
-      final t = library.where((x) => x.id == r['track_id']).firstOrNull;
-      if (t != null) byKey.putIfAbsent('${r['root']}', () => t);
-    }
-    final list = [for (final s in latest.songs) byKey[songKey('${s['t']}', '${s['a']}')]];
+    final list = queueHere(latest, await db.tracks(), await db.db.query('track_edits'));
     final loop = LoopMode.values.where((m) => m.name == latest.loop).firstOrNull ?? LoopMode.off;
     final done = await h.loadResume(list, latest.index, Duration(milliseconds: latest.positionMs), original: latest.original, loop: loop);
     final ctx = rootNavigatorKey.currentContext;

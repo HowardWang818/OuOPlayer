@@ -331,8 +331,8 @@ class SyncEngine implements SyncHooks {
       final gone = [for (final x in rows) if (!after.contains(x.$2)) x.$1];
       _titles.addAll({for (final t in await db.tracksByIds([...added, ...gone])) t.id: t.title});
       _logged.addAll([
-        for (final tid in added) SyncLogEntry(DateTime.now(), '「$listName」加入「${title(tid)}」'),
-        for (final tid in gone) SyncLogEntry(DateTime.now(), '「$listName」移除「${title(tid)}」'),
+        for (final tid in added) SyncLogEntry(DateTime.now(), '「$listName」加入「${title(tid)}」', device: _from(sid)),
+        for (final tid in gone) SyncLogEntry(DateTime.now(), '「$listName」移除「${title(tid)}」', device: _from(sid)),
       ]);
     }
     return changed;
@@ -353,7 +353,7 @@ class SyncEngine implements SyncHooks {
       if (liked.containsKey(k)) continue;
       final t = await r.resolve(item.song);
       await db.db.insert('favorites', {'track_id': t.id, 'added_at': item.addedAt}, conflictAlgorithm: ConflictAlgorithm.ignore);
-      _logged.add(SyncLogEntry(DateTime.now(), '按讚「${t.title}」', device: _deviceNames[item.order.device]));
+      _logged.add(SyncLogEntry(DateTime.now(), '按讚「${t.title}」', device: _deviceNames[item.order.device] ?? _from(likedId)));
       changed = true;
     }
     final removed = {for (final i in state.items.values) if (!i.visible) i.key}..removeAll(shown.keys);
@@ -361,7 +361,7 @@ class SyncEngine implements SyncHooks {
       final t = liked[k];
       if (t == null) continue;
       await db.db.delete('favorites', where: 'track_id = ?', whereArgs: [t.id]);
-      _logged.add(SyncLogEntry(DateTime.now(), '取消按讚「${t.title}」'));
+      _logged.add(SyncLogEntry(DateTime.now(), '取消按讚「${t.title}」', device: _from(likedId)));
       changed = true;
     }
     if (changed) db.notifyChanged();
@@ -381,6 +381,12 @@ class SyncEngine implements SyncHooks {
     final byName = {for (final f in files) f.name: f};
     var all = await states();
     final sentMarks = await _marks('sync2_sent_lists');
+    var since = int.tryParse((await _settings())['sync2_since'] ?? '');
+    if (since == null) {
+      since = _clock();
+      await db.setSetting('sync2_since', '$since');
+    }
+    _since = since;
     var sent = sentMarks == null ? 0 : _listMarks(all).entries.where((e) => sentMarks[e.key] != e.value).length;
     var received = 0;
     final remote = <String, _Remote>{};
@@ -389,10 +395,12 @@ class SyncEngine implements SyncHooks {
         final j = jsonDecode(utf8.decode(await drive.download(f.id))) as Map;
         if (j['name'] != null) _deviceNames['${j['device']}'] = '${j['name']}';
         remote['${j['device']}'] = _Remote(
+          j['name'] as String?,
           (j['updated'] as num?)?.toInt() ?? 0,
-          // Songs it has, and songs it doesn't want (cancelled / removed there): no upload for it.
-          {...((j['have'] as List?) ?? const []).cast<String>(), ...((j['skip'] as List?) ?? const []).cast<String>()},
+          {...((j['have'] as List?) ?? const []).cast<String>()},
+          {...((j['skip'] as List?) ?? const []).cast<String>()},
           {for (final e in ((j['lists'] as Map?) ?? const {}).entries) '${e.key}': ListState.fromJson(e.value as Map)},
+          since: (j['since'] as num?)?.toInt() ?? 0,
         );
       } catch (_) {}
     }
@@ -418,19 +426,29 @@ class SyncEngine implements SyncHooks {
     all = await states();
     final fresh = await _set('sync2_fresh');
     final ignored = await _set('sync2_ignored');
-    for (final dev in remote.values) {
+    final ignoredBefore = ignored.length;
+    for (final MapEntry(key: devId, value: dev) in remote.entries) {
       for (final MapEntry(key: sid, value: theirs) in dev.lists.entries) {
-        if (ignored.contains(sid) || (sid == likedId && !await likedSynced)) continue;
+        if (sid == likedId && !await likedSynced) continue;
         final ours = all[sid];
+        // First sync of a list turned on here: the other device's list of the same name is the same one.
+        final link = ours != null
+            ? null
+            : fresh.where((f) => all[f] != null && !theirs.isDeleted && _fold(all[f]!.name?.value) == _fold(theirs.name?.value)).firstOrNull;
+        if (ignored.contains(sid)) {
+          // Sync stopped here: not brought back, unless the user turned it on again.
+          if (link == null) continue;
+          ignored.remove(sid);
+        }
         if (ours != null) {
-          final joined = ListState.join(ours, theirs);
+          final joined = _onceEach(ListState.join(ours, theirs), ours, theirs);
           if (_same(joined, ours)) continue;
           all[sid] = joined;
           changed.add(sid);
+          _changedBy.putIfAbsent(sid, () => {}).add(devId);
           continue;
         }
-        // First sync of a list turned on here: the other device's list of the same name is the same one.
-        final link = fresh.where((f) => all[f] != null && !theirs.isDeleted && _fold(all[f]!.name?.value) == _fold(theirs.name?.value)).firstOrNull;
+        _changedBy.putIfAbsent(sid, () => {}).add(devId);
         if (link != null) {
           final have = {for (final e in theirs.shown) e.value.key};
           final mine0 = all.remove(link)!;
@@ -447,6 +465,7 @@ class SyncEngine implements SyncHooks {
       }
     }
     if (remote.isNotEmpty) await _putSet('sync2_fresh', fresh..clear());
+    if (ignored.length != ignoredBefore) await _putSet('sync2_ignored', ignored);
     for (final sid in changed) {
       await _save(sid, all[sid]!);
     }
@@ -508,6 +527,7 @@ class SyncEngine implements SyncHooks {
       'lists': {for (final e in all.entries) e.key: e.value.pruned(now).toJson()},
       'have': have.toList(),
       'skip': removed.toList(),
+      'since': _since,
     };
     // Written only when something changed (once a day anyway, as a sign of
     // life): every write makes the other device sync, and it would answer.
@@ -535,11 +555,17 @@ class SyncEngine implements SyncHooks {
     }
 
     // Songs: tidy the relay (checked against what is really on Drive), plan.
-    await _cleanRelay(me, remote);
+    await _cleanRelay(me, remote, all);
     _plan = await _planTransfers(me, all, remote, await drive.list(), r, removed);
-    final active = [for (final d in remote.values) if (now - d.updated < _active.inMilliseconds) d];
-    final incomplete = lacking.difference(removed).isNotEmpty || active.any((d) => have.any((k) => !d.have.contains(k)));
+    final active = _activeOf(remote, now);
+    // Still to come here: songs another device has (or that are on the relay).
+    final owned = {for (final d in active) ...d.owns};
+    final fetchable = _plan.any((t) => !t.upload) || lacking.difference(removed).any(owned.contains);
+    // Still to go: songs here a device in use lacks.
+    final waiting = active.any((d) => all.entries.any((e) => !e.value.isDeleted && e.value.shown.any((i) => have.contains(i.value.key) && d.lacks(e.key, i.value.key))));
+    final incomplete = fetchable || waiting;
     _seen = seen;
+    _changedBy.clear();
     await SyncLog.add(db, _logged);
     _logged.clear();
     return SyncResult(
@@ -554,6 +580,60 @@ class SyncEngine implements SyncHooks {
   }
 
   String? _lastEdits, _lastPlays, _lastState, _lastTheme, _seen;
+
+  /// When this install first synced: an older install of the same device
+  /// (same name, silent since a newer one started) is no longer waited for.
+  int _since = 0;
+
+  /// The other devices still in use: synced within 30 days, and not an old
+  /// install that a newer one of the same name replaced (the app removed and
+  /// installed again leaves the old one's files on Drive).
+  List<_Remote> _activeOf(Map<String, _Remote> remote, int now) {
+    final starts = <(String?, int)>[(deviceName, _since), for (final d in remote.values) (d.name, d.since)];
+    return [
+      for (final d in remote.values)
+        if (now - d.updated < _active.inMilliseconds && !starts.any((s) => s.$1 != null && s.$1 == d.name && s.$2 > d.updated)) d,
+    ];
+  }
+
+  /// Which other devices changed each list in this sync (for 同步紀錄).
+  final _changedBy = <String, Set<String>>{};
+
+  /// The device a list's change came from, when only one changed it.
+  String? _from(String sid) {
+    final ids = _changedBy[sid];
+    return ids != null && ids.length == 1 ? _deviceNames[ids.first] : null;
+  }
+
+  /// The same song added on two devices before they synced: kept once (the
+  /// entry with the smaller id; the other is removed), the same way on both.
+  /// Entries one device has twice on purpose are left alone.
+  static ListState _onceEach(ListState joined, ListState a, ListState b) {
+    Map<String, List<String>> newOn(ListState x, ListState y) {
+      final out = <String, List<String>>{};
+      for (final e in x.items.entries) {
+        if (e.value.visible && !y.items.containsKey(e.key)) out.putIfAbsent(e.value.key, () => []).add(e.key);
+      }
+      return out;
+    }
+
+    final onA = newOn(a, b), onB = newOn(b, a);
+    if (onA.isEmpty || onB.isEmpty) return joined;
+    final items = Map.of(joined.items);
+    var changed = false;
+    for (final MapEntry(key: k, value: ids) in onA.entries) {
+      final other = onB[k];
+      if (other == null) continue;
+      final xs = [...ids]..sort(), ys = [...other]..sort();
+      for (var i = 0; i < min(xs.length, ys.length); i++) {
+        final loser = xs[i].compareTo(ys[i]) > 0 ? xs[i] : ys[i];
+        final at = max(items[xs[i]]!.addedAt, items[ys[i]]!.addedAt);
+        items[loser] = items[loser]!.copyWith(removedAt: at);
+        changed = true;
+      }
+    }
+    return changed ? ListState(name: joined.name, deleted: joined.deleted, items: items) : joined;
+  }
 
   /// Told when another device's theme was taken here (the app repaints).
   void Function()? onThemeChanged;
@@ -743,7 +823,7 @@ class SyncEngine implements SyncHooks {
   Future<List<_Transfer>> _planTransfers(
       String me, Map<String, ListState> all, Map<String, _Remote> remote, List<DriveFile> files, _Resolver r, Set<String> removed) async {
     final now = _clock();
-    final others = [for (final d in remote.values) if (now - d.updated < _active.inMilliseconds) d];
+    final others = _activeOf(remote, now);
     final indexes = await _indexes(files);
     final onDrive = {for (final f in files) f.name};
     // Only songs whose file really is on Drive.
@@ -752,34 +832,43 @@ class SyncEngine implements SyncHooks {
         for (final m in e.value.entries)
           if (onDrive.contains('${m.value['file']}')) m.key: (e.key, m.value),
     };
-    final out = <_Transfer>[];
-    final seen = <String>{};
-    for (final s in all.values.where((s) => !s.isDeleted)) {
+    final out = <String, _Transfer>{};
+    for (final MapEntry(key: sid, value: s) in all.entries) {
+      if (s.isDeleted) continue;
       for (final e in s.shown) {
         final key = e.value.key;
-        if (!seen.add(key)) continue;
+        if (out.containsKey(key)) continue;
         final t = r.real(e.value.song);
         if (t != null) {
-          if (others.any((d) => !d.have.contains(key)) && !onRelay.containsKey(key)) out.add(_Transfer.up(key, t));
+          if (!onRelay.containsKey(key) && others.any((d) => d.lacks(sid, key))) out[key] = _Transfer.up(key, t);
         } else if (removed.contains(key)) {
           continue;
         } else if (onRelay[key] case (final dev, final meta) when dev != me) {
-          out.add(_Transfer.down(key, meta));
+          out[key] = _Transfer.down(key, meta);
         }
       }
     }
-    return out;
+    return [...out.values];
   }
 
   /// This device's relay index made to match Drive: songs every other device
   /// has now are removed, entries whose file is gone are dropped (so the song
   /// goes up again). Song files no index lists (left by an interrupted
   /// upload) are removed after a day.
-  Future<void> _cleanRelay(String me, Map<String, _Remote> remote) => _locked(() async {
+  Future<void> _cleanRelay(String me, Map<String, _Remote> remote, Map<String, ListState> all) => _locked(() async {
         // Listed now (inside the lock): an upload that just finished is in it.
         final files = await drive.list();
         final now = _clock();
-        final others = [for (final d in remote.values) if (now - d.updated < _active.inMilliseconds) d];
+        final others = _activeOf(remote, now);
+        final listsOf = <String, Set<String>>{};
+        for (final e in all.entries) {
+          if (e.value.isDeleted) continue;
+          for (final i in e.value.shown) {
+            listsOf.putIfAbsent(i.value.key, () => {}).add(e.key);
+          }
+        }
+        // Kept while a device in use still lacks it.
+        bool needed(String key) => others.any((d) => d.lacks('', key) || (listsOf[key] ?? const {}).any((sid) => d.lacks(sid, key)));
         final indexName = 'v2-relay-$me.json';
         final indexFile = files.where((f) => f.name == indexName).firstOrNull;
         final names = {for (final f in files) f.name: f.id};
@@ -790,7 +879,7 @@ class SyncEngine implements SyncHooks {
         for (final key in [...index.keys]) {
           final m = index[key]!;
           final gone = !names.containsKey('${m['file']}');
-          if (!gone && (others.isEmpty || !others.every((d) => d.have.contains(key)))) continue;
+          if (!gone && needed(key)) continue;
           index.remove(key);
           for (final n in [m['file'], m['art']]) {
             final id = names['$n'];
@@ -965,10 +1054,30 @@ class SyncEngine implements SyncHooks {
 }
 
 class _Remote {
-  _Remote(this.updated, this.have, this.lists);
+  _Remote(this.name, this.updated, this.owns, this.skip, this.lists, {this.since = 0});
+  final String? name;
   final int updated;
-  final Set<String> have;
+
+  /// When that install first synced.
+  final int since;
+
+  /// Songs it has, and songs it doesn't want (cancelled / removed there).
+  final Set<String> owns;
+  final Set<String> skip;
   final Map<String, ListState> lists;
+
+  late final Set<String> _listed = {
+    for (final l in lists.values)
+      if (!l.isDeleted)
+        for (final e in l.shown) e.value.key,
+  };
+
+  bool syncs(String sid) => lists[sid] != null && !lists[sid]!.isDeleted;
+
+  /// It lacks [key] of this device's list [sid]: it syncs that list (or
+  /// already lists the song) and has neither the song nor a reason to skip it.
+  /// A list it doesn't sync (stopped, likes off) is no reason to send songs.
+  bool lacks(String sid, String key) => !owns.contains(key) && !skip.contains(key) && (syncs(sid) || _listed.contains(key));
 }
 
 class _Transfer {

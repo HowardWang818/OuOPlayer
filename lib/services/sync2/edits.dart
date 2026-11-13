@@ -158,14 +158,30 @@ class EditSync {
     // One edit per song here: several roots can point at the same song (old
     // records named it differently), and applying each in turn made it flip
     // between names on every sync. Only the newest of them counts.
+    // Every copy of the song here (the same song can be here twice), by its
+    // first name, its name now or its row; failing those, a copy that already
+    // carries the new name (another device's file, its tags written).
+    final byKey = <String, List<Track>>{};
+    for (final t in library) {
+      byKey.putIfAbsent(songKey(t.title, t.artist), () => []).add(t);
+    }
+    final byIdAll = {for (final t in library) t.id: t};
+    for (final r in rows) {
+      final t = byIdAll[r['track_id']];
+      if (t != null && !(byKey['${r['root']}'] ?? const []).contains(t)) byKey.putIfAbsent('${r['root']}', () => []).add(t);
+    }
     final perTrack = <String, (String, Map)>{};
     for (final MapEntry(key: root, value: m) in latest.entries) {
-      final t = roots[root];
-      if (t == null || t.isRemote) continue;
       final ms = m['ms'] as int?;
-      if (mine[root] == null && mineByTrack[t.id] == null && ms != null && t.durationMs != null && (t.durationMs! - ms).abs() > 3000) continue;
-      final cur = perTrack[t.id];
-      if (cur == null || _newer(m, cur.$2)) perTrack[t.id] = (root, m);
+      var targets = byKey[root] ?? const <Track>[];
+      if (targets.isEmpty && roots[root] != null) targets = [roots[root]!];
+      if (targets.isEmpty) targets = byKey[songKey('${m['t']}', '${m['a']}')] ?? const [];
+      for (final t in targets) {
+        if (t.isRemote) continue;
+        if (mineByTrack[t.id]?['root'] != root && ms != null && t.durationMs != null && (t.durationMs! - ms).abs() > 3000) continue;
+        final cur = perTrack[t.id];
+        if (cur == null || _newer(m, cur.$2)) perTrack[t.id] = (root, m);
+      }
     }
     final byId = {for (final t in library) t.id: t};
     for (final MapEntry(key: id, value: (root, m)) in perTrack.entries) {
@@ -174,9 +190,21 @@ class EditSync {
       // Compared with this song's own latest edit, whatever root it has.
       final here = mineByTrack[id] ?? mine[root];
       if (here != null && !_newer(m, {'at': here['at'], 'd': here['device']})) continue;
-      // Nothing would change: no write, no log line.
+      // Nothing would change: no write, no log line (only the song's first
+      // name noted, so its playlist entries and plays find it).
       final sameNames = '${m['t'] ?? t.title}' == t.title && '${m['a'] ?? t.artist}' == t.artist && '${m['al'] ?? t.album}' == t.album;
-      if (sameNames && (m['c'] == null || m['c'] == here?['cover'])) continue;
+      if (sameNames && (m['c'] == null || m['c'] == here?['cover'])) {
+        if (mineByTrack[id] == null) {
+          await db.db.insert(
+              'track_edits',
+              {
+                'track_id': t.id, 'root': root, 'root_ms': ms ?? t.durationMs, 'title': t.title, 'artist': t.artist, 'album': t.album,
+                'cover': m['c'], 'at': m['at'], 'device': m['d'],
+              },
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+        continue;
+      }
       var art = t.art;
       Uint8List? cover;
       final c = m['c'] as String?;

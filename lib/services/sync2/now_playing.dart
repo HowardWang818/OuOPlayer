@@ -1,6 +1,8 @@
 import 'dart:convert';
 
+import '../../data/models/track.dart';
 import '../sync/drive_client.dart';
+import 'merge.dart';
 
 /// 接續播放 (v1.12.0): what a device is playing — the queue (song names),
 /// which song, where in it, shuffle / repeat — in `v2-now-<device>.json`,
@@ -92,6 +94,22 @@ enum ResumeStep { none, ask, load }
   final seen = '${latest.device}:${latest.at}';
   if (asked == seen) return (step: ResumeStep.none, why: 'already asked: $seen');
   return mode == ResumeMode.auto ? (step: ResumeStep.load, why: 'loaded: $seen') : (step: ResumeStep.ask, why: 'asked: $seen');
+}
+
+/// This device's songs for the other device's queue (null: not here), found
+/// by their names or, for songs renamed here, by their first names
+/// ([edits]: the track_edits rows).
+List<Track?> queueHere(NowPlaying latest, List<Track> library, List<Map<String, Object?>> edits) {
+  final byKey = <String, Track>{};
+  for (final t in library) {
+    byKey.putIfAbsent(songKey(t.title, t.artist), () => t);
+  }
+  final byId = {for (final t in library) t.id: t};
+  for (final r in edits) {
+    final t = byId[r['track_id']];
+    if (t != null) byKey.putIfAbsent('${r['root']}', () => t);
+  }
+  return [for (final s in latest.songs) byKey[songKey('${s['t']}', '${s['a']}')]];
 }
 
 /// Reads and writes the `v2-now-*` files.
