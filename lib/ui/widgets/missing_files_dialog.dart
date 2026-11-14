@@ -45,10 +45,7 @@ Future<void> checkMissingFiles(BuildContext context, WidgetRef ref, {bool manual
     _keptThisSession.addAll(missing.map((t) => t.id));
     return;
   }
-  final handler = ref.read(audioHandlerProvider);
-  for (final t in missing) {
-    await handler.removeTrack(t.id);
-  }
+  await ref.read(audioHandlerProvider).removeTracks({for (final t in missing) t.id});
   await db.deleteTracks(missing.map((t) => t.id));
   await ref.read(scannerProvider).cleanArtCache();
   if (context.mounted) toast(context, '已從音樂庫移除 ${missing.length} 首');

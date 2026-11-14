@@ -74,7 +74,7 @@ class AppDatabase {
     return AppDatabase._(db);
   }
 
-  static const schemaVersion = 13;
+  static const schemaVersion = 14;
 
   /// Schema changes since version 1; existing data is kept.
   static Future<void> migrate(Database db, int from, int to) async {
@@ -165,6 +165,57 @@ class AppDatabase {
       // v1.14.6: restored backups sent the same plays again under new ids.
       await dropRepeatedPlays(db);
     }
+    if (from < 14 && to >= 14) {
+      // v1.20.9: songs passed on the way while deleting several were logged.
+      await dropSkippedThrough(db);
+    }
+  }
+
+  /// Plays of 0 s that came in a run, at least three each within a second
+  /// of the one before: songs the player passed on the way while several
+  /// songs of the queue were deleted (before 1.20.9), not listened to.
+  /// [rows]: (id, began, heard ms). Returns the ids of such plays.
+  static Set<T> skippedThrough<T>(Iterable<(T, int, int)> rows) {
+    final silent = [for (final r in rows) if (r.$3 == 0) r]..sort((a, b) => a.$2.compareTo(b.$2));
+    final out = <T>{};
+    var run = <(T, int, int)>[];
+    void close() {
+      if (run.length >= 3) out.addAll(run.map((r) => r.$1));
+      run = [];
+    }
+    for (final r in silent) {
+      if (run.isNotEmpty && r.$2 - run.last.$2 > 1000) close();
+      run.add(r);
+    }
+    close();
+    return out;
+  }
+
+  /// Removes the plays [skippedThrough] finds, with the play counts and
+  /// recently played entries they added.
+  static Future<int> dropSkippedThrough(DatabaseExecutor db) async {
+    final rows = await db.query('listening_log', columns: ['id', 'track_id', 'played_at', 'listened_ms'], where: 'listened_ms = 0');
+    final ids = skippedThrough([for (final r in rows) (r['id'] as int, r['played_at'] as int, 0)]);
+    if (ids.isEmpty) return 0;
+    final less = <String, int>{};
+    for (final r in rows.where((r) => ids.contains(r['id']))) {
+      final t = r['track_id'] as String;
+      less.update(t, (n) => n + 1, ifAbsent: () => 1);
+      // Recently played got its own time a moment later.
+      final at = r['played_at'] as int;
+      await db.rawDelete('DELETE FROM history WHERE rowid IN (SELECT rowid FROM history WHERE track_id = ? AND played_at BETWEEN ? AND ? LIMIT 1)',
+          [t, at - 1000, at + 1000]);
+    }
+    final list = ids.toList();
+    for (var i = 0; i < list.length; i += 500) {
+      final part = list.sublist(i, min(i + 500, list.length));
+      await db.delete('listening_log', where: 'id IN (${List.filled(part.length, '?').join(',')})', whereArgs: part);
+    }
+    for (final e in less.entries) {
+      await db.rawUpdate('UPDATE plays SET count = MAX(count - ?, 0) WHERE track_id = ?', [e.value, e.key]);
+    }
+    await db.delete('plays', where: 'count <= 0');
+    return ids.length;
   }
 
   /// One play, one entry: entries that began at the same moment are the same
@@ -543,6 +594,23 @@ class AppDatabase {
         'source': t.source,
       });
 
+  /// 接續播放 (1.20.9): carries on the play that began at [began] on
+  /// another device. Its entry here (sent over by sync, or this device's own
+  /// when coming back) is used and becomes this device's, so the time heard
+  /// here is sent on; else one is made with that start. Returns the entry,
+  /// the time heard so far, and whether it was new here.
+  Future<(int, int, bool)> continueListening(Track t, int began, int heard) async {
+    final rows = await db.query('listening_log', columns: ['id', 'listened_ms'], where: 'played_at = ?', whereArgs: [began], limit: 1);
+    if (rows.isNotEmpty) {
+      final id = rows.first['id'] as int;
+      final ms = max(rows.first['listened_ms'] as int, heard);
+      await db.update('listening_log', {'listened_ms': ms, 'origin': null, 'remote_id': null}, where: 'id = ?', whereArgs: [id]);
+      return (id, ms, false);
+    }
+    final id = await db.insert('listening_log', {'track_id': t.id, 'played_at': began, 'listened_ms': heard, 'source': t.source});
+    return (id, heard, true);
+  }
+
   Future<void> updateListening(int id, Duration listened) =>
       db.update('listening_log', {'listened_ms': listened.inMilliseconds}, where: 'id = ?', whereArgs: [id]);
 
@@ -807,6 +875,19 @@ class AppDatabase {
     _notify();
     return true;
   });
+
+  /// Ids of the playlists [trackId] is in.
+  Future<Set<int>> playlistsWith(String trackId) async {
+    final rows = await db.query('playlist_tracks', columns: ['playlist_id'], where: 'track_id = ?', whereArgs: [trackId]);
+    return {for (final r in rows) r['playlist_id'] as int};
+  }
+
+  /// Takes [trackId] out of playlist [id] (every time it is there).
+  Future<void> removeTrackFromPlaylist(int id, String trackId) async {
+    final rows = await playlistRows(id);
+    final at = [for (var i = 0; i < rows.length; i++) if (rows[i].$1 == trackId) i];
+    if (at.isNotEmpty) await removeFromPlaylistAt(id, at);
+  }
 
   /// Removes several rows (by position) from a playlist at once.
   Future<void> removeFromPlaylistAt(int id, List<int> indexes) async {

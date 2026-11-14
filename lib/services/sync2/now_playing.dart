@@ -17,6 +17,8 @@ class NowPlaying {
     required this.positionMs,
     this.original,
     this.loop = 'off',
+    this.began,
+    this.heardMs = 0,
   });
 
   final String device;
@@ -34,6 +36,11 @@ class NowPlaying {
   final List<int>? original;
   final String loop;
 
+  /// When the play of the current song began there, and how long it was
+  /// heard (1.20.9): picked up here, it goes on as the same play.
+  final int? began;
+  final int heardMs;
+
   Map<String, Object?> get current => songs[index.clamp(0, songs.length - 1)];
 
   Map<String, Object?> toJson() => {
@@ -45,6 +52,8 @@ class NowPlaying {
         'position': positionMs,
         if (original != null) 'original': original,
         'loop': loop,
+        if (began != null) 'began': began,
+        if (began != null) 'heard': heardMs,
       };
 
   static NowPlaying? fromJson(Map j) {
@@ -59,6 +68,8 @@ class NowPlaying {
       positionMs: (j['position'] as num?)?.toInt() ?? 0,
       original: (j['original'] as List?)?.cast<num>().map((n) => n.toInt()).toList(),
       loop: '${j['loop'] ?? 'off'}',
+      began: (j['began'] as num?)?.toInt(),
+      heardMs: (j['heard'] as num?)?.toInt() ?? 0,
     );
   }
 }

@@ -618,6 +618,17 @@ void tree(bool overlap) {
       await expectStable([phone, pc]);
     });
 
+    test('5.5 舊版刪除時一路跳過的歌（同一秒很多筆 0 秒）：不算播放', () async {
+      final a = await phone.track('a');
+      for (var i = 0; i < 5; i++) {
+        await phone.db.startListening(a, DateTime.fromMillisecondsSinceEpoch(Clock.now + i * 10));
+      }
+      await phone.play('a', seconds: 90);
+      await settle([phone, pc]);
+      expect(await pc.heard('a'), [90]);
+      await expectStable([phone, pc]);
+    });
+
     test('5.4 關閉「收聽紀錄」：不送', () async {
       await phone.set('sync_plays', 'false');
       await phone.play('a');
@@ -692,6 +703,46 @@ void tree(bool overlap) {
       final latest = (await pc.engine.nowPlaying.others(pc.id)).first;
       final queue = queueHere(latest, await pc.db.tracks(), await pc.db.db.query('track_edits'));
       expect([for (final t in queue) t?.title], ['A!', null, 'b']);
+    });
+
+    test('6.9 手機聽 → 電腦接續 → 回手機接續：同一次播放，兩台都一筆、時間加總', () async {
+      final began = await phone.play('a', seconds: 30);
+      await settle([phone, pc]);
+      await phone.nowPlaying(['a', 'b'], began: began, heardMs: 30000);
+      final latest = (await pc.engine.nowPlaying.others(pc.id)).first;
+      expect((latest.began, latest.heardMs), (began, 30000));
+      await pc.carryOn('a', latest.began!, latest.heardMs, seconds: 40);
+      await settle([phone, pc]);
+      await pc.nowPlaying(['a', 'b'], began: began, heardMs: 70000);
+      final back = (await phone.engine.nowPlaying.others(phone.id)).first;
+      await phone.carryOn('a', back.began!, back.heardMs, seconds: 20);
+      await settle([phone, pc]);
+      expect(await phone.heard('a'), [90]);
+      expect(await pc.heard('a'), [90]);
+      expect((await pc.db.playCounts())[(await pc.track('a')).id], 1);
+      await expectStable([phone, pc]);
+    });
+
+    test('6.10 電腦接續時還沒收到手機那筆：之後仍合成一筆', () async {
+      final began = await phone.play('a', seconds: 30);
+      await phone.nowPlaying(['a'], began: began, heardMs: 30000);
+      await pc.carryOn('a', began, 30000, seconds: 40);
+      await settle([phone, pc]);
+      expect(await phone.heard('a'), [70]);
+      expect(await pc.heard('a'), [70]);
+      await expectStable([phone, pc]);
+    });
+
+    test('6.11 接續後自己換一首：照常是新的一次', () async {
+      final began = await phone.play('a', seconds: 30);
+      await settle([phone, pc]);
+      await pc.carryOn('a', began, 30000, seconds: 10);
+      await pc.play('b', seconds: 60);
+      await settle([phone, pc]);
+      expect(await phone.heard('a'), [40]);
+      expect(await phone.heard('b'), [60]);
+      expect(await pc.plays(), 2);
+      await expectStable([phone, pc]);
     });
 
     test('6.8 自己的紀錄不算另一台的', () async {

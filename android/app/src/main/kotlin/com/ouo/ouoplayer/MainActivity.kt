@@ -85,6 +85,26 @@ class MainActivity : AudioServiceActivity() {
             }
             result.success(null)
         }
+        // 打開資料夾 (1.20.9): the system Files app at a folder of the phone's
+        // storage. Not every phone's Files app takes it: false then.
+        MethodChannel(messenger, "ouo/folder").setMethodCallHandler { call, result ->
+            if (call.method != "open") return@setMethodCallHandler result.notImplemented()
+            val path = call.argument<String>("path") ?: return@setMethodCallHandler result.success(false)
+            val root = android.os.Environment.getExternalStorageDirectory().absolutePath
+            if (!path.startsWith(root)) return@setMethodCallHandler result.success(false)
+            val rel = path.removePrefix(root).trim('/')
+            val uri = android.provider.DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:$rel")
+            val open = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, android.provider.DocumentsContract.Document.MIME_TYPE_DIR)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            try {
+                startActivity(open)
+                result.success(true)
+            } catch (e: Exception) {
+                result.success(false)
+            }
+        }
         // Links shared from other apps (YouTube, browser…) go to the downloader.
         pendingShare = sharedText(intent)
         share = MethodChannel(messenger, "ouo/share").apply {

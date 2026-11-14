@@ -35,6 +35,9 @@ class DownloadTask {
   /// ("下載到這個播放清單") or created from the source playlist's title.
   int? playlistId;
 
+  /// More playlists the song goes into (1.20.9: 「更改」 picked several).
+  final List<int> alsoInto = [];
+
   /// Liked once downloaded (♥ pressed while a preview played).
   bool like = false;
 
@@ -384,13 +387,21 @@ class DownloadService {
   /// Adds tracks to the task's playlist, creating it from the source
   /// playlist's title the first time when downloading a whole playlist.
   Future<void> _addToPlaylist(DownloadTask t, List<Track> tracks) async {
-    if (t.playlistId == null) {
-      final name = t.playlistName;
-      if (!t.playlist || name == null) return;
+    final name = t.playlistName;
+    if (t.playlistId == null && t.playlist && name != null) {
       t.playlistId = await _db.createPlaylist(name);
       t.addLog('已建立播放清單「$name」');
     }
-    await _db.addToPlaylist(t.playlistId!, tracks);
+    if (t.playlistId != null) await _db.addToPlaylist(t.playlistId!, tracks);
+    for (final id in t.alsoInto) {
+      await _db.addToPlaylist(id, tracks);
+    }
+  }
+
+  /// The song a finished single download became (null: none, or a playlist).
+  Future<Track?> songOf(DownloadTask t) async {
+    if (t.status != DownloadStatus.done || t.playlist || t.isGroup || t.files.isEmpty) return null;
+    return _db.track(t.files.first);
   }
 
   /// The source playlist's title arrived. If files finished before it (the

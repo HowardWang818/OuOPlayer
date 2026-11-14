@@ -380,6 +380,21 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   DateTime? _playingSince;
   Timer? _logTimer;
 
+  /// When the play being logged began (its entry's played_at).
+  int? _logBegan;
+
+  /// 接續播放 (1.20.9): the other device's play of the song just picked up,
+  /// carried on in the same entry instead of a new one when it plays.
+  ({Track track, int began, int heard})? _continueFrom;
+
+  /// The play being logged: when it began and how long it was heard so far
+  /// (sent with 接續播放, so the other device carries on in the same play).
+  ({int began, int heard})? get currentPlay {
+    final began = _logBegan;
+    if (_logId == null || began == null) return null;
+    return (began: began, heard: _heardNow.inMilliseconds);
+  }
+
   Duration get _heardNow =>
       _heard + (_playingSince == null ? Duration.zero : DateTime.now().difference(_playingSince!));
 
@@ -413,6 +428,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     _flushLog();
     _logTimer?.cancel();
     _logId = null;
+    _logBegan = null;
     _heard = Duration.zero;
     _playingSince = null;
   }
@@ -421,12 +437,27 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     _flushLog();
     _logTimer?.cancel();
     _logId = null;
+    _logBegan = null;
     _heard = Duration.zero;
     _playingSince = player.playing ? DateTime.now() : null;
+    final cont = _continueFrom;
+    _continueFrom = null;
     if (t.source == TrackSource.preview) return;
     _logStarting = true;
     try {
-      _logId = await _db.startListening(t, DateTime.now());
+      if (cont != null && identical(cont.track, t)) {
+        // Picked up from the other device: the same play goes on.
+        final (id, heard, isNew) = await _db.continueListening(t, cont.began, cont.heard);
+        _logId = id;
+        _logBegan = cont.began;
+        _heard = Duration(milliseconds: heard);
+        // First time this device has the play at all: it counts here once.
+        if (isNew && recordPlays) unawaited(_db.addHistory(t));
+      } else {
+        final now = DateTime.now();
+        _logBegan = now.millisecondsSinceEpoch;
+        _logId = await _db.startListening(t, now);
+      }
     } finally {
       _logStarting = false;
     }
@@ -697,19 +728,46 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     _scheduleSave();
   }
 
-  Future<void> removeTrack(String trackId) async {
-    if (currentTrack?.id == trackId) {
-      final others = _tracks.any((t) => t.id != trackId);
-      if (others && player.hasNext) {
-        await player.seekToNext();
-      } else {
-        await player.stop();
+  Future<void> removeTrack(String trackId) => removeTracks({trackId});
+
+  /// Drops every queue entry of [ids] at once (1.20.9). Before, each song was
+  /// dropped on its own: the one playing moved on to the next, which was
+  /// often being deleted too, and every song passed on the way was logged as
+  /// a play (41 plays of 0 s in one second when several songs went).
+  /// Now only the first song that stays is moved to, once.
+  Future<void> removeTracks(Set<String> ids) async {
+    if (ids.isEmpty || !_tracks.any((t) => ids.contains(t.id))) return;
+    final cur = player.currentIndex;
+    final curGoes = cur != null && cur < _tracks.length && ids.contains(_tracks[cur].id);
+    _loadingQueue = true;
+    try {
+      if (curGoes) {
+        int? next;
+        for (var i = cur + 1; i < _tracks.length; i++) {
+          if (!ids.contains(_tracks[i].id)) {
+            next = i;
+            break;
+          }
+        }
+        if (next != null) {
+          await player.seek(Duration.zero, index: next);
+        } else {
+          await player.stop();
+        }
       }
+      for (var i = _tracks.length - 1; i >= 0; i--) {
+        if (ids.contains(_tracks[i].id)) await removeAt(i);
+      }
+    } finally {
+      _loadingQueue = false;
     }
-    for (var i = _tracks.length - 1; i >= 0; i--) {
-      if (_tracks[i].id == trackId) await removeAt(i);
+    if (_tracks.isEmpty) {
+      _stopLog();
+      _currentListenedTrack = null;
+      mediaItem.add(null);
+    } else {
+      _onTrackIndex(player.currentIndex);
     }
-    if (_tracks.isEmpty) mediaItem.add(null);
   }
 
   Future<void> moveQueueItem(int from, int to) async {
@@ -805,7 +863,10 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   /// 接續播放: the other device's queue, at its song and second, not playing
   /// yet. Songs not on this device are left out.
-  Future<bool> loadResume(List<Track?> list, int index, Duration position, {List<int>? original, LoopMode loop = LoopMode.off}) async {
+  /// [began], [heardMs]: the other device's play of the song at [index]
+  /// (1.20.9), carried on here in the same entry.
+  Future<bool> loadResume(List<Track?> list, int index, Duration position,
+      {List<int>? original, LoopMode loop = LoopMode.off, int? began, int heardMs = 0}) async {
     final start = index >= 0 && index < list.length ? list[index] : null;
     final keep = [for (final t in list) if (t != null && t.fileExists) t];
     if (keep.isEmpty) return false;
@@ -825,6 +886,9 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       await player.setAudioSources(_tracks.map(_source).toList(), initialIndex: at, initialPosition: pos).timeout(const Duration(seconds: 20));
     });
     await _setLoop(loop);
+    if (began != null && start != null && at < keep.length && identical(keep[at], start)) {
+      _continueFrom = (track: start, began: began, heard: heardMs);
+    }
     _scheduleSave();
     return true;
   }

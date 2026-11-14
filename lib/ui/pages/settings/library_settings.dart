@@ -228,10 +228,7 @@ Future<void> removeMusicFolder(BuildContext context, WidgetRef ref, String dir) 
   if (!ok) return;
   ref.read(settingsProvider.notifier).setMusicDirs([...s.musicDirs]..remove(dir));
   if (songs.isEmpty) return;
-  final handler = ref.read(audioHandlerProvider);
-  for (final t in songs) {
-    await handler.removeTrack(t.id);
-  }
+  await ref.read(audioHandlerProvider).removeTracks({for (final t in songs) t.id});
   await db.deleteTracks(songs.map((t) => t.id));
   if (context.mounted) toast(context, '已移除資料夾和 ${songs.length} 首歌');
 }
@@ -326,10 +323,7 @@ class _OrphanSongsTile extends ConsumerWidget {
                     '\n\n會從以下地方移除：\n${where.map((l) => '• $l').join('\n')}',
                 action: '移除');
             if (!ok) return;
-            final handler = ref.read(audioHandlerProvider);
-            for (final t in songs) {
-              await handler.removeTrack(t.id);
-            }
+            await ref.read(audioHandlerProvider).removeTracks({for (final t in songs) t.id});
             await ref.read(dbProvider).deleteTracks(songs.map((t) => t.id));
             if (context.mounted) toast(context, '已移除 ${songs.length} 首');
           },

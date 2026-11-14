@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +12,9 @@ import '../../theme/app_theme.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/links.dart';
 import 'download_detail_page.dart';
+import '../widgets/edit_track_dialog.dart';
+import '../widgets/manage_media_tile.dart' show offerAllFilesAccess;
+import '../widgets/track_tile.dart' show deleteTrackFiles;
 import 'help_page.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/cover_progress.dart';
@@ -235,6 +240,72 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
   }
 }
 
+/// ⋮ of a finished download (1.20.9).
+class _DoneMenu extends ConsumerWidget {
+  const _DoneMenu({required this.task});
+  final DownloadTask task;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final single = !task.playlist && !task.isGroup;
+    return PopupMenuButton<String>(
+      tooltip: '更多',
+      icon: const Icon(Icons.more_vert),
+      onSelected: (id) => _run(context, ref, id),
+      itemBuilder: (_) => [
+        if (single) ...const [
+          PopupMenuItem(value: 'play', child: ListTile(leading: Icon(Icons.play_arrow), title: Text('播放'))),
+          PopupMenuItem(value: 'next', child: ListTile(leading: Icon(Icons.queue_play_next), title: Text('下一首播放'))),
+          PopupMenuItem(value: 'playlist', child: ListTile(leading: Icon(Icons.playlist_add), title: Text('加入播放清單'))),
+          PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit_outlined), title: Text('編輯資訊'))),
+        ],
+        if (task.files.isNotEmpty)
+          const PopupMenuItem(value: 'folder', child: ListTile(leading: Icon(Icons.folder_open), title: Text('打開資料夾'))),
+        if (single)
+          const PopupMenuItem(value: 'delete', child: ListTile(leading: Icon(Icons.delete_forever_outlined), title: Text('刪除檔案'))),
+        const PopupMenuItem(value: 'remove', child: ListTile(leading: Icon(Icons.playlist_remove), title: Text('從下載清單移除'))),
+      ],
+    );
+  }
+
+  Future<void> _run(BuildContext context, WidgetRef ref, String id) async {
+    final svc = ref.read(downloadServiceProvider);
+    if (id == 'remove') {
+      if (await confirmDelete(context, title: '從下載清單移除？', message: '只會移除這筆紀錄，已下載的檔案不會被刪除。')) svc.remove(task);
+      return;
+    }
+    if (id == 'folder') {
+      await openDownloadFolder(context, task.files.first);
+      return;
+    }
+    if (id == 'playlist') {
+      await changeDownloadPlaylists(context, task);
+      return;
+    }
+    final song = await svc.songOf(task);
+    if (!context.mounted) return;
+    if (song == null) {
+      toast(context, '找不到這首歌，可能已經刪除或移動');
+      return;
+    }
+    // Changing files: once, offer 所有檔案存取權 so Android stops asking (as in the library).
+    if (Platform.isAndroid && (id == 'edit' || id == 'delete')) await offerAllFilesAccess(context, ref);
+    if (!context.mounted) return;
+    final handler = ref.read(audioHandlerProvider);
+    switch (id) {
+      case 'play':
+        await handler.playTracks([song]);
+      case 'next':
+        await handler.enqueue([song]);
+        if (context.mounted) toast(context, '已加入佇列');
+      case 'edit':
+        await showEditTrack(context, ref, song);
+      case 'delete':
+        await deleteTrackFiles(context, ref, [song]);
+    }
+  }
+}
+
 class _TaskTile extends ConsumerWidget {
   const _TaskTile({required this.task});
   final DownloadTask task;
@@ -269,7 +340,7 @@ class _TaskTile extends ConsumerWidget {
           IconButton(icon: const Icon(Icons.close), tooltip: '取消', onPressed: () => svc.cancel(task)),
         DownloadStatus.failed || DownloadStatus.cancelled =>
           IconButton(icon: const Icon(Icons.refresh), tooltip: '重試', onPressed: () => svc.retry(task)),
-        DownloadStatus.done => const Icon(Icons.chevron_right),
+        DownloadStatus.done => _DoneMenu(task: task),
       },
     );
   }

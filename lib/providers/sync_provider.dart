@@ -259,6 +259,8 @@ class SyncNotifier extends Notifier<SyncState> {
         positionMs: h.player.position.inMilliseconds,
         original: h.originalOrder,
         loop: h.player.loopMode.name,
+        began: h.currentPlay?.began,
+        heardMs: h.currentPlay?.heard ?? 0,
       ));
       nowPending = false;
       await ref.read(dbProvider).setSetting(nowPushedKey, '${DateTime.now().millisecondsSinceEpoch}');
@@ -364,7 +366,8 @@ class SyncNotifier extends Notifier<SyncState> {
     final h = ref.read(audioHandlerProvider);
     final list = queueHere(latest, await db.tracks(), await db.db.query('track_edits'));
     final loop = LoopMode.values.where((m) => m.name == latest.loop).firstOrNull ?? LoopMode.off;
-    final done = await h.loadResume(list, latest.index, Duration(milliseconds: latest.positionMs), original: latest.original, loop: loop);
+    final done = await h.loadResume(list, latest.index, Duration(milliseconds: latest.positionMs),
+        original: latest.original, loop: loop, began: latest.began, heardMs: latest.heardMs);
     final ctx = rootNavigatorKey.currentContext;
     if (ctx != null && ctx.mounted) {
       final missing = list.where((t) => t == null).length;

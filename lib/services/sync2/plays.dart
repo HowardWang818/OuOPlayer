@@ -43,7 +43,13 @@ class PlaySync {
     }
     var added = 0;
     final batch = db.db.batch();
+    // Songs passed on the way while deleting (a device before 1.20.9 still sends them).
+    final passed = AppDatabase.skippedThrough([
+      for (final p in plays.whereType<Map>())
+        if (p['at'] is num) (p['id'], (p['at'] as num).toInt(), (p['l'] as num?)?.toInt() ?? 0),
+    ]);
     for (final p in plays.whereType<Map>()) {
+      if (passed.contains(p['id'])) continue;
       final rid = '$device:${p['id']}';
       final listened = (p['l'] as num?)?.toInt() ?? 0;
       if (known.containsKey(rid)) {
@@ -51,7 +57,12 @@ class PlaySync {
         continue;
       }
       final at = (p['at'] as num).toInt();
-      if (!knownAt.add(at)) continue;
+      if (!knownAt.add(at)) {
+        // The same play (1.20.9: carried on with 接續播放 on the other
+        // device): the longer time heard, the same on both.
+        batch.rawUpdate('UPDATE listening_log SET listened_ms = ? WHERE played_at = ? AND listened_ms < ?', [listened, at, listened]);
+        continue;
+      }
       final key = songKey('${p['t']}', '${p['a']}');
       final ms = (p['ms'] as num?)?.toInt();
       final here = bySong[key]?.where((t) => ms == null || t.durationMs == null || (t.durationMs! - ms).abs() <= 3000).firstOrNull;

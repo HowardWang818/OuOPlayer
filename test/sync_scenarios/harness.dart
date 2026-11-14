@@ -237,10 +237,25 @@ class Dev {
     return art == null || !File(art).existsSync() ? null : File(art).readAsStringSync();
   }
 
-  /// A play of [title] here, [seconds] long.
-  Future<void> play(String title, {int seconds = 60}) async {
-    final id = await db.startListening(await track(title), DateTime.fromMillisecondsSinceEpoch(Clock.tick()));
+  /// A play of [title] here, [seconds] long. Returns when it began.
+  Future<int> play(String title, {int seconds = 60}) async {
+    final began = Clock.tick();
+    final id = await db.startListening(await track(title), DateTime.fromMillisecondsSinceEpoch(began));
     await db.updateListening(id, Duration(seconds: seconds));
+    return began;
+  }
+
+  /// 接續播放 (1.20.9): carries on the play that began at [began] (heard
+  /// [heardMs] so far there), [seconds] more here — as the player does.
+  Future<void> carryOn(String title, int began, int heardMs, {int seconds = 30}) async {
+    final (id, heard, _) = await db.continueListening(await track(title), began, heardMs);
+    await db.updateListening(id, Duration(milliseconds: heard + seconds * 1000));
+  }
+
+  /// How long each play of [title] was heard, in seconds.
+  Future<List<int>> heard(String title) async {
+    final t = await track(title);
+    return [for (final r in await db.db.query('listening_log', where: 'track_id = ?', whereArgs: [t.id])) (r['listened_ms'] as int) ~/ 1000];
   }
 
   Future<int> plays() async => (await db.db.query('listening_log')).length;
@@ -270,7 +285,7 @@ class Dev {
   }
 
   /// What plays here, as 接續播放 sends it.
-  Future<void> nowPlaying(List<String> queue, {int index = 0, int positionMs = 30000, int? at}) async {
+  Future<void> nowPlaying(List<String> queue, {int index = 0, int positionMs = 30000, int? at, int? began, int heardMs = 0}) async {
     final lib = {for (final t in await db.tracks()) t.title: t};
     await engine.nowPlaying.put(NowPlaying(
       device: id,
@@ -279,6 +294,8 @@ class Dev {
       songs: [for (final q in queue) SyncEngine.ref(lib[q]!)],
       index: index,
       positionMs: positionMs,
+      began: began,
+      heardMs: heardMs,
     ));
   }
 

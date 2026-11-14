@@ -116,19 +116,23 @@ void _toast(BuildContext context, String msg) => toast(context, msg);
 /// every page and dialog, never at the bottom (CLAUDE.md). A context above
 /// the app's overlay (sync's [rootNavigatorKey] one) uses the root
 /// navigator's overlay.
-void toast(BuildContext context, String msg) {
-  if (!_TopToast.show(context, msg)) debugPrint('toast with nowhere to show: $msg');
+/// [action]: a button on the right (「更改」), shown a little longer; the
+/// message goes away when it is pressed.
+void toast(BuildContext context, String msg, {String? action, VoidCallback? onAction}) {
+  if (!_TopToast.show(context, msg, action: action, onAction: onAction)) debugPrint('toast with nowhere to show: $msg');
 }
 
 class _TopToast extends StatefulWidget {
-  const _TopToast({required this.message, required this.onDone});
+  const _TopToast({required this.message, required this.onDone, this.action, this.onAction});
   final String message;
   final VoidCallback onDone;
+  final String? action;
+  final VoidCallback? onAction;
 
   static OverlayEntry? _current;
 
   /// False when there is no overlay to show it on.
-  static bool show(BuildContext context, String msg) {
+  static bool show(BuildContext context, String msg, {String? action, VoidCallback? onAction}) {
     final overlay = Overlay.maybeOf(context, rootOverlay: true) ?? rootNavigatorKey.currentState?.overlay;
     if (overlay == null) return false;
     _current?.remove();
@@ -136,6 +140,8 @@ class _TopToast extends StatefulWidget {
     entry = OverlayEntry(
       builder: (_) => _TopToast(
         message: msg,
+        action: action,
+        onAction: onAction,
         onDone: () {
           if (_current == entry) _current = null;
           if (entry.mounted) entry.remove();
@@ -157,11 +163,16 @@ class _TopToastState extends State<_TopToast> with SingleTickerProviderStateMixi
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(seconds: 2), () async {
-      if (!mounted) return;
-      await _anim.reverse();
-      widget.onDone();
-    });
+    Future.delayed(Duration(seconds: widget.action == null ? 2 : 5), _close);
+  }
+
+  bool _closing = false;
+
+  Future<void> _close() async {
+    if (!mounted || _closing) return;
+    _closing = true;
+    await _anim.reverse();
+    widget.onDone();
   }
 
   @override
@@ -191,10 +202,30 @@ class _TopToastState extends State<_TopToast> with SingleTickerProviderStateMixi
                   elevation: 6,
                   borderRadius: BorderRadius.circular(Looks.of(context).radius(8)),
                   color: theme.snackBarTheme.backgroundColor ?? theme.colorScheme.inverseSurface,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    child: Text(widget.message, style: TextStyle(color: theme.colorScheme.onInverseSurface, fontSize: 14)),
-                  ),
+                  child: widget.action == null
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          child: Text(widget.message, style: TextStyle(color: theme.colorScheme.onInverseSurface, fontSize: 14)),
+                        )
+                      : Padding(
+                          padding: const EdgeInsets.only(left: 16, right: 6),
+                          child: Row(children: [
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                child: Text(widget.message, style: TextStyle(color: theme.colorScheme.onInverseSurface, fontSize: 14)),
+                              ),
+                            ),
+                            TextButton(
+                              style: TextButton.styleFrom(foregroundColor: theme.colorScheme.inversePrimary),
+                              onPressed: () {
+                                _close();
+                                widget.onAction?.call();
+                              },
+                              child: Text(widget.action!),
+                            ),
+                          ]),
+                        ),
                 ),
               ),
             ),

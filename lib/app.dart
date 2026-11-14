@@ -11,6 +11,7 @@ import 'data/models/track.dart';
 import 'providers/providers.dart';
 import 'services/app_icon.dart';
 import 'services/download_notifier.dart';
+import 'services/download_service.dart';
 import 'services/equalizer.dart';
 import 'services/launcher_shortcuts.dart';
 import 'services/missing_songs.dart';
@@ -47,6 +48,7 @@ class OuoApp extends ConsumerWidget {
     ref.watch(lyricsInMetadataProvider);
     ref.watch(playbackSettingsProvider);
     ref.watch(downloadNotificationProvider);
+    ref.watch(downloadDoneToastProvider);
     ref.watch(iconFollowThemeProvider);
     ref.watch(autoBackupProvider);
     ref.watch(syncTriggersProvider);
@@ -167,6 +169,41 @@ final downloadNotificationProvider = Provider<void>((ref) {
     if (call.method == 'action') await handle(call.arguments as String?);
   });
   channel.invokeMethod<String>('initialAction').then(handle).catchError((_) {});
+});
+
+/// Downloads finished (1.20.9): one message at the top once nothing is
+/// downloading any more. A single song says where it went, with 「更改」.
+final downloadDoneToastProvider = Provider<void>((ref) {
+  final svc = ref.read(downloadServiceProvider);
+  final seen = <String>{for (final t in svc.tasks) if (!t.active) t.id};
+  final finished = <DownloadTask>[];
+  final sub = svc.changes.listen((tasks) {
+    for (final t in tasks) {
+      if (t.status == DownloadStatus.done && seen.add(t.id)) finished.add(t);
+      if (t.status == DownloadStatus.failed || t.status == DownloadStatus.cancelled) seen.add(t.id);
+    }
+    if (finished.isEmpty || tasks.any((t) => t.active)) return;
+    final done = [...finished];
+    finished.clear();
+    final ctx = rootNavigatorKey.currentContext;
+    if (ctx == null || !ctx.mounted) return;
+    if (done.length > 1) {
+      toast(ctx, '已下載 ${done.length} 項');
+      return;
+    }
+    final t = done.single;
+    if (t.playlist || t.isGroup) {
+      toast(ctx, t.playlistName == null ? '已下載「${t.title}」' : '已下載「${t.playlistName}」');
+      return;
+    }
+    final where = t.like
+        ? '，已加入已按讚的歌曲'
+        : t.playlistName != null && t.playlistId != null
+            ? '，已加入「${t.playlistName}」${t.alsoInto.isEmpty ? '' : '等 ${t.alsoInto.length + 1} 個播放清單'}'
+            : '';
+    toast(ctx, '已下載「${t.title}」$where', action: '更改', onAction: () => changeDownloadPlaylistsLater(t));
+  });
+  ref.onDispose(sub.cancel);
 });
 
 /// App 圖示 → 跟隨主題: when OuOPlayer is left, the home screen icon is

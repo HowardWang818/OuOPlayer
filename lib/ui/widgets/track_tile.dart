@@ -251,10 +251,7 @@ Future<bool> deleteTrackFiles(BuildContext context, WidgetRef ref, List<Track> t
       if (context.mounted) toast(context, '已取消刪除');
       return false;
     }
-    final handler = ref.read(audioHandlerProvider);
-    for (final t in tracks) {
-      await handler.removeTrack(t.id);
-    }
+    await ref.read(audioHandlerProvider).removeTracks({for (final t in tracks) t.id});
     final db = ref.read(dbProvider);
     // Only the files go: their places in playlists and likes stay, greyed.
     await MissingSongs.keepPlaces(db, tracks);

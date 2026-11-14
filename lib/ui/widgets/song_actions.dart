@@ -115,9 +115,7 @@ Future<bool> runSongAction(BuildContext context, WidgetRef ref, String id, List<
           action: '隱藏')) {
         return false;
       }
-      for (final t in local) {
-        await handler.removeTrack(t.id);
-      }
+      await handler.removeTracks({for (final t in local) t.id});
       await db.deleteTracks(local.map((t) => t.id));
       if (context.mounted) toast(context, '已隱藏${local.length == 1 ? '' : ' ${local.length} 首'}');
     case 'delete':
