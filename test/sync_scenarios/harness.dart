@@ -30,6 +30,34 @@ class Cloud implements DriveStore {
   bool offline = false;
   var writes = 0;
 
+  /// Uploads of files whose name starts with this fail (a cover that
+  /// hasn't gone up yet, a dropped connection half-way).
+  String? refuse;
+
+  /// 同時同步 (1.20.8): in [settle], after each write of one device every
+  /// other device syncs (and moves songs) in full before that device goes
+  /// on — as when each write wakes the other device. Real devices sync at
+  /// the same time; one-after-the-other tests missed what that breaks.
+  bool overlapMode = false;
+  bool interleave = false;
+  final devs = <Dev>[];
+  Dev? running;
+  bool _inside = false;
+
+  Future<void> _cut() async {
+    if (!interleave || _inside || running == null) return;
+    _inside = true;
+    try {
+      for (final d in [...devs]) {
+        if (d == running) continue;
+        await d.engine.sync();
+        await d.engine.runTransfers(relayCap: 1 << 30);
+      }
+    } finally {
+      _inside = false;
+    }
+  }
+
   void _check() {
     if (offline) throw const SocketException('offline');
   }
@@ -49,9 +77,11 @@ class Cloud implements DriveStore {
   @override
   Future<String> upload(String name, List<int> bytes, {String? id, String mime = ''}) async {
     _check();
+    if (refuse != null && name.startsWith(refuse!)) throw const SocketException('upload failed');
     writes++;
     final key = id ?? 'f${_n++}';
     files[key] = (name, Uint8List.fromList(bytes), DateTime.fromMillisecondsSinceEpoch(Clock.tick()));
+    await _cut();
     return key;
   }
 
@@ -69,6 +99,7 @@ class Cloud implements DriveStore {
   Future<void> delete(String id) async {
     _check();
     files.remove(id);
+    await _cut();
   }
 
   int count(String prefix) => files.values.where((f) => f.$1.startsWith(prefix)).length;
@@ -95,6 +126,7 @@ class Dev {
     final db = await openDb();
     final d = Dev._(name, id ?? name, db, dir ?? await Directory.systemTemp.createTemp('ouo_$name'), cloud);
     Directory('${d.dir.path}/music').createSync(recursive: true);
+    cloud.devs.add(d);
     d.engine = SyncEngine(
       db: db,
       drive: cloud,
@@ -123,6 +155,8 @@ class Dev {
   /// The same device after the app was removed and installed again: an
   /// empty database, a new device id, the music files still there (scanned).
   Future<Dev> reinstall({String? newId}) async {
+    // The old install is gone: it never syncs again.
+    cloud.devs.remove(this);
     final d = await make(name, cloud, id: newId ?? '$id-new', dir: dir);
     await d.scan();
     return d;
@@ -221,9 +255,19 @@ class Dev {
   Future<List<String>> log() async => [for (final e in await SyncLog.read(db)) e.text];
 
   /// 立即同步.
-  Future<SyncResult> sync() => engine.sync();
+  Future<SyncResult> sync() => _as(engine.sync);
 
-  Future<int> transfer({int cap = 1 << 30}) => engine.runTransfers(relayCap: cap);
+  Future<int> transfer({int cap = 1 << 30}) => _as(() => engine.runTransfers(relayCap: cap));
+
+  Future<T> _as<T>(Future<T> Function() f) async {
+    final before = cloud.running;
+    cloud.running = this;
+    try {
+      return await f();
+    } finally {
+      cloud.running = before;
+    }
+  }
 
   /// What plays here, as 接續播放 sends it.
   Future<void> nowPlaying(List<String> queue, {int index = 0, int positionMs = 30000, int? at}) async {
@@ -257,12 +301,19 @@ class Dev {
 }
 
 /// Everyone syncs and moves songs until nothing changes.
+/// In 同時同步 mode the devices also sync in the middle of each other's syncs.
 Future<void> settle(List<Dev> devs, {int rounds = 5}) async {
-  for (var i = 0; i < rounds; i++) {
-    for (final d in devs) {
-      await d.sync();
-      await d.transfer();
+  final cloud = devs.first.cloud;
+  cloud.interleave = cloud.overlapMode;
+  try {
+    for (var i = 0; i < rounds; i++) {
+      for (final d in devs) {
+        await d.sync();
+        await d.transfer();
+      }
     }
+  } finally {
+    cloud.interleave = false;
   }
 }
 

@@ -122,7 +122,8 @@ class EditSync {
       if (!synced.contains(root) && !synced.contains(songKey(t.title, t.artist))) continue;
       edits[root] = {'ms': r['root_ms'], 't': r['title'], 'a': r['artist'], 'al': r['album'], 'c': r['cover'], 'at': r['at'], 'd': r['device']};
       final c = r['cover'] as String?;
-      if (c != null && t.art != null && File(t.art!).existsSync()) coversOut[c] = File(t.art!);
+      // Only a picture that is that cover (a song still waiting for it has another).
+      if (c != null && t.art != null && await _sha(t.art!) == c) coversOut[c] = File(t.art!);
     }
     final lyrics = <String, Object?>{};
     if (lyricsOf != null) {
@@ -189,11 +190,17 @@ class EditSync {
       final ms = m['ms'] as int?;
       // Compared with this song's own latest edit, whatever root it has.
       final here = mineByTrack[id] ?? mine[root];
-      if (here != null && !_newer(m, {'at': here['at'], 'd': here['device']})) continue;
+      final newer = here == null || _newer(m, {'at': here['at'], 'd': here['device']});
+      final c = m['c'] as String?;
+      // 1.20.8: the cover counts as here only when this song's picture is it.
+      // Before, a change whose picture wasn't on Drive yet (the other device
+      // still uploading) was noted as done and never fetched again.
+      final coverDue = c != null && (newer || here['cover'] == c) && await coverOf(t) != c;
+      if (!newer && !coverDue) continue;
       // Nothing would change: no write, no log line (only the song's first
       // name noted, so its playlist entries and plays find it).
       final sameNames = '${m['t'] ?? t.title}' == t.title && '${m['a'] ?? t.artist}' == t.artist && '${m['al'] ?? t.album}' == t.album;
-      if (sameNames && (m['c'] == null || m['c'] == here?['cover'])) {
+      if (sameNames && !coverDue) {
         if (mineByTrack[id] == null) {
           await db.db.insert(
               'track_edits',
@@ -207,19 +214,23 @@ class EditSync {
       }
       var art = t.art;
       Uint8List? cover;
-      final c = m['c'] as String?;
-      if (c != null && c != here?['cover'] && files['v2-cover-$c'] != null && storeArt != null) {
+      if (coverDue && files['v2-cover-$c'] != null && storeArt != null) {
         try {
-          cover = await drive.download(files['v2-cover-$c']!);
-          art = await storeArt!(cover, 'image/jpeg');
+          final bytes = await drive.download(files['v2-cover-$c']!);
+          if (sha256.convert(bytes).toString() == c) {
+            cover = bytes;
+            art = await storeArt!(bytes, 'image/jpeg');
+          }
         } catch (_) {}
       }
+      // Only the picture was still to come (the names are already this edit's).
+      if (!newer && cover == null) continue;
       final updated = Track(
         id: t.id,
         uri: t.uri,
-        title: '${m['t'] ?? t.title}',
-        artist: '${m['a'] ?? t.artist}',
-        album: '${m['al'] ?? t.album}',
+        title: newer ? '${m['t'] ?? t.title}' : t.title,
+        artist: newer ? '${m['a'] ?? t.artist}' : t.artist,
+        album: newer ? '${m['al'] ?? t.album}' : t.album,
         durationMs: t.durationMs,
         art: art,
         source: t.source,
@@ -233,7 +244,8 @@ class EditSync {
       }
       await db.db.update('tracks', {'title': updated.title, 'artist': updated.artist, 'album': updated.album, 'art': updated.art},
           where: 'id = ?', whereArgs: [t.id]);
-      await db.db.insert(
+      if (newer) {
+        await db.db.insert(
           'track_edits',
           {
             'track_id': t.id,
@@ -247,6 +259,7 @@ class EditSync {
             'device': m['d'],
           },
           conflictAlgorithm: ConflictAlgorithm.replace);
+      }
       if (updated.title != t.title || updated.artist != t.artist || updated.art != t.art) {
         onApplied?.call(t.title, updated.title, updated.art != t.art, '${m['d']}');
       }
@@ -302,7 +315,33 @@ class EditSync {
     }
   }
 
-  /// Covers applied here (sent to the others, so they can drop theirs from Drive).
-  Future<List<String>> coversHere() async =>
-      [for (final r in await db.db.query('track_edits', columns: ['cover'], where: 'cover IS NOT NULL')) '${r['cover']}'];
+  /// Covers really here: the song's picture is that cover (sent to the
+  /// others, so they drop theirs from Drive only once it arrived).
+  Future<List<String>> coversHere() async {
+    final out = <String>[];
+    final rows = await db.db.rawQuery('SELECT e.cover, t.art FROM track_edits e JOIN tracks t ON t.id = e.track_id WHERE e.cover IS NOT NULL');
+    for (final r in rows) {
+      final art = r['art'] as String?;
+      if (art != null && await _sha(art) == r['cover']) out.add('${r['cover']}');
+    }
+    return out;
+  }
+
+  /// SHA-256 of [t]'s picture (null: none on this device).
+  Future<String?> coverOf(Track t) async => t.art == null ? null : _sha(t.art!);
+
+  /// Pictures hashed before (path → size, modified, hash).
+  final _hashes = <String, (int, DateTime, String)>{};
+
+  Future<String?> _sha(String path) async {
+    if (path.startsWith('http')) return null;
+    final f = File(path);
+    if (!f.existsSync()) return null;
+    final st = f.statSync();
+    final known = _hashes[path];
+    if (known != null && known.$1 == st.size && known.$2 == st.modified) return known.$3;
+    final h = sha256.convert(await f.readAsBytes()).toString();
+    _hashes[path] = (st.size, st.modified, h);
+    return h;
+  }
 }

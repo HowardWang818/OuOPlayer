@@ -722,17 +722,19 @@ class SyncEngine implements SyncHooks {
     final before = await _marks('sync2_sent_edits');
     final sent = before == null ? 0 : marks.entries.where((e) => before[e.key] != e.value).length;
     final name = 'v2-edits-$me.json';
-    final body = jsonEncode(out);
-    final mineFile = files.where((f) => f.name == name).firstOrNull;
-    if (body != _lastEdits) {
-      await drive.upload(name, utf8.encode(body), id: mineFile?.id, mime: 'application/json');
-      _lastEdits = body;
-    }
     final theirs = <Map>[];
     for (final f in files.where((f) => f.name.startsWith('v2-edits-') && f.name != name)) {
       try {
         theirs.add(jsonDecode(utf8.decode(await drive.download(f.id))) as Map);
       } catch (_) {}
+    }
+    // The pictures first (1.20.8): a device that reads the edits finds them.
+    await edits.relayCovers(covers, [for (final t in theirs) {...((t['covers'] as List?) ?? const []).map((c) => '$c')}], files);
+    final body = jsonEncode(out);
+    final mineFile = files.where((f) => f.name == name).firstOrNull;
+    if (body != _lastEdits) {
+      await drive.upload(name, utf8.encode(body), id: mineFile?.id, mime: 'application/json');
+      _lastEdits = body;
     }
     final names = {for (final f in files) f.name: f.id};
     var received = 0;
@@ -743,7 +745,6 @@ class SyncEngine implements SyncHooks {
     // Lyrics that just came in aren't this device's to count next time.
     marks.addAll({for (final e in edits.adoptedLyrics.entries) 'l|${e.key}': _hash(e.value)});
     await db.setSetting('sync2_sent_edits', jsonEncode(marks));
-    await edits.relayCovers(covers, [for (final t in theirs) {...((t['covers'] as List?) ?? const []).map((c) => '$c')}], files);
     return (sent, received);
   }
 

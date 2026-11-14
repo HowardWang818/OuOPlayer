@@ -24,10 +24,16 @@ import 'package:ouoplayer/services/sync2/now_playing.dart';
 import 'harness.dart';
 
 void main() {
+  tree(false);
+  // The same tree again, each device syncing in the middle of the other's.
+  group('同時同步', () => tree(true));
+}
+
+void tree(bool overlap) {
   late Cloud cloud;
   late Dev phone, pc;
   setUp(() async {
-    cloud = Cloud();
+    cloud = Cloud()..overlapMode = overlap;
     phone = await Dev.make('手機', cloud, id: 'phone');
     pc = await Dev.make('電腦', cloud, id: 'pc');
   });
@@ -526,6 +532,55 @@ void main() {
       expect(await laptop.library(), ['b', '紅蓮華']);
       expect(await laptop.titles('動畫'), ['紅蓮華', 'b']);
       await expectStable([phone, pc, laptop]);
+    });
+
+    test('4.14 封面：另一台讀到時圖片還沒上傳，之後到了就換上', () async {
+      await phone.setCover('b', 'cat');
+      cloud.refuse = 'v2-cover-';
+      try {
+        await phone.sync();
+      } on SocketException catch (_) {}
+      await pc.sync();
+      expect(await pc.cover('b'), isNull, reason: 'the picture is not on Drive yet');
+      cloud.refuse = null;
+      await settle([phone, pc]);
+      expect(await pc.cover('b'), 'picture cat');
+      expect(cloud.count('v2-cover-'), 0);
+      await expectStable([phone, pc]);
+    });
+
+    test('4.15 一次換很多首（找封面），兩台各自換：每一首都換上', () async {
+      final names = ['c', 'd', 'e', 'f', 'g', 'h'];
+      for (final n in names) {
+        await phone.db.addToPlaylist(await phone.listId('動畫'), [await phone.song(n)]);
+      }
+      await settle([phone, pc]);
+      for (final n in names.take(3)) {
+        await phone.setCover(n, 'p$n');
+      }
+      for (final n in names.skip(3)) {
+        await pc.setCover(n, 'c$n');
+      }
+      await settle([phone, pc]);
+      for (final n in names) {
+        final want = names.indexOf(n) < 3 ? 'picture p$n' : 'picture c$n';
+        expect(await pc.cover(n), want, reason: 'pc $n');
+        expect(await phone.cover(n), want, reason: 'phone $n');
+      }
+      expect(cloud.count('v2-cover-'), 0);
+      await expectStable([phone, pc]);
+    });
+
+    test('4.16 舊版記成「換好了」其實沒換的封面：更新後補換', () async {
+      await phone.setCover('b', 'cat');
+      await settle([phone, pc]);
+      // Before 1.20.8: the change noted, the picture never taken, and gone from Drive.
+      await pc.db.db.update('tracks', {'art': null}, where: 'id = ?', whereArgs: [(await pc.track('b')).id]);
+      expect(await pc.cover('b'), isNull);
+      await settle([phone, pc]);
+      expect(await pc.cover('b'), 'picture cat');
+      expect(cloud.count('v2-cover-'), 0);
+      await expectStable([phone, pc]);
     });
   });
 
