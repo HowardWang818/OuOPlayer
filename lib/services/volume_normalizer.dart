@@ -109,11 +109,11 @@ class SongGainNotifier extends Notifier<double?> {
 final songGainProvider = NotifierProvider<SongGainNotifier, double?>(SongGainNotifier.new);
 
 /// Changes the gain over about a second instead of jumping (a song measured
-/// while it already plays).
+/// while it already plays); raising mid-song takes [raiseTime].
 class _GainRamp {
   double current = 0;
   Timer? _timer;
-  void to(double target, void Function(double) send, {bool instant = false}) {
+  void to(double target, void Function(double) send, {bool instant = false, Duration over = const Duration(seconds: 1)}) {
     _timer?.cancel();
     if (instant || (target - current).abs() < 0.5) {
       current = target;
@@ -121,15 +121,23 @@ class _GainRamp {
       return;
     }
     final from = current;
+    final steps = max(1, over.inMilliseconds ~/ 100);
     var step = 0;
     _timer = Timer.periodic(const Duration(milliseconds: 100), (t) {
       step++;
-      current = from + (target - from) * step / 10;
+      current = from + (target - from) * step / steps;
       send(current);
-      if (step >= 10) t.cancel();
+      if (step >= steps) t.cancel();
     });
   }
 }
+
+/// How slowly a song found quieter mid-song is raised (1.20.14): before,
+/// it stayed quiet until its next play.
+const raiseTime = Duration(seconds: 5);
+
+/// The ramp time for a gain arriving mid-song: raising glides in slowly.
+Duration rampTime(double from, double to) => to > from ? raiseTime : const Duration(seconds: 1);
 
 final _ramp = _GainRamp();
 
@@ -157,9 +165,8 @@ final volumeNormalizationProvider = Provider<void>((ref) {
   // The first seconds of a song still count as its start (its loudness may
   // be looked up a moment after it began).
   final instant = position < const Duration(seconds: 3);
-  // In the middle of a song the volume only ever goes down (a song measured
-  // late as quiet is raised from its next play, never with a sudden blast).
-  double? capped(double? g) => g == null || instant ? g : min(g, _ramp.current);
+  // In the middle of a song, a song measured late as quiet is raised slowly
+  // ([raiseTime]), never with a sudden blast.
   final handler = ref.read(audioHandlerProvider);
   late void Function(double) sendGain;
 
@@ -197,7 +204,7 @@ final volumeNormalizationProvider = Provider<void>((ref) {
     final preset = ref.watch(settingsProvider.select((s) => s.eqPreset));
     final custom = ref.watch(settingsProvider.select((s) => s.eqCustom));
     final eq = eqOn ? eqGains(EqPreset.byName(preset), custom) : null;
-    final values = windowsFilterValues(normalize: on, level: level, eq: eq, songGainDb: capped(gain));
+    final values = windowsFilterValues(normalize: on, level: level, eq: eq, songGainDb: gain);
     // The chain once, with no song's gain in it; after that only values change.
     if (JustAudioMediaKit.audioFilter.isEmpty) {
       JustAudioMediaKit.audioFilter = windowsFilterChain(windowsFilterValues(normalize: on, level: level, eq: eq, songGainDb: 0));
@@ -214,7 +221,7 @@ final volumeNormalizationProvider = Provider<void>((ref) {
         sendGain(double.parse(value.replaceFirst('dB', '')));
       }
     }
-    if (gain != null) _ramp.to(capped(gain)!, sendGain, instant: instant);
+    if (gain != null) _ramp.to(gain, sendGain, instant: instant, over: rampTime(_ramp.current, gain));
     follow();
     return;
   }
@@ -228,7 +235,8 @@ final volumeNormalizationProvider = Provider<void>((ref) {
   }
 
   sendGain = send;
-  _ramp.to(on ? capped(gain) ?? 0 : 0, send, instant: instant);
+  final target = on ? gain ?? 0 : 0.0;
+  _ramp.to(target, send, instant: instant, over: rampTime(_ramp.current, target));
   follow();
   final sub = player.androidAudioSessionIdStream.listen((id) {
     session = id;

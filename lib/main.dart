@@ -19,6 +19,7 @@ import 'services/desktop_tray.dart';
 import 'services/audio_handler.dart';
 import 'services/artist_merge.dart';
 import 'services/library_scanner.dart';
+import 'services/volume_normalizer.dart' show loudnessProvider;
 import 'services/window_state.dart';
 import 'ui/widgets/song_font.dart';
 
@@ -69,6 +70,14 @@ Future<void> main(List<String> args) async {
 
   // Android Auto browsing; podcast episodes come from their feeds.
   handler.carBrowser = CarBrowser(db, episodes: (url) async => (await container.read(podcastServiceProvider).fetch(url)).episodes);
+
+  // 1.20.14: songs are measured for 音量平衡 as soon as they come in; the
+  // playing and next song's files are not rewritten while in use.
+  if (!isDemo) {
+    container.read(loudnessProvider)
+      ..busy = ((id) => handler.currentTrack?.id == id || handler.nextTrack?.id == id)
+      ..start();
+  }
 
   // First launch on desktop: scan the default Music folder automatically.
   if (Platform.isWindows && (await db.trackIds()).isEmpty) {
