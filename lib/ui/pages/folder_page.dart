@@ -68,7 +68,7 @@ class FolderPage extends ConsumerWidget {
           : ListView(children: [
               for (final pl in lists)
                 ListTile(
-                  leading: ArtImage(pl.art, size: 56, icon: Icons.queue_music),
+                  leading: ArtImage(pl.art, size: listArtSize(context), icon: Icons.queue_music),
                   title: Text(pl.name),
                   subtitle: Text('播放清單 • ${pl.count} 首歌曲', style: TextStyle(color: muted)),
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => CollectionPage.playlist(pl.id, pl.name))),

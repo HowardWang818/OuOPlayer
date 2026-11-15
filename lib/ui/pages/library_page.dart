@@ -11,6 +11,7 @@ import '../widgets/artist_avatar.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/import_playlist.dart';
 import '../widgets/sort_button.dart';
+import '../../services/song_matcher.dart' show foldText;
 import '../../services/track_sort.dart';
 import '../widgets/track_selection.dart';
 import '../widgets/track_tile.dart';
@@ -62,6 +63,64 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
         ]),
       );
 
+  /// 專輯 / 演出者 search text (null: closed), per tab (1.20.11).
+  final _search = <_Filter, String?>{};
+  final _boxes = {_Filter.albums: TextEditingController(), _Filter.artists: TextEditingController()};
+
+  @override
+  void dispose() {
+    for (final c in _boxes.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  /// Whether every word typed is in [text].
+  bool _found(_Filter tab, String text) {
+    final words = foldText(_search[tab] ?? '').split(' ').where((w) => w.isNotEmpty);
+    final hay = foldText(text);
+    return words.every(hay.contains);
+  }
+
+  /// The count row of 專輯 / 演出者 with a search button; while searching,
+  /// the box of a playlist's search in its place.
+  Widget _searchRow(_Filter tab, String text, String found, Widget sort) {
+    final q = _search[tab];
+    final toggle = IconButton(
+      tooltip: '搜尋',
+      icon: Icon(q == null ? Icons.search : Icons.search_off),
+      onPressed: () => setState(() {
+        _boxes[tab]!.clear();
+        _search[tab] = q == null ? '' : null;
+      }),
+    );
+    if (q == null) return _sortRow(text, Row(mainAxisSize: MainAxisSize.min, children: [toggle, sort]));
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 4, 4),
+      child: Row(children: [
+        Expanded(
+          child: TextField(
+            controller: _boxes[tab],
+            autofocus: true,
+            decoration: InputDecoration(
+              hintText: '在${_labels[tab]}裡搜尋',
+              isDense: true,
+              filled: true,
+              fillColor: theme.colorScheme.surfaceContainerHigh,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(Looks.of(context).radius(24)), borderSide: BorderSide.none),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              suffixText: q.isEmpty ? null : found,
+            ),
+            onChanged: (v) => setState(() => _search[tab] = v),
+          ),
+        ),
+        toggle,
+        sort,
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
@@ -105,8 +164,8 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
           ),
           ListTile(
             leading: Container(
-              width: 56,
-              height: 56,
+              width: listArtSize(context),
+              height: listArtSize(context),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(Looks.of(context).radius(4)),
                 gradient: AppTheme.likedGradient(context),
@@ -137,8 +196,8 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                 ),
               ),
               leading: Container(
-                width: 56,
-                height: 56,
+                width: listArtSize(context),
+                height: listArtSize(context),
                 decoration: BoxDecoration(borderRadius: BorderRadius.circular(Looks.of(context).radius(4)), color: Theme.of(context).colorScheme.surfaceContainerHigh),
                 child: Icon(switch (s) {
                   SmartList.mostPlayed => Icons.local_fire_department_outlined,
@@ -153,14 +212,14 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
             ),
           for (final f in playlistFolders)
             ListTile(
-              leading: PlaylistFolderArt(folder: f, size: 56),
+              leading: PlaylistFolderArt(folder: f, size: listArtSize(context)),
               title: Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis),
               subtitle: Text('資料夾 • ${f.count} 個播放清單', style: TextStyle(color: muted)),
               onTap: () => _push(FolderPage(folderId: f.id, name: f.name)),
             ),
           for (final pl in lists)
             ListTile(
-              leading: ArtImage(pl.art, size: 56, icon: Icons.queue_music),
+              leading: ArtImage(pl.art, size: listArtSize(context), icon: Icons.queue_music),
               title: Text(pl.name),
               subtitle: Text('播放清單 • ${pl.count} 首歌曲', style: TextStyle(color: muted)),
               onTap: () => _push(CollectionPage.playlist(pl.id, pl.name)),
@@ -168,15 +227,17 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
         ]);
       case _Filter.albums:
         final sort = GroupSort.decode(ref.watch(sortProvider('albums')));
-        final albums = sort.apply(ref.watch(albumsProvider).value ?? const <Album>[],
-            name: (a) => a.name, count: (a) => a.count, added: (a) => a.added);
+        final albums = sort
+            .apply(ref.watch(albumsProvider).value ?? const <Album>[], name: (a) => a.name, count: (a) => a.count, added: (a) => a.added)
+            .where((a) => _found(_Filter.albums, '${a.name} ${a.artist}'))
+            .toList();
         body = ListView.builder(
           itemCount: albums.length + 1,
           itemBuilder: (_, i) => i == 0
-              ? _sortRow('${albums.length} 張專輯',
+              ? _searchRow(_Filter.albums, '${albums.length} 張專輯', '${albums.length} 張',
                   GroupSortButton(sort: sort, onChanged: (v) => ref.read(sortProvider('albums').notifier).set(v.encode())))
               : ListTile(
-                  leading: ArtImage(albums[i - 1].art, size: 56),
+                  leading: ArtImage(albums[i - 1].art, size: listArtSize(context)),
                   title: Text(albums[i - 1].name, maxLines: 1, overflow: TextOverflow.ellipsis),
                   subtitle: Text('專輯 • ${albums[i - 1].artist}', maxLines: 1, style: TextStyle(color: muted)),
                   onTap: () => _push(CollectionPage.album(albums[i - 1].name)),
@@ -184,15 +245,17 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
         );
       case _Filter.artists:
         final sort = GroupSort.decode(ref.watch(sortProvider('artists')));
-        final artists = sort.apply(ref.watch(artistsProvider).value ?? const <Artist>[],
-            name: (a) => a.name, count: (a) => a.count, added: (a) => a.added);
+        final artists = sort
+            .apply(ref.watch(artistsProvider).value ?? const <Artist>[], name: (a) => a.name, count: (a) => a.count, added: (a) => a.added)
+            .where((a) => _found(_Filter.artists, a.name))
+            .toList();
         body = ListView.builder(
           itemCount: artists.length + 1,
           itemBuilder: (_, i) => i == 0
-              ? _sortRow('${artists.length} 位演出者',
+              ? _searchRow(_Filter.artists, '${artists.length} 位演出者', '${artists.length} 位',
                   GroupSortButton(sort: sort, onChanged: (v) => ref.read(sortProvider('artists').notifier).set(v.encode())))
               : ListTile(
-                  leading: ArtistAvatar(artists[i - 1], size: 56),
+                  leading: ArtistAvatar(artists[i - 1], size: listArtSize(context)),
                   title: Text(artists[i - 1].name),
                   subtitle: Text('演出者 • ${artists[i - 1].count} 首', style: TextStyle(color: muted)),
                   onTap: () => _push(CollectionPage.artist(artists[i - 1].name)),

@@ -110,14 +110,27 @@ class CoverFinder {
     final artist = t.artist == '未知演出者' ? '' : SongMatcher.searchArtist(t.artist);
     final query = [SongMatcher.searchTitle(t.title, t.artist), artist].where((s) => s.isNotEmpty).join(' ');
     final order = storesFor(japanese: hasKana('${t.title} ${t.artist}') || (await japaneseLyrics?.call(t) ?? false));
-    CoverHit? maybe;
+    CoverHit? maybe, sure;
     for (final (i, store) in order.indexed) {
       if (i > 0) await Future.delayed(pause);
-      final (song, result) = pick(t, await _search.search(query, limit: 15, store: store));
+      final results = await _search.search(query, limit: 15, store: store);
+      // 1.20.11: the release of the song's own album first (a soundtrack
+      // and its anniversary album carry the same song with other covers).
+      if (albumKey != null) {
+        final (own, r) = pick(t, results.where((s) => sameAlbum(s.album, t.album)).toList());
+        if (own != null && r.level == MatchLevel.sure) return CoverHit(t, own, r.level);
+      }
+      final (song, result) = pick(t, results);
       if (song == null) continue;
-      if (result.level == MatchLevel.sure) return CoverHit(t, song, result.level);
+      if (result.level == MatchLevel.sure) {
+        // Another store may have it on the song's own album.
+        if (albumKey == null) return CoverHit(t, song, result.level);
+        sure ??= CoverHit(t, song, result.level);
+        continue;
+      }
       maybe ??= CoverHit(t, song, result.level);
     }
+    if (sure != null) return sure;
     if (maybe != null) return maybe;
     // Not found by its title: its album's cover (album name + artist), only
     // as a 「可能是」 for the user to confirm.
@@ -133,6 +146,15 @@ class CoverFinder {
       }
     }
     return null;
+  }
+
+  /// Whether iTunes' album [found] is the song's album [own]: the same name
+  /// without 「 - Single」「 - EP」 and bracketed parts (「Blue Archive 2nd
+  /// Anniversary (Original Game Soundtrack)」 is 「Blue Archive 2nd Anniversary」).
+  static bool sameAlbum(String found, String own) {
+    String bare(String s) => foldText(withoutBrackets(s.replaceAll(RegExp(r'\s+-\s+(Single|EP)$'), '')));
+    final a = bare(found), b = bare(own);
+    return a.isNotEmpty && a == b;
   }
 
   /// A song of the same album (name) by the same artist: its artwork is the album's.

@@ -90,7 +90,7 @@ class _PodcastResult extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => ListTile(
-        leading: ArtImage(p.artwork, size: 56, icon: Icons.podcasts),
+        leading: ArtImage(p.artwork, size: listArtSize(context), icon: Icons.podcasts),
         title: Text(p.title, maxLines: 2, overflow: TextOverflow.ellipsis),
         subtitle: Text(
           [p.author, if (p.genre != null) p.genre!, if (p.episodes != null) '${p.episodes} 集'].join(' • '),

@@ -955,7 +955,10 @@ class SyncEngine implements SyncHooks {
   /// Up to the relay (false: it's full). Its meta goes into this device's
   /// index under [key], the name the playlist knows it by (1.20.6: the
   /// song's name here can differ, e.g. original vs romaji).
-  Future<bool> _upload(String me, String key, Track t, int cap, void Function(int, int) progress) async {
+  Future<bool> _upload(String me, String key, Track planned, int cap, void Function(int, int) progress) async {
+    // As it is now (1.20.11): a download gets its official cover a moment
+    // after it was planned, and the other device must not get the thumbnail.
+    final t = await db.track(planned.id) ?? planned;
     final file = File(t.uri);
     final size = await file.length();
     final files = await drive.list();

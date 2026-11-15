@@ -36,6 +36,11 @@ class ArtImage extends StatelessWidget {
   }
 }
 
+/// The picture of a playlist / album / artist / podcast row: 56, or 48
+/// where rows are compact (Windows), which leave a leading picture only 48
+/// high and squashed a 56-wide one (1.20.11).
+double listArtSize(BuildContext context) => (56 + Theme.of(context).visualDensity.baseSizeAdjustment.dy).clamp(40.0, 56.0);
+
 String formatDuration(Duration? d) {
   if (d == null) return '--:--';
   final h = d.inHours;

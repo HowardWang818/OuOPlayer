@@ -15,9 +15,10 @@ final _latinChar = RegExp(r'[A-Za-z]');
 bool hasNativeText(String s) => _nativeChar.hasMatch(s);
 
 /// Other recordings that happen to have the same length (piano and music-box
-/// covers, karaoke, live takes); only taken when the song itself is one.
+/// covers, karaoke, live takes, lofi / slowed / nightcore edits); only taken
+/// when the song itself is one.
 final otherVersion = RegExp(
-    r'piano|オルゴール|music ?box|inst\b|instrumental|karaoke|カラオケ|off vocal|cover|カバー|acoustic|remix|live\b|first take|tv ?size|ver\.|version',
+    r'piano|オルゴール|music ?box|inst\b|instrumental|karaoke|カラオケ|off vocal|cover|カバー|acoustic|remix|live\b|first take|tv ?size|ver\.|version|lo-?fi|slowed|sped ?up|nightcore',
     caseSensitive: false);
 
 /// Whether [found] is another recording (cover, piano, live…) of a song

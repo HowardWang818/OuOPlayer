@@ -63,7 +63,7 @@ class _FolderBrowserPageState extends ConsumerState<FolderBrowserPage> {
         body: ListView(children: [
           for (final r in roots)
             ListTile(
-              leading: _folderBox(context, p.equals(r, s.downloadDir) ? Icons.download_for_offline_outlined : Icons.folder, 56),
+              leading: _folderBox(context, p.equals(r, s.downloadDir) ? Icons.download_for_offline_outlined : Icons.folder, listArtSize(context)),
               title: Text(p.basename(r).isEmpty ? r : p.basename(r)),
               subtitle: Text('${p.equals(r, s.downloadDir) ? '下載資料夾' : '音樂資料夾'} • ${tree.countIn(r)} 首歌曲\n$r',
                   style: TextStyle(color: muted)),
@@ -105,7 +105,7 @@ class _FolderBrowserPageState extends ConsumerState<FolderBrowserPage> {
             : ListView(children: [
                 for (final f in listing.folders)
                   ListTile(
-                    leading: f.art == null ? _folderBox(context, Icons.folder, 56) : ArtImage(f.art, size: 56),
+                    leading: f.art == null ? _folderBox(context, Icons.folder, listArtSize(context)) : ArtImage(f.art, size: listArtSize(context)),
                     title: Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis),
                     subtitle: Text('資料夾 • ${f.count} 首歌曲', style: TextStyle(color: muted)),
                     trailing: _menu(f.path, isThisPage: false),

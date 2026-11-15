@@ -47,8 +47,8 @@ class PodcastList extends ConsumerWidget {
     return ListView(children: [
       ListTile(
         leading: Container(
-          width: 56,
-          height: 56,
+          width: listArtSize(context),
+          height: listArtSize(context),
           decoration: BoxDecoration(borderRadius: BorderRadius.circular(Looks.of(context).radius(4)), color: Theme.of(context).colorScheme.surfaceContainerHigh),
           child: const Icon(Icons.add),
         ),
@@ -57,8 +57,8 @@ class PodcastList extends ConsumerWidget {
       ),
       ListTile(
         leading: Container(
-          width: 56,
-          height: 56,
+          width: listArtSize(context),
+          height: listArtSize(context),
           decoration: BoxDecoration(borderRadius: BorderRadius.circular(Looks.of(context).radius(4)), color: Theme.of(context).colorScheme.surfaceContainerHigh),
           child: const Icon(Icons.search),
         ),
@@ -68,7 +68,7 @@ class PodcastList extends ConsumerWidget {
       ),
       for (final p in list)
         ListTile(
-          leading: ArtImage(p.image, size: 56, icon: Icons.podcasts),
+          leading: ArtImage(p.image, size: listArtSize(context), icon: Icons.podcasts),
           title: Text(p.title, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text('Podcast • ${p.author}', maxLines: 1),
           onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PodcastEpisodesPage(podcast: p))),

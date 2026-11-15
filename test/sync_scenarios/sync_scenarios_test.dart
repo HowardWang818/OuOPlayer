@@ -582,6 +582,46 @@ void tree(bool overlap) {
       expect(cloud.count('v2-cover-'), 0);
       await expectStable([phone, pc]);
     });
+
+    /// A download: its YouTube thumbnail first, the official cover a moment later.
+    Future<void> download(Dev d, String title) async {
+      final t = await d.song(title);
+      final thumb = File('${d.dir.path}/thumb_$title.jpg')..writeAsStringSync('picture thumb');
+      await d.db.db.update('tracks', {'art': thumb.path}, where: 'id = ?', whereArgs: [t.id]);
+      await d.db.addToPlaylist(await d.listId('動畫'), [await d.track(title)]);
+    }
+
+    test('4.17 剛下載的歌：傳出前換好封面，另一台拿到的是新封面', () async {
+      // Only the song itself carries the cover here (歌曲資料 sync off), as
+      // when the change never reached the other device in time.
+      await phone.set('sync_edits', 'false');
+      await pc.set('sync_edits', 'false');
+      await download(phone, 'n');
+      await phone.sync();
+      // DownloadFinish replaced the thumbnail after the song was planned.
+      await phone.setCover('n', 'itunes');
+      await phone.transfer();
+      await settle([phone, pc]);
+      expect(await pc.titles('動畫'), ['Gurenge', 'b', 'n']);
+      expect(await pc.cover('n'), 'picture itunes');
+      expect(cloud.count('v2-cover-'), 0);
+      await expectStable([phone, pc]);
+    });
+
+    test('4.18 剛下載的歌：封面修改比歌早到，歌到了之後換上', () async {
+      await download(phone, 'n');
+      await phone.sync();
+      await phone.transfer();
+      await phone.setCover('n', 'itunes');
+      await phone.sync();
+      // The PC hears of the new cover while the song is still greyed there.
+      await pc.sync();
+      expect(await pc.titles('動畫'), ['Gurenge', 'b', '~n']);
+      await settle([phone, pc]);
+      expect(await pc.cover('n'), 'picture itunes');
+      expect(cloud.count('v2-cover-'), 0);
+      await expectStable([phone, pc]);
+    });
   });
 
   group('5 收聽紀錄', () {
