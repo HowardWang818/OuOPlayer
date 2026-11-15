@@ -503,8 +503,14 @@ Future<void> resendSongs(BuildContext context, WidgetRef ref, List<Track> songs)
 }
 
 /// A playlist was just made: when signed in, ask whether to sync it.
-Future<void> offerSync(BuildContext context, WidgetRef ref, int playlistId) async {
-  if (!syncAvailable || !ref.read(syncProvider).signedIn || !context.mounted) return;
+Future<void> offerSync(BuildContext context, WidgetRef ref, int playlistId) => offerSyncIn(context, playlistId);
+
+/// [offerSync] where there is no WidgetRef (download sheets, background
+/// downloads with the root navigator's context).
+Future<void> offerSyncIn(BuildContext context, int playlistId) async {
+  if (!context.mounted) return;
+  final c = ProviderScope.containerOf(context, listen: false);
+  if (!syncAvailable || !c.read(syncProvider).signedIn) return;
   final ok = await showDialog<bool>(
     context: context,
     useRootNavigator: true,
@@ -518,6 +524,6 @@ Future<void> offerSync(BuildContext context, WidgetRef ref, int playlistId) asyn
     ),
   );
   if (ok != true) return;
-  await ref.read(syncEngineProvider).enable(playlistId);
-  unawaited(ref.read(syncProvider.notifier).run());
+  await c.read(syncEngineProvider).enable(playlistId);
+  unawaited(c.read(syncProvider.notifier).run());
 }

@@ -53,6 +53,25 @@ class MissingSongs {
   /// synced devices keep the songs too.
   /// Its plays too: on the greyed song, or (in no playlist or likes) kept
   /// under its names, and they go to the song downloaded again.
+  /// The files of [songs] were deleted (1.20.10). [fromLists]: they leave
+  /// their playlists and 已按讚的歌曲 too (synced playlists on the other
+  /// devices as well); otherwise they stay there greyed. Plays are kept
+  /// either way.
+  static Future<void> filesDeleted(AppDatabase app, List<Track> songs, {required bool fromLists}) async {
+    if (fromLists) {
+      final ids = {for (final t in songs) t.id};
+      for (final id in (await app.playlistMembers(ids)).keys) {
+        await app.removeTracksFromPlaylist(id, ids);
+      }
+      final liked = {for (final r in await app.db.query('favorites', columns: ['track_id'])) r['track_id'] as String};
+      for (final t in songs) {
+        if (liked.contains(t.id)) await app.setFavorite(t, false);
+      }
+    }
+    await keepPlaces(app, songs);
+    await app.deleteTracks(songs.map((t) => t.id));
+  }
+
   static Future<void> keepPlaces(AppDatabase app, List<Track> songs) async {
     for (final t in songs) {
       final listed = await app.db.query('playlist_tracks', columns: ['track_id'], where: 'track_id = ?', whereArgs: [t.id], limit: 1);

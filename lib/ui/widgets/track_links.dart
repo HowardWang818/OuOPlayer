@@ -1,12 +1,11 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
+import 'package:flutter/services.dart';
 
 import '../../data/models/track.dart';
 import '../../services/artists.dart';
 import '../pages/collection_page.dart';
-import '../pages/folder_browser_page.dart';
 import 'dialogs.dart';
 
 /// The artist a song is listed under (the first one credited), as in the library.
@@ -24,19 +23,43 @@ bool hasPages(Track t) => t.source != TrackSource.url && t.source != TrackSource
 /// Whether [showInFolder] can show this song (a file on this device).
 bool isLocalFile(Track t) => !t.isRemote && t.uri.isNotEmpty && t.source != TrackSource.missing && t.source != TrackSource.podcast;
 
-/// 在資料夾中顯示. Windows: File Explorer with the file selected. Android:
-/// phones' file managers can't be told to select a file, so OuOPlayer's own
-/// 瀏覽資料夾 opens at the song's folder.
-Future<void> showInFolder(BuildContext context, Track t) async {
-  if (!File(t.uri).existsSync()) {
-    toast(context, '找不到這首歌的檔案');
+/// 打開資料夾 (the one way, 1.20.10: songs of the library and downloads).
+/// Windows: File Explorer with the file selected. Android: the system Files
+/// app at its folder; where that isn't possible, the folder's path to copy.
+Future<void> showInFolder(BuildContext context, String path) async {
+  if (!File(path).existsSync() && !Directory(path).existsSync()) {
+    toast(context, '找不到這個檔案');
     return;
   }
   if (Platform.isWindows) {
-    await Process.run('explorer.exe', ['/select,', t.uri]);
+    await Process.run('explorer.exe', ['/select,', path]);
     return;
   }
-  Navigator.of(context).push(MaterialPageRoute(builder: (_) => FolderBrowserPage(folder: p.dirname(t.uri))));
+  final dir = Directory(path).existsSync() ? path : File(path).parent.path;
+  var opened = false;
+  try {
+    opened = await const MethodChannel('ouo/folder').invokeMethod<bool>('open', {'path': dir}) ?? false;
+  } catch (_) {}
+  if (opened || !context.mounted) return;
+  await showDialog<void>(
+    context: context,
+    useRootNavigator: true,
+    builder: (ctx) => AlertDialog(
+      title: const Text('檔案位置'),
+      content: SelectableText(dir),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('關閉')),
+        FilledButton(
+          onPressed: () {
+            Clipboard.setData(ClipboardData(text: dir));
+            Navigator.pop(ctx);
+            toast(context, '已複製位置');
+          },
+          child: const Text('複製'),
+        ),
+      ],
+    ),
+  );
 }
 
 /// Text that opens [onTap]'s page when clicked (with a pointer cursor on desktop).

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
+import '../../providers/sync_provider.dart' show offerSyncIn;
 import '../../services/listening_stats.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/art_image.dart';
@@ -125,6 +126,7 @@ class StatsPage extends ConsumerWidget {
                 final id = await db.createPlaylist(name);
                 await db.addToPlaylist(id, topTracks);
                 if (context.mounted) toast(context, '已建立「$name」');
+                if (context.mounted) await offerSyncIn(context, id);
               },
             ),
           ),

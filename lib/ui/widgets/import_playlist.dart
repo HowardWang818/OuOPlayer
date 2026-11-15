@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
+import '../../providers/sync_provider.dart' show offerSyncIn;
 import '../../services/missing_songs.dart';
 import '../../services/playlist_import.dart';
 import '../pages/collection_page.dart';
@@ -85,6 +86,7 @@ Future<void> importM3uPlaylist(BuildContext context, WidgetRef ref, {String? pat
   await db.addToPlaylist(id, found, allowDuplicates: true);
   if (!context.mounted) return;
   await _report(context, name, found.where((t) => t.source != TrackSource.missing).length, missing);
+  if (context.mounted) await offerSyncIn(context, id);
   if (context.mounted) Navigator.of(context).push(MaterialPageRoute(builder: (_) => CollectionPage.playlist(id, name)));
 }
 

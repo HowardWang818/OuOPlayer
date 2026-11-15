@@ -882,11 +882,26 @@ class AppDatabase {
     return {for (final r in rows) r['playlist_id'] as int};
   }
 
-  /// Takes [trackId] out of playlist [id] (every time it is there).
-  Future<void> removeTrackFromPlaylist(int id, String trackId) async {
+  /// Takes [trackIds] out of playlist [id] (every time each is there).
+  Future<void> removeTracksFromPlaylist(int id, Set<String> trackIds) async {
     final rows = await playlistRows(id);
-    final at = [for (var i = 0; i < rows.length; i++) if (rows[i].$1 == trackId) i];
+    final at = [for (var i = 0; i < rows.length; i++) if (trackIds.contains(rows[i].$1)) i];
     if (at.isNotEmpty) await removeFromPlaylistAt(id, at);
+  }
+
+  /// For each playlist holding any of [trackIds]: which of them it holds.
+  Future<Map<int, Set<String>>> playlistMembers(Set<String> trackIds) async {
+    final out = <int, Set<String>>{};
+    final list = trackIds.toList();
+    for (var i = 0; i < list.length; i += 500) {
+      final chunk = list.sublist(i, min(i + 500, list.length));
+      final rows = await db.query('playlist_tracks',
+          columns: ['playlist_id', 'track_id'], where: 'track_id IN (${List.filled(chunk.length, '?').join(',')})', whereArgs: chunk);
+      for (final r in rows) {
+        out.putIfAbsent(r['playlist_id'] as int, () => {}).add(r['track_id'] as String);
+      }
+    }
+    return out;
   }
 
   /// Removes several rows (by position) from a playlist at once.

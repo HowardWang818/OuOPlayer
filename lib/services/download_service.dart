@@ -110,6 +110,9 @@ class DownloadService {
   /// and download record get the final file.
   Future<Track> Function(Track track, DownloadTask task)? onImported;
 
+  /// A playlist link made its playlist (1.20.10: the app asks whether to sync it).
+  void Function(int playlistId)? onPlaylistCreated;
+
   final LibraryScanner _scanner;
   final AppDatabase _db;
   final YtDlpBackend? ytdlp;
@@ -391,6 +394,7 @@ class DownloadService {
     if (t.playlistId == null && t.playlist && name != null) {
       t.playlistId = await _db.createPlaylist(name);
       t.addLog('已建立播放清單「$name」');
+      onPlaylistCreated?.call(t.playlistId!);
     }
     if (t.playlistId != null) await _db.addToPlaylist(t.playlistId!, tracks);
     for (final id in t.alsoInto) {
@@ -476,6 +480,7 @@ class DownloadService {
     } else if (t.playlistName != null) {
       t.playlistId = await _db.createPlaylist(t.playlistName!);
       t.addLog('已建立播放清單「${t.playlistName}」');
+      onPlaylistCreated?.call(t.playlistId!);
     }
     final existing = await ExistingFiles.scan(outDir);
     final library = SongIndex(await _db.tracks(), (Track t) => SongKey(t.title, t.artist, durationMs: t.durationMs));

@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
+import '../../providers/sync_provider.dart' show offerSyncIn;
 import '../../services/missing_songs.dart';
 import '../../services/song_matcher.dart';
 import '../../services/spotify_import.dart';
@@ -157,6 +158,7 @@ Future<void> importSpotify(BuildContext context, WidgetRef ref, {List<PlatformFi
 
   final allowDup = ref.read(settingsProvider).allowPlaylistDuplicates;
   final report = <String>[];
+  final made = <int>[];
   final missing = <String>[];
   for (final i in chosen.toList()..sort()) {
     final pl = playlists[i];
@@ -190,6 +192,7 @@ Future<void> importSpotify(BuildContext context, WidgetRef ref, {List<PlatformFi
       id = existing[pl.name]!;
     } else {
       id = await db.createPlaylist(existing.containsKey(pl.name) ? '${pl.name} (Spotify)' : pl.name);
+      made.add(id);
     }
     // A fresh playlist keeps Spotify's order and repeats.
     final added = await db.addToPlaylist(id, tracks, allowDuplicates: !existing.containsKey(pl.name) || allowDup || !mergeExisting);
@@ -236,4 +239,9 @@ Future<void> importSpotify(BuildContext context, WidgetRef ref, {List<PlatformFi
       ],
     ),
   );
+  // Each new playlist: sync it? (as when making one by hand)
+  for (final id in made) {
+    if (!context.mounted) return;
+    await offerSyncIn(context, id);
+  }
 }

@@ -98,11 +98,10 @@ void main() {
       }
     });
 
-    test('the delete dialog says the places stay', () {
+    test('the delete dialog says the places stay (1.20.10: when the choice is unticked)', () {
       final src = File('lib/ui/widgets/track_tile.dart').readAsStringSync();
-      expect(src, contains("Text('播放清單裡的位置會保留。')"));
-      expect(src, isNot(contains('同步的播放清單在另一台也會移除')));
-      expect(src, isNot(contains('takeOutOfLists')));
+      expect(src, contains('播放清單和已按讚裡會保留灰色的位置'));
+      expect(src, contains("Text('同時從播放清單和已按讚的歌曲移除')"));
     });
   });
 

@@ -884,9 +884,13 @@ class SyncEngine implements SyncHooks {
               ..add('${e['art']}');
           }
         }
+        // The engine's clock (the tests' one there): with the real one, the
+        // tests' Drive files looked days old once the real date moved on, and
+        // a song just uploaded was deleted before its index entry came.
+        final at = DateTime.fromMillisecondsSinceEpoch(now);
         for (final f in files) {
           if (!(f.name.startsWith('v2-song-') || f.name.startsWith('v2-art-')) || listed.contains(f.name)) continue;
-          if (DateTime.now().difference(f.modified) < const Duration(days: 1)) continue;
+          if (at.difference(f.modified) < const Duration(days: 1)) continue;
           await drive.delete(f.id);
         }
       });

@@ -5,8 +5,7 @@ import '../../app.dart' show rootNavigatorKey;
 
 import '../../data/models/track.dart';
 import '../../providers/providers.dart';
-import '../../providers/sync_provider.dart' show offerSync;
-import 'art_image.dart';
+import 'playlist_picker.dart';
 import '../../theme/looks.dart';
 
 Future<String?> promptText(BuildContext context, {required String title, String hint = '', String initial = '', String ok = '確定'}) {
@@ -30,52 +29,36 @@ Future<String?> promptText(BuildContext context, {required String title, String 
   );
 }
 
+/// 加入播放清單 for songs of the library (1.20.10): the playlists they are
+/// in come ticked (— when only some are), tick or untick, then 完成.
+/// Unticking takes the songs out of that playlist.
 Future<void> showAddToPlaylist(BuildContext context, WidgetRef ref, List<Track> tracks) async {
+  if (tracks.isEmpty) return;
   final db = ref.read(dbProvider);
   final allow = ref.read(settingsProvider).allowPlaylistDuplicates;
+  final ids = {for (final t in tracks) t.id};
+  final members = await db.playlistMembers(ids);
   final lists = await db.playlists();
+  final start = {for (final p in lists) p.id: tickFor(members[p.id]?.length ?? 0, ids.length)};
   if (!context.mounted) return;
-  await showModalBottomSheet(
-    context: context,
-    useRootNavigator: true,
-    showDragHandle: true,
-    builder: (ctx) => SafeArea(
-      child: ListView(shrinkWrap: true, children: [
-        ListTile(
-          leading: const Icon(Icons.add),
-          title: const Text('新增播放清單'),
-          onTap: () async {
-            Navigator.pop(ctx);
-            final name = await promptText(context, title: '為播放清單命名', hint: '我的播放清單 #${lists.length + 1}');
-            if (name == null) return;
-            final id = await db.createPlaylist(name.isEmpty ? '我的播放清單 #${lists.length + 1}' : name);
-            await db.addToPlaylist(id, tracks, allowDuplicates: allow);
-            if (context.mounted) _toast(context, '已加入「${name.isEmpty ? '我的播放清單 #${lists.length + 1}' : name}」');
-            if (context.mounted) await offerSync(context, ref, id);
-          },
-        ),
-        for (final pl in lists)
-          ListTile(
-            leading: ArtImage(pl.art, size: 44, icon: Icons.queue_music),
-            title: Text(pl.name),
-            subtitle: Text('${pl.count} 首歌曲'),
-            onTap: () async {
-              Navigator.pop(ctx);
-              final added = await db.addToPlaylist(pl.id, tracks, allowDuplicates: allow);
-              if (!context.mounted) return;
-              final already = tracks.length - added;
-              _toast(
-                  context,
-                  added == 0
-                      ? (tracks.length == 1 ? '已在「${pl.name}」中' : '這些歌曲都已在「${pl.name}」中')
-                      : already > 0
-                          ? '已加入 $added 首到「${pl.name}」，$already 首已在清單中'
-                          : '已加入「${pl.name}」');
-            },
-          ),
-      ]),
-    ),
-  );
+  final after = await pickPlaylists(context, start);
+  if (after == null) return;
+  final change = playlistChanges(start, after);
+  for (final id in change.add) {
+    final have = members[id] ?? const <String>{};
+    await db.addToPlaylist(id, [for (final t in tracks) if (!have.contains(t.id)) t], allowDuplicates: allow);
+  }
+  for (final id in change.remove) {
+    await db.removeTracksFromPlaylist(id, ids);
+  }
+  if (!context.mounted || (change.add.isEmpty && change.remove.isEmpty)) return;
+  final names = {for (final p in await db.playlists()) p.id: p.name};
+  String which(Set<int> s) => s.length <= 2 ? s.map((id) => '「${names[id] ?? ''}」').join('、') : ' ${s.length} 個播放清單';
+  if (!context.mounted) return;
+  _toast(context, [
+    if (change.add.isNotEmpty) '已加入${which(change.add)}',
+    if (change.remove.isNotEmpty) '已從${which(change.remove)}移除',
+  ].join('，'));
 }
 
 /// Every delete/remove asks first. Returns true only if the user confirmed.

@@ -175,6 +175,11 @@ final downloadNotificationProvider = Provider<void>((ref) {
 /// downloading any more. A single song says where it went, with 「更改」.
 final downloadDoneToastProvider = Provider<void>((ref) {
   final svc = ref.read(downloadServiceProvider);
+  // A playlist link made its playlist: sync it? (as when making one by hand)
+  svc.onPlaylistCreated = (id) {
+    final ctx = rootNavigatorKey.currentContext;
+    if (ctx != null && ctx.mounted) offerSyncIn(ctx, id);
+  };
   final seen = <String>{for (final t in svc.tasks) if (!t.active) t.id};
   final finished = <DownloadTask>[];
   final sub = svc.changes.listen((tasks) {

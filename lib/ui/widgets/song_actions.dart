@@ -10,6 +10,7 @@ import '../pages/lyrics_batch_page.dart';
 import '../pages/native_name_page.dart';
 import 'batch_edit_dialog.dart';
 import 'dialogs.dart';
+import 'track_links.dart' show showInFolder;
 import 'download_actions.dart';
 import 'edit_track_dialog.dart';
 import 'export_sheet.dart';
@@ -42,6 +43,7 @@ List<SongAction> songActions(WidgetRef ref, List<Track> tracks, {String? removeL
     SongAction('like', allLiked ? '從已按讚的歌曲移除' : '加到已按讚的歌曲'),
     if (removeLabel != null) SongAction('remove', removeLabel),
     const SongAction('export', '複製／匯出資訊'),
+    if (!many && local == 1) const SongAction('folder', '打開資料夾'),
     if (local > 0) ...[
       SongAction('edit', n('編輯資訊')),
       SongAction('covers', n('找正式封面')),
@@ -93,6 +95,8 @@ Future<bool> runSongAction(BuildContext context, WidgetRef ref, String id, List<
       if (!await confirmDelete(context, title: '${removeLabel ?? '從此播放清單移除'}$count？', message: tracks.length == 1 ? tracks.single.title : null)) return false;
       await onRemove();
       if (context.mounted && tracks.length > 1) toast(context, '已移除${tracks.length} 首');
+    case 'folder':
+      await showInFolder(context, local.single.uri);
     case 'export':
       await showExportSheet(context, tracks.length == 1 ? tracks.single.title : '已選的 ${tracks.length} 首', tracks);
     case 'edit':
@@ -125,7 +129,9 @@ Future<bool> runSongAction(BuildContext context, WidgetRef ref, String id, List<
 }
 
 /// The menu for one song as a sheet of rows (⋮ and the player).
-Future<void> showSongMenu(BuildContext context, WidgetRef ref, Track track, {Future<void> Function()? onRemove, String? removeLabel}) async {
+/// [extra]: more entries after the song's own (the downloads page's).
+Future<void> showSongMenu(BuildContext context, WidgetRef ref, Track track,
+    {Future<void> Function()? onRemove, String? removeLabel, List<({String label, Future<void> Function() run})> extra = const []}) async {
   final actions = songActions(ref, [track], removeLabel: onRemove == null ? null : (removeLabel ?? '從此播放清單移除'));
   final picked = await showModalBottomSheet<String>(
     context: context,
@@ -144,10 +150,13 @@ Future<void> showSongMenu(BuildContext context, WidgetRef ref, Track track, {Fut
               title: Text(a.label, style: a.danger ? const TextStyle(color: Colors.redAccent) : null),
               onTap: () => Navigator.pop(ctx, a.id),
             ),
+          for (var i = 0; i < extra.length; i++)
+            ListTile(title: Text(extra[i].label), onTap: () => Navigator.pop(ctx, 'extra:$i')),
         ]),
       ),
     ),
   );
   if (picked == null || !context.mounted) return;
+  if (picked.startsWith('extra:')) return extra[int.parse(picked.substring(6))].run();
   await runSongAction(context, ref, picked, [track], onRemove: onRemove, removeLabel: removeLabel);
 }

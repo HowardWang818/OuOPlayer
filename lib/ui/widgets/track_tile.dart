@@ -212,12 +212,22 @@ Future<List<String>> removalLines(WidgetRef ref, List<Track> tracks, {bool keepP
 Future<bool> deleteTrackFiles(BuildContext context, WidgetRef ref, List<Track> tracks, {String? title}) async {
   if (tracks.isEmpty) return false;
   final forever = ref.read(settingsProvider).deletePermanently;
-  final where = await removalLines(ref, tracks, keepPlaces: true);
+  final db = ref.read(dbProvider);
+  // Everywhere they are, playlists and likes included (1.20.10).
+  final where = await removalLines(ref, tracks);
+  final impact = await db.removalImpact(tracks.map((t) => t.id).toList());
+  final listed = impact.playlists.isNotEmpty || impact.favorites > 0;
+  final inLists = (await db.playlistMembers({for (final t in tracks) t.id})).keys.toSet();
+  final syncedRows = inLists.isEmpty
+      ? const <Map<String, Object?>>[]
+      : await db.db.query('playlists', columns: ['id'], where: 'synced = 1 AND id IN (${List.filled(inLists.length, '?').join(',')})', whereArgs: inLists.toList());
+  final synced = syncedRows.isNotEmpty;
+  var fromLists = true;
   if (!context.mounted) return false;
   final ok = await showDialog<bool>(
     context: context,
     useRootNavigator: true,
-    builder: (ctx) => AlertDialog(
+    builder: (ctx) => StatefulBuilder(builder: (ctx, setState) => AlertDialog(
       title: Text(title ?? '${forever ? '永久刪除' : '刪除'}${tracks.length == 1 ? '檔案' : ' ${tracks.length} 個檔案'}？'),
       content: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -228,10 +238,21 @@ Future<bool> deleteTrackFiles(BuildContext context, WidgetRef ref, List<Track> t
               ? const Text('檔案會永久刪除，無法還原。', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))
               : Text('檔案會移到$trashName，可以還原。'),
           const SizedBox(height: 4),
-          const Text('並從以下地方移除：'),
+          const Text('在以下地方：'),
           RemovalList(where),
-          const SizedBox(height: 4),
-          const Text('播放清單裡的位置會保留。'),
+          if (listed) ...[
+            const SizedBox(height: 4),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              value: fromLists,
+              onChanged: (v) => setState(() => fromLists = v ?? false),
+              title: const Text('同時從播放清單和已按讚的歌曲移除'),
+              subtitle: fromLists && !synced
+                  ? null
+                  : Text(fromLists ? '同步的播放清單在另一台會一起移除，另一台的檔案不會刪除。' : '播放清單和已按讚裡會保留灰色的位置，之後可以下載或由另一台傳回。'),
+            ),
+          ],
         ]),
       ),
       actions: [
@@ -242,7 +263,7 @@ Future<bool> deleteTrackFiles(BuildContext context, WidgetRef ref, List<Track> t
           child: Text(forever ? '永久刪除' : '刪除'),
         ),
       ],
-    ),
+    )),
   );
   if (ok != true) return false;
   try {
@@ -252,10 +273,7 @@ Future<bool> deleteTrackFiles(BuildContext context, WidgetRef ref, List<Track> t
       return false;
     }
     await ref.read(audioHandlerProvider).removeTracks({for (final t in tracks) t.id});
-    final db = ref.read(dbProvider);
-    // Only the files go: their places in playlists and likes stay, greyed.
-    await MissingSongs.keepPlaces(db, tracks);
-    await db.deleteTracks(tracks.map((t) => t.id));
+    await MissingSongs.filesDeleted(db, tracks, fromLists: listed && fromLists);
     if (context.mounted) toast(context, forever ? '已永久刪除' : '已移到$trashName');
     return true;
   } catch (e) {
