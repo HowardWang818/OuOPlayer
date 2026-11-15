@@ -7,6 +7,7 @@ import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
 
 import '../../data/db/database.dart';
 import '../../data/models/track.dart';
+import '../artist_merge.dart';
 import '../sync/drive_client.dart';
 import 'merge.dart';
 
@@ -263,6 +264,9 @@ class EditSync {
       if (updated.title != t.title || updated.artist != t.artist || updated.art != t.art) {
         onApplied?.call(t.title, updated.title, updated.art != t.art, '${m['d']}');
       }
+      // An artist renamed to its original name there: its other songs here
+      // go under that name too (1.20.12).
+      if (updated.artist != t.artist) await ArtistMerge.learn(db, t.artist, updated.artist);
       changed++;
     }
     // Lyrics: picked by hand beats found; otherwise the latest; never the same twice.

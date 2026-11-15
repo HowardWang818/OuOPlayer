@@ -622,6 +622,15 @@ void tree(bool overlap) {
       expect(cloud.count('v2-cover-'), 0);
       await expectStable([phone, pc]);
     });
+
+    test('4.19 一首的歌手改成原文：另一台同歌手的其他歌也併到原文名字', () async {
+      await phone.rename('b', 'b', artist: 'ロクデナシ');
+      await settle([phone, pc]);
+      expect((await pc.track('b')).artist, 'ロクデナシ');
+      // Learnt where the change arrived (a hand edit here teaches nothing).
+      expect(jsonDecode(await pc.setting('artist_renames') ?? '{}'), {'A': 'ロクデナシ'});
+      await expectStable([phone, pc]);
+    });
   });
 
   group('5 收聽紀錄', () {

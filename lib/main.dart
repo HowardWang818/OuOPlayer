@@ -17,6 +17,7 @@ import 'theme/looks.dart';
 import 'services/car_browser.dart';
 import 'services/desktop_tray.dart';
 import 'services/audio_handler.dart';
+import 'services/artist_merge.dart';
 import 'services/library_scanner.dart';
 import 'services/window_state.dart';
 import 'ui/widgets/song_font.dart';
@@ -51,6 +52,8 @@ Future<void> main(List<String> args) async {
   await DesktopTray.finishStart(args).catchError((Object e) => debugPrint('window: $e'));
 
   final saved = await db.allSettings();
+  // 1.20.12: an artist under its romaji and original names becomes one.
+  unawaited(ArtistMerge.learnOld(db).catchError((Object e) => debugPrint('artist merge: $e')));
   // 播放記錄 was removed in 1.20.0: its sign-ins and waiting plays go.
   await db.db.delete('settings', where: "key IN ('lastfm_session', 'lastfm_user', 'listenbrainz_token', 'listenbrainz_user', 'scrobble_queue_lastfm', 'scrobble_queue_listenbrainz')");
   // A new install (no songs yet, never through the guide): 第一次使用 shows.

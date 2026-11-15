@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../data/db/database.dart';
 import '../data/models/track.dart';
+import 'artist_merge.dart';
 import 'online/itunes.dart';
 import 'song_matcher.dart';
 import 'tag_editor.dart';
@@ -148,7 +149,9 @@ class NativeNames {
   /// in OuOPlayer), then in the library. Null when the user declined the
   /// file change (Android asks for files OuOPlayer didn't create).
   static Future<Track?> apply(AppDatabase db, NativeName n) async {
-    final t = n.track;
+    // The song as it is now: its cover may have changed since it was looked
+    // up (1.20.12), and only the names are this rename's.
+    final t = await db.track(n.track.id) ?? n.track;
     if (canWriteTags(t.uri)) {
       final r = await writeTags(t.uri, TagEdit(title: n.title, artist: n.artist, album: n.album));
       if (r == TagWriteResult.declined) return null;
@@ -168,6 +171,8 @@ class NativeNames {
     await db.updateTrackInfo(updated);
     // Remembered for Google Drive sync: the same song on another device gets the same name.
     await rememberRename(db, t, updated);
+    // Its other songs by the romaji name go under the original one too.
+    await ArtistMerge.learn(db, t.artist, updated.artist);
     return updated;
   }
 

@@ -102,9 +102,11 @@ final downloadServiceProvider = Provider<DownloadService>((ref) {
           db: ref.read(dbProvider), storeArt: ref.read(scannerProvider).storeArt, finder: CoverFinder(ref.read(iTunesSearchProvider)));
       if (!identical(track, t)) ref.read(audioHandlerProvider).updateTrackInfo(track);
     } catch (_) {}
-    if (ref.read(settingsProvider).nativeNamesOnDownload && NativeNames.wants(t)) {
+    // By the song as DownloadFinish left it (1.20.12: from the song before
+    // it, the rename put the YouTube thumbnail back over the new cover).
+    if (ref.read(settingsProvider).nativeNamesOnDownload && NativeNames.wants(track)) {
       try {
-        final n = await ref.read(nativeNamesProvider).find(t);
+        final n = await ref.read(nativeNamesProvider).find(track);
         final updated = n == null ? null : await NativeNames.apply(ref.read(dbProvider), n);
         if (updated != null) {
           track = updated;

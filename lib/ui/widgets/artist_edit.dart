@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/providers.dart';
 import '../../services/artist_images.dart';
+import '../../services/artist_merge.dart';
 import '../../services/artists.dart';
 import '../pages/collection_page.dart';
 import 'art_image.dart';
@@ -48,6 +49,8 @@ Future<void> restoreArtistName(BuildContext context, WidgetRef ref, String name)
     return;
   }
   await ref.read(settingsProvider.notifier).setArtistRenames(ArtistRenames.restored(ArtistRenames.all, name));
+  // Not merged by itself again (1.20.12).
+  await ArtistMerge.keepApart(ref.read(dbProvider), originals);
   await ArtistImages.moveCustom(name, originals.first);
   ref.invalidate(artistImageProvider);
   if (!context.mounted) return;

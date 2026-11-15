@@ -117,8 +117,13 @@ class CoverFinder {
       // 1.20.11: the release of the song's own album first (a soundtrack
       // and its anniversary album carry the same song with other covers).
       if (albumKey != null) {
-        final (own, r) = pick(t, results.where((s) => sameAlbum(s.album, t.album)).toList());
+        final mine = results.where((s) => s.artwork != null && sameAlbum(s.album, t.album)).toList();
+        final (own, r) = pick(t, mine);
         if (own != null && r.level == MatchLevel.sure) return CoverHit(t, own, r.level);
+        // The same title and length on the song's own album, the artist only
+        // written another way (ミツキヨ / Mitsukiyo): that is it (1.20.12).
+        final same = mine.where((s) => sameRecording(t, s)).firstOrNull;
+        if (same != null) return CoverHit(t, same, MatchLevel.sure);
       }
       final (song, result) = pick(t, results);
       if (song == null) continue;
@@ -154,6 +159,16 @@ class CoverFinder {
   static bool sameAlbum(String found, String own) {
     String bare(String s) => foldText(withoutBrackets(s.replaceAll(RegExp(r'\s+-\s+(Single|EP)$'), '')));
     final a = bare(found), b = bare(own);
+    return a.isNotEmpty && a == b;
+  }
+
+  /// [s] is [t] by its title and length (within 3 seconds), not another
+  /// version of it.
+  static bool sameRecording(Track t, ITunesSong s) {
+    final ms = t.durationMs, theirs = s.durationMs;
+    if (ms == null || theirs == null || (ms - theirs).abs() > 3000) return false;
+    if (isOtherVersion('${s.title} ${s.artist}', t.title)) return false;
+    final a = foldText(withoutBrackets(t.title)), b = foldText(withoutBrackets(s.title));
     return a.isNotEmpty && a == b;
   }
 
