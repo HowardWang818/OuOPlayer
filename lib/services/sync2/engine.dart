@@ -1125,13 +1125,23 @@ class _Resolver {
   final Map<String, Track> _holes;
   final _exact = <String, List<Track>>{};
 
-  /// Same title and artist (and length within 3 s) first, then the comparator.
+  static bool _here(Track t) => !t.isRemote && t.uri.isNotEmpty && File(t.uri).existsSync();
+
+  /// Same title and artist (and length within 3 s) first, then the comparator;
+  /// a song whose file is here before one whose file is gone (1.20.15: after
+  /// a folder was moved, the old entry came first and the device seemed to
+  /// lack every song, so the other one sent them all).
   Track? _find(Map song) {
     final ms = song['ms'] as int?;
-    final same = _exact[songKey('${song['t']}', '${song['a']}')]
-        ?.where((t) => ms == null || t.durationMs == null || (t.durationMs! - ms).abs() <= 3000)
-        .firstOrNull;
-    return same ?? _matcher.find('', title: '${song['t']}', artist: '${song['a']}', durationMs: ms);
+    final same = [
+      ...?_exact[songKey('${song['t']}', '${song['a']}')]
+          ?.where((t) => ms == null || t.durationMs == null || (t.durationMs! - ms).abs() <= 3000),
+    ];
+    final here = same.where(_here).firstOrNull;
+    if (here != null) return here;
+    final like = _matcher.find('', title: '${song['t']}', artist: '${song['a']}', durationMs: ms);
+    if (like != null && _here(like)) return like;
+    return same.firstOrNull ?? like;
   }
 
   Track? real(Map song) {

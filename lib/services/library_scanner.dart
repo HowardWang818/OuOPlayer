@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 
 import 'missing_files.dart';
 import 'missing_songs.dart';
+import 'moved_files.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../data/db/database.dart';
@@ -77,7 +78,10 @@ class LibraryScanner {
         final maps = await Isolate.run(() => _readBatch(chunk, artDir, TrackSource.local));
         final added = maps.map(Track.fromMap).toList();
         await _db.upsertTracks(added);
-        await MissingSongs.fill(_db, added);
+        // Songs moved here by hand go back to the songs they were (1.20.15).
+        final moved = MovedFiles.pairs(library, added);
+        await _db.mergeMovedTracks(moved);
+        await MissingSongs.fill(_db, [for (final t in added) if (!moved.containsValue(t.id)) t]);
         done += chunk.length;
         _progress.add(ScanProgress(done, fresh.length, true));
       }

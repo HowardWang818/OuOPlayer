@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../song_matcher.dart' show foldText;
 import '../ytdlp/ytdlp_downloader.dart';
 import 'ytmusic.dart';
 
@@ -52,6 +53,20 @@ List<YtMusicSong> parseYtdlpSearch(String output) {
     ));
   }
   return out;
+}
+
+/// 下載缺少的歌 on YouTube / SoundCloud (1.20.15): their results have an
+/// uploader, not the song's artist, so a result is sure when its title holds
+/// the song's title (the same take: no cover, live or karaoke marks) and its
+/// length is within 3 seconds.
+YtMusicSong? sureByTitle(String title, int? durationMs, List<YtMusicSong> results) {
+  final want = foldText(title);
+  if (durationMs == null || want.isEmpty) return null;
+  for (final s in results) {
+    if (s.durationMs == null || (s.durationMs! - durationMs).abs() > 3000) continue;
+    if (sameVersion(title, s.title) && foldText(s.title).contains(want)) return s;
+  }
+  return null;
 }
 
 /// 線上搜尋 on [source]: YT Music directly, the others through yt-dlp.

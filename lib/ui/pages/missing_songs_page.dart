@@ -5,6 +5,7 @@ import '../../data/models/track.dart';
 import '../../providers/providers.dart';
 import '../../services/missing_songs.dart';
 import '../../services/network_check.dart';
+import '../../services/online/online_search.dart';
 import '../../services/online/ytmusic.dart';
 import '../../services/song_matcher.dart';
 import '../widgets/cover_progress.dart';
@@ -83,10 +84,10 @@ class _MissingSongsPageState extends ConsumerState<MissingSongsPage> {
 
   /// Searches one song: queued when the match is sure; otherwise kept for
   /// picking by hand. False when nothing was found or it is unsure.
-  Future<bool> _download(Track t) async {
+  Future<bool> _download(Track t, OnlineSource source) async {
     setState(() => _busy.add(t.id));
     try {
-      final (sure: song, :results) = await findMissing(t);
+      final (sure: song, :results) = await findMissing(t, source: source, ytdlp: ref.read(downloadServiceProvider).ytdlp);
       if (song != null) {
         _queue(t, song);
         _unsure.remove(t.id);
@@ -103,13 +104,15 @@ class _MissingSongsPageState extends ConsumerState<MissingSongsPage> {
 
   Future<void> _downloadAll(List<Track> songs) async {
     if (songs.isEmpty || !await acceptDownloadTerms(context) || !mounted) return;
+    final source = await pickMissingSource(context);
+    if (source == null || !mounted) return;
     if (!await okToDownload(context, warn: ref.read(settingsProvider).wifiWarning) || !mounted) return;
     setState(() => _all = true);
     var queued = 0;
     try {
       for (final t in songs) {
         if (!mounted) break;
-        if (await _download(t)) queued++;
+        if (await _download(t, source)) queued++;
       }
     } finally {
       if (mounted) setState(() => _all = false);
@@ -120,8 +123,10 @@ class _MissingSongsPageState extends ConsumerState<MissingSongsPage> {
 
   Future<void> _downloadOne(Track t) async {
     if (!await acceptDownloadTerms(context) || !mounted) return;
+    final source = await pickMissingSource(context);
+    if (source == null || !mounted) return;
     if (!await okToDownload(context, warn: ref.read(settingsProvider).wifiWarning) || !mounted) return;
-    if (await _download(t)) {
+    if (await _download(t, source)) {
       if (mounted) toast(context, '已加入下載');
     } else if (_unsure.containsKey(t.id)) {
       if (mounted) await _choose(t);

@@ -50,6 +50,14 @@ class LibrarySettingsPage extends ConsumerWidget {
     final scan = ref.watch(scanProgressProvider).value;
     return SettingsSectionPage(title: '音樂庫', children: [
       settingsSubheader(context, '音樂資料夾'),
+      // The download folder is scanned too (1.20.15: it wasn't listed, so
+      // adding it said 「已經在清單裡」 under an empty list).
+      if (s.downloadDir.isNotEmpty)
+        ListTile(
+          leading: const Icon(Icons.download_outlined),
+          title: Text(s.downloadDir, maxLines: 2, overflow: TextOverflow.ellipsis),
+          subtitle: const Text('下載資料夾'),
+        ),
       for (final d in s.musicDirs)
         ListTile(
           leading: const Icon(Icons.folder_outlined),

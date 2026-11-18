@@ -19,6 +19,7 @@ import 'services/desktop_tray.dart';
 import 'services/audio_handler.dart';
 import 'services/artist_merge.dart';
 import 'services/library_scanner.dart';
+import 'services/moved_files.dart';
 import 'services/volume_normalizer.dart' show loudnessProvider;
 import 'services/window_state.dart';
 import 'ui/widgets/song_font.dart';
@@ -55,6 +56,11 @@ Future<void> main(List<String> args) async {
   final saved = await db.allSettings();
   // 1.20.12: an artist under its romaji and original names becomes one.
   unawaited(ArtistMerge.learnOld(db).catchError((Object e) => debugPrint('artist merge: $e')));
+  // 1.20.15: songs moved to another folder by hand and added again as new ones.
+  await MovedFiles.repairOnce(db).catchError((Object e) {
+    debugPrint('moved files: $e');
+    return 0;
+  });
   // 播放記錄 was removed in 1.20.0: its sign-ins and waiting plays go.
   await db.db.delete('settings', where: "key IN ('lastfm_session', 'lastfm_user', 'listenbrainz_token', 'listenbrainz_user', 'scrobble_queue_lastfm', 'scrobble_queue_listenbrainz')");
   // A new install (no songs yet, never through the guide): 第一次使用 shows.

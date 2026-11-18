@@ -893,6 +893,27 @@ void tree(bool overlap) {
       expect(cloud.count('v2-song-'), 0);
       await expectStable([again, pc]);
     });
+
+    test('8.11 電腦自己把歌搬到別的資料夾（舊的紀錄還在、檔案已不見）：手機不會重傳', () async {
+      final a = await phone.song('a'), b = await phone.song('b');
+      await phone.playlist('通勤', [a, b]);
+      await settle([phone, pc]);
+      expect(await pc.library(), ['a', 'b']);
+      // The downloads moved by hand into the music folder, then scanned:
+      // new entries, while the old ones (in the playlist) point at nothing.
+      for (final f in Directory('${pc.dir.path}/dl').listSync().whereType<File>()) {
+        f.renameSync('${pc.dir.path}/music/${f.uri.pathSegments.last}');
+      }
+      await pc.scan();
+      await pc.sync();
+      final r = await phone.sync();
+      expect(r.uploads, 0, reason: 'the pc has them, just somewhere else');
+      expect(phone.engine.pending, 0);
+      await settle([phone, pc]);
+      expect(cloud.count('v2-song-'), 0);
+      expect(await pc.titles('通勤'), ['a', 'b']);
+      await expectStable([phone, pc]);
+    });
   });
 
   group('8b 沒有任何一台有的歌', () {

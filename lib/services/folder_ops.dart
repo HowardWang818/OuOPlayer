@@ -65,6 +65,20 @@ class FolderOps {
     return _apply({for (final t in tracks) t.uri: t}, moves);
   }
 
+  /// Moves [tracks] from [from] to [to], keeping their folders below it
+  /// (1.20.15: the downloads, when the download folder changes).
+  Future<MoveReport> moveBetween(List<Track> tracks, String from, String to) async {
+    final taken = <String>{};
+    final moves = <String, String>{};
+    for (final t in tracks) {
+      if (!p.isWithin(from, t.uri) || p.isWithin(to, t.uri)) continue;
+      final dest = freePath(p.join(to, p.relative(t.uri, from: from)), taken);
+      taken.add(dest.toLowerCase());
+      moves[t.uri] = dest;
+    }
+    return _apply({for (final t in tracks) t.uri: t}, moves);
+  }
+
   /// Renames [folder] to [name]; [inside] are the library's songs in it (and below).
   Future<MoveReport> renameFolder(String folder, String name, List<Track> inside) async {
     final err = folderNameError(name);

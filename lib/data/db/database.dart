@@ -344,6 +344,47 @@ class AppDatabase {
           await txn.update(table, {'track_id': e.value}, where: 'track_id = ?', whereArgs: [e.key], conflictAlgorithm: ConflictAlgorithm.replace);
         }
         await txn.update('download_history', {'path': e.value}, where: 'path = ?', whereArgs: [e.key]);
+        await txn.update('track_loudness', {'track_id': e.value}, where: 'track_id = ?', whereArgs: [e.key], conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+    _notify();
+  }
+
+  /// Songs whose files were moved and then added again as new songs (old id
+  /// → new id, 1.20.15): the new entry goes, and the old one moves to its
+  /// path, keeping its playlists, like, play counts, edits and download
+  /// record (play counts of both add up).
+  Future<void> mergeMovedTracks(Map<String, String> moved) async {
+    if (moved.isEmpty) return;
+    await db.transaction((txn) async {
+      for (final e in moved.entries) {
+        final (from, to) = (e.key, e.value);
+        if (from == to) continue;
+        // Already merged (or gone): nothing to move, and the new song stays.
+        if ((await txn.query('tracks', columns: ['id'], where: 'id = ?', whereArgs: [from])).isEmpty) continue;
+        await txn.delete('tracks', where: 'id = ?', whereArgs: [to]);
+        // Edits: the old song's (its first name) win.
+        if ((await txn.query('track_edits', where: 'track_id = ?', whereArgs: [from])).isNotEmpty) {
+          await txn.delete('track_edits', where: 'track_id = ?', whereArgs: [to]);
+        }
+        final a = (await txn.query('plays', where: 'track_id = ?', whereArgs: [from])).firstOrNull;
+        final b = (await txn.query('plays', where: 'track_id = ?', whereArgs: [to])).firstOrNull;
+        if (a != null && b != null) {
+          int n(Object? v) => (v as int?) ?? 0;
+          await txn.update('plays', {'count': n(a['count']) + n(b['count']), 'last_played': max(n(a['last_played']), n(b['last_played']))},
+              where: 'track_id = ?', whereArgs: [to]);
+          await txn.delete('plays', where: 'track_id = ?', whereArgs: [from]);
+        }
+        await txn.update('tracks', {'id': to, 'uri': to}, where: 'id = ?', whereArgs: [from]);
+        for (final table in ['playlist_tracks', 'history', 'listening_log', 'track_edits']) {
+          await txn.update(table, {'track_id': to}, where: 'track_id = ?', whereArgs: [from]);
+        }
+        for (final table in ['favorites', 'plays']) {
+          await txn.update(table, {'track_id': to}, where: 'track_id = ?', whereArgs: [from], conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+        await txn.update('download_history', {'path': to}, where: 'path = ?', whereArgs: [from]);
+        await txn.update('track_loudness', {'track_id': to}, where: 'track_id = ?', whereArgs: [from], conflictAlgorithm: ConflictAlgorithm.ignore);
+        await txn.delete('track_loudness', where: 'track_id = ?', whereArgs: [from]);
       }
     });
     _notify();

@@ -110,7 +110,11 @@ class SyncNotifier extends Notifier<SyncState> {
       email: s['sync_email'],
       last: last == null ? null : DateTime.fromMillisecondsSinceEpoch(last),
     );
+    // 暫停 holds until 繼續 or 立即同步, even after the app is closed (1.20.15).
+    if (s[_pausedKey] == 'true') _engine.pause();
   }
+
+  static const _pausedKey = 'sync_paused';
 
   /// Syncing now or just finished: library changes now are the sync's own.
   bool get quiet => state.running || (_endedAt != null && DateTime.now().difference(_endedAt!) < const Duration(seconds: 15));
@@ -138,8 +142,9 @@ class SyncNotifier extends Notifier<SyncState> {
   String _capGb = '5';
 
   /// One sync, then the songs on their way (phone: only on Wi-Fi). Asked
-  /// while syncing: runs again right after. [retry]: the every-minute sync
-  /// while songs are missing, which doesn't end a pause (the others do).
+  /// while syncing: runs again right after. Only a sync the user asked for
+  /// (not [auto], not [retry]) ends a pause: before 1.20.15 every automatic
+  /// sync did, so 暫停 lasted seconds.
   Future<void> run({bool auto = false, bool retry = false}) async {
     if (!syncAvailable || !state.signedIn) {
       unawaited(_tagBacklog());
@@ -149,7 +154,7 @@ class SyncNotifier extends Notifier<SyncState> {
       _again = true;
       return;
     }
-    if (!retry && _engine.paused) _engine.resume();
+    if (!auto && !retry && _engine.paused) await _setPaused(false);
     state = state.copyWith(running: true);
     _capGb = (await ref.read(dbProvider).allSettings())['sync_relay_gb'] ?? '5';
     String message;
@@ -216,6 +221,11 @@ class SyncNotifier extends Notifier<SyncState> {
 
   Future<void> _transfers({bool then = false}) async {
     if (_engine.pending == 0 || _engine.transfersRunning) return;
+    if (_engine.paused) {
+      // The paused notification (with 繼續) stays up while songs wait.
+      _show(TransferProgress(done: 0, total: _engine.pending, title: '', upload: true, fraction: 0, paused: true));
+      return;
+    }
     // Phone: songs only over Wi-Fi.
     if (Platform.isAndroid && await onMobileData()) return;
     final done = await _engine.runTransfers(relayCap: relayCap, onProgress: _show);
@@ -226,13 +236,18 @@ class SyncNotifier extends Notifier<SyncState> {
     }
   }
 
-  void pauseTransfers() {
-    _engine.pause();
+  Future<void> _setPaused(bool on) async {
+    on ? _engine.pause() : _engine.resume();
+    await ref.read(dbProvider).setSetting(_pausedKey, '$on');
+  }
+
+  Future<void> pauseTransfers() async {
+    await _setPaused(true);
     _show(TransferProgress(done: 0, total: _engine.pending, title: '', upload: true, fraction: 0, paused: true));
   }
 
-  void resumeTransfers() {
-    _engine.resume();
+  Future<void> resumeTransfers() async {
+    await _setPaused(false);
     unawaited(_transfers());
   }
 
@@ -525,5 +540,5 @@ Future<void> offerSyncIn(BuildContext context, int playlistId) async {
   );
   if (ok != true) return;
   await c.read(syncEngineProvider).enable(playlistId);
-  unawaited(c.read(syncProvider.notifier).run());
+  unawaited(c.read(syncProvider.notifier).run(auto: true));
 }
