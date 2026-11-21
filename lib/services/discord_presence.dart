@@ -29,6 +29,8 @@ class DiscordActivity {
     final button = ListenLink.webUrl(track);
     return {
       'type': 2, // Listening
+      // The member list shows the song, not 「OuOPlayer」 (1.21.1).
+      'status_display_type': 2,
       'details': _text(track.title),
       if (_artist(track) != null) 'state': _text(_artist(track)!),
       'timestamps': {
@@ -69,6 +71,23 @@ class DiscordActivity {
         'args': {'pid': pid, 'activity': activity},
         'nonce': nonce,
       };
+}
+
+/// Discord takes about 5 changes per 20 seconds (1.21.1: before, one at
+/// most every 4 seconds, so a song change or pause showed late).
+class SendWindow {
+  SendWindow({this.max = 5, this.span = const Duration(seconds: 20)});
+  final int max;
+  final Duration span;
+  final _at = <DateTime>[];
+
+  /// How long a change made [now] waits: none while there is room.
+  Duration wait(DateTime now) {
+    _at.removeWhere((t) => now.difference(t) >= span);
+    return _at.length < max ? Duration.zero : span - now.difference(_at.first);
+  }
+
+  void sent(DateTime now) => _at.add(now);
 }
 
 // ---------- the pipe (Windows) ----------
@@ -180,7 +199,7 @@ class DiscordPresence {
   _Pipe? _pipe;
   final _subs = <StreamSubscription<Object?>>[];
   Timer? _retry, _later, _drain;
-  DateTime _sentAt = DateTime.fromMillisecondsSinceEpoch(0);
+  final _window = SendWindow();
   final _covers = <String, String?>{};
   var _nonce = 0;
   bool _live = true;
@@ -213,32 +232,39 @@ class DiscordPresence {
     }
   }
 
-  /// Discord takes about 5 changes per 20 seconds: one at most every 4.
+  /// At once while there is room ([SendWindow]); otherwise the latest state
+  /// once there is.
   void _soon() {
     if (!_live) return;
     _later?.cancel();
-    final wait = const Duration(seconds: 4) - DateTime.now().difference(_sentAt);
-    _later = Timer(wait.isNegative ? Duration.zero : wait, () => unawaited(_send()));
+    _later = Timer(_window.wait(DateTime.now()), () => unawaited(_send()));
   }
 
+  /// The state now. A new song goes out without waiting for its cover: the
+  /// cover follows once found.
   Future<void> _send() async {
     if (!_live) return;
     final handler = _ref.read(audioHandlerProvider);
     final track = handler.currentTrack;
     final playing = handler.player.playing;
-    String? cover;
-    if (track != null && playing) cover = await _cover(track);
-    if (!_live) return;
     final activity = DiscordActivity.of(track,
-        playing: handler.player.playing,
+        playing: playing,
         position: handler.player.position,
         duration: handler.player.duration,
-        cover: cover,
+        cover: track == null ? null : _knownCover(track),
         nowMs: DateTime.now().millisecondsSinceEpoch);
     if (!_connect()) return;
-    _sentAt = DateTime.now();
-    if (!_pipe!.write(DiscordActivity.frame(1, DiscordActivity.setActivity(activity, pid: pid, nonce: '${_nonce++}')))) _lost();
+    _window.sent(DateTime.now());
+    if (!_pipe!.write(DiscordActivity.frame(1, DiscordActivity.setActivity(activity, pid: pid, nonce: '${_nonce++}')))) {
+      _lost();
+      return;
+    }
+    if (track == null || !playing || _knownCover(track) != null || _covers.containsKey(track.id)) return;
+    final url = await _cover(track);
+    if (url != null && _live && handler.currentTrack?.id == track.id && handler.player.playing) _soon();
   }
+
+  String? _knownCover(Track t) => t.art != null && t.art!.startsWith('https://') ? t.art : _covers[t.id];
 
   bool _connect() {
     if (_pipe != null) return true;

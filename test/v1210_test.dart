@@ -85,6 +85,22 @@ void main() {
       expect((withCover['assets']! as Map)['large_image'], 'https://x/600x600bb.jpg');
     });
 
+    test('1.21.1: the member list shows the song', () {
+      final a = DiscordActivity.of(_t('春を告げる', artist: 'yama'), playing: true, position: Duration.zero, nowMs: 0)!;
+      expect(a['status_display_type'], 2);
+    });
+
+    test('1.21.1: five changes at once, then the latest when there is room', () {
+      final w = SendWindow();
+      final t0 = DateTime(2026, 11, 21, 12);
+      for (var i = 0; i < 5; i++) {
+        expect(w.wait(t0.add(Duration(seconds: i))), Duration.zero);
+        w.sent(t0.add(Duration(seconds: i)));
+      }
+      expect(w.wait(t0.add(const Duration(seconds: 5))), const Duration(seconds: 15));
+      expect(w.wait(t0.add(const Duration(seconds: 20))), Duration.zero, reason: 'the first one has left the 20 seconds');
+    });
+
     test('Discord takes 2 to 128 characters', () {
       final short = DiscordActivity.of(_t('A', artist: '未知演出者'), playing: true, position: Duration.zero, nowMs: 0)!;
       expect((short['details']! as String).length, 2);
