@@ -14,6 +14,8 @@ import 'services/download_notifier.dart';
 import 'services/download_service.dart';
 import 'services/equalizer.dart';
 import 'services/launcher_shortcuts.dart';
+import 'services/discord_presence.dart';
+import 'services/listen_link.dart';
 import 'services/missing_songs.dart';
 import 'services/player_widget.dart';
 import 'services/usage_stats.dart';
@@ -53,6 +55,8 @@ class OuoApp extends ConsumerWidget {
     ref.watch(autoBackupProvider);
     ref.watch(syncTriggersProvider);
     ref.watch(launcherShortcutsProvider);
+    ref.watch(listenLinkProvider);
+    ref.watch(discordPresenceProvider);
     return MaterialApp(
       navigatorKey: rootNavigatorKey,
       title: 'OuOPlayer',
@@ -305,6 +309,39 @@ final shareIntentProvider = Provider<void>((ref) {
     if (call.method == 'shared') handle(call.arguments as String?);
   });
   channel.invokeMethod<String>('initialText').then(handle).catchError((_) {});
+});
+
+/// ouoplayer://play links (1.21.0, Discord's 「Open OuOPlayer」 through the
+/// listen page): the song plays when it is here; otherwise 線上搜尋 looks for
+/// it. Android hands them over on ouo/link; Windows through the program's
+/// arguments or a second start (LinkInbox).
+final listenLinkProvider = Provider<void>((ref) {
+  Future<void> open(String text) async {
+    final link = ListenLink.parse(text);
+    if (link == null) return;
+    rootNavigatorKey.currentState?.popUntil((r) => r.isFirst);
+    final song = link.findIn(await ref.read(dbProvider).tracks());
+    if (song != null) {
+      await ref.read(audioHandlerProvider).playTracks([song]);
+      return;
+    }
+    ref.read(searchStateProvider.notifier)
+      ..setOnline(true)
+      ..setText(link.query)
+      ..setOnlineQuery(link.query);
+    ref.read(tabProvider.notifier).set(1);
+  }
+
+  LinkInbox.listen((l) => unawaited(open(l)));
+  if (Platform.isAndroid) {
+    const channel = MethodChannel('ouo/link');
+    channel.setMethodCallHandler((call) async {
+      if (call.method == 'open' && call.arguments is String) LinkInbox.add(call.arguments as String);
+    });
+    channel.invokeMethod<String>('initial').then((l) {
+      if (l != null) LinkInbox.add(l);
+    }).catchError((_) {});
+  }
 });
 
 /// Long-press shortcuts on the home-screen icon (ShortcutsPlugin.kt).

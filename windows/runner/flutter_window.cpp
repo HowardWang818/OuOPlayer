@@ -52,6 +52,8 @@ bool FlutterWindow::OnCreate() {
   if (!Win32Window::OnCreate()) {
     return false;
   }
+  // A second start finds this window by it to hand over a link (1.21.0).
+  ::SetPropW(GetHandle(), kMainProp, reinterpret_cast<HANDLE>(1));
 
   RECT frame = GetClientArea();
 
@@ -148,6 +150,16 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                                                       lparam);
     if (result) {
       return *result;
+    }
+  }
+
+  // An ouoplayer:// link from a second start (1.21.0): to the Dart side.
+  if (message == WM_COPYDATA) {
+    const auto* data = reinterpret_cast<const COPYDATASTRUCT*>(lparam);
+    if (data && data->dwData == kLinkData && instance_) {
+      std::string link(static_cast<const char*>(data->lpData), data->cbData);
+      instance_->InvokeMethod("open", std::make_unique<flutter::EncodableValue>(link));
+      return TRUE;
     }
   }
 

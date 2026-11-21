@@ -23,6 +23,12 @@ class FlutterWindow : public Win32Window {
   // Sent by a second start of OuOPlayer: show this window.
   static UINT ShowMessage();
 
+  // WM_COPYDATA tag of an ouoplayer:// link from a second start (1.21.0).
+  static constexpr ULONG_PTR kLinkData = 0x4F554C4B;  // 'OULK'
+
+  // The window property that marks OuOPlayer's main window.
+  static constexpr const wchar_t* kMainProp = L"OuOPlayerMainWindow";
+
  protected:
   // Win32Window:
   bool OnCreate() override;

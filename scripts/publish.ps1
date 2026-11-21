@@ -179,6 +179,9 @@ if (-not $SkipR2) {
     $latest = [ordered]@{ version = $version; build = [int]$build; notes = $notes; released = (Get-Date -Format 'yyyy-MM-dd'); apks = $apks }
     $latestFile = Join-Path $tmp 'latest.json'
     [IO.File]::WriteAllText($latestFile, ($latest | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
+    # The whats-new lines for this version (v1.21.0), before latest.json sends phones to it.
+    & powershell -ExecutionPolicy Bypass -File (Join-Path $root 'scripts\whats_new.ps1') -Version $version
+    if ($LASTEXITCODE -ne 0) { throw 'whats_new.ps1 failed' }
     Write-Host '== Uploading latest.json' -ForegroundColor Cyan
     Put 'latest.json' $latestFile 'application/json; charset=utf-8'
 

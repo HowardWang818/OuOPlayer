@@ -50,6 +50,15 @@ Name: "{autoprograms}\OuOPlayer"; Filename: "{app}\OuOPlayer.exe"
 ; Updates run silently: a shortcut the user removed stays removed.
 Name: "{autodesktop}\OuOPlayer"; Filename: "{app}\OuOPlayer.exe"; Tasks: desktopicon; Check: not WizardSilent
 
+[Registry]
+; ouoplayer:// links (1.21.0): Discord's "Open OuOPlayer" button, through the
+; listen page, plays the song here or searches for it. HKA is the current
+; user's classes for a per-user install, the machine's for an admin install.
+Root: HKA; Subkey: "Software\Classes\ouoplayer"; ValueType: string; ValueName: ""; ValueData: "URL:OuOPlayer"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\ouoplayer"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKA; Subkey: "Software\Classes\ouoplayer\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\OuOPlayer.exe"",0"
+Root: HKA; Subkey: "Software\Classes\ouoplayer\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\OuOPlayer.exe"" ""%1"""
+
 [Run]
 ; Also after a silent update, so the app comes back by itself.
 Filename: "{app}\OuOPlayer.exe"; Description: "{cm:LaunchProgram,OuOPlayer}"; Flags: nowait postinstall runasoriginaluser

@@ -33,6 +33,24 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // running (from the tray too); started with Windows, it just ends.
   ::CreateMutexW(nullptr, FALSE, L"Local\\OuOPlayerSingleInstance");
   if (::GetLastError() == ERROR_ALREADY_EXISTS) {
+    // An ouoplayer:// link (Discord's "Open OuOPlayer", 1.21.0) goes to the
+    // one running, which plays or searches for the song.
+    for (const auto& arg : command_line_arguments) {
+      if (arg.rfind("ouoplayer:", 0) != 0) continue;
+      HWND main_window = nullptr;
+      ::EnumWindows(
+          [](HWND hwnd, LPARAM found) -> BOOL {
+            if (!::GetPropW(hwnd, FlutterWindow::kMainProp)) return TRUE;
+            *reinterpret_cast<HWND*>(found) = hwnd;
+            return FALSE;
+          },
+          reinterpret_cast<LPARAM>(&main_window));
+      if (main_window) {
+        COPYDATASTRUCT data{FlutterWindow::kLinkData, static_cast<DWORD>(arg.size()), const_cast<char*>(arg.data())};
+        ::SendMessageW(main_window, WM_COPYDATA, 0, reinterpret_cast<LPARAM>(&data));
+      }
+      break;
+    }
     if (!start_hidden) {
       ::AllowSetForegroundWindow(ASFW_ANY);
       ::PostMessageW(HWND_BROADCAST, FlutterWindow::ShowMessage(), 0, 0);

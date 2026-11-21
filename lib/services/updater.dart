@@ -110,6 +110,34 @@ class Updater {
     return '$e';
   }
 
+  /// A version's 新功能 lines from the update server (1.21.0: changed there
+  /// without a new release); null when there are none or it can't be read
+  /// within a few seconds.
+  static Future<List<String>?> whatsNewOnline(String version, {Dio? dio}) async {
+    if (!supported && dio == null) return null;
+    final d = dio ??
+        Dio(BaseOptions(
+          baseUrl: updateServer,
+          headers: updateHeaders,
+          connectTimeout: const Duration(seconds: 3),
+          receiveTimeout: const Duration(seconds: 3),
+        ));
+    try {
+      final res = await d.get<Map<String, dynamic>>('/whats-new/$version.json', options: Options(responseType: ResponseType.json));
+      return parseWhatsNew(res.data);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// `{"version": "1.21.0", "lines": ["…", …]}` → its lines (empty ones left out).
+  static List<String>? parseWhatsNew(Map<String, dynamic>? j) {
+    final lines = j?['lines'];
+    if (lines is! List) return null;
+    final out = [for (final l in lines) if (l is String && l.trim().isNotEmpty) l.trim()];
+    return out.isEmpty ? null : out;
+  }
+
   Future<UpdateInfo> latest() async {
     final file = Platform.isWindows ? '/latest-windows.json' : '/latest.json';
     final res = await _dio.get<Map<String, dynamic>>(file, options: Options(responseType: ResponseType.json));

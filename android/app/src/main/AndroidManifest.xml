@@ -52,6 +52,14 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
+            <!-- ouoplayer://play?t=…&a=… (1.21.0): Discord's 「Open OuOPlayer」 button,
+                 through the listen page; the song plays, or is searched for. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="ouoplayer" android:host="play" />
+            </intent-filter>
         </activity>
 
         <!-- The home screen entry, one per app icon (設定 → 關於與更新 → App 圖示).

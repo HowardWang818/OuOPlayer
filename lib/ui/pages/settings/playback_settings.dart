@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../providers/providers.dart';
 import '../../../services/desktop_tray.dart';
+import '../../../services/discord_presence.dart' show DiscordPresenceOn, discordPresenceOnProvider;
 import '../../../services/equalizer.dart';
 import '../../../services/sleep_timer.dart';
 import '../../widgets/sleep_timer_sheet.dart';
@@ -35,6 +36,14 @@ class PlaybackSettingsPage extends ConsumerWidget {
           subtitle: '登入 Windows 時打開 OuOPlayer（系統匣選項開著時，直接縮在系統匣）',
           onChanged: DesktopTray.setStartWithWindows,
         ),
+        if (DiscordPresenceOn.offered)
+          SettingSwitch(
+            secondary: const Icon(Icons.headset_outlined),
+            title: const Text('在 Discord 顯示正在聽的歌'),
+            subtitle: const Text('Discord 開著時顯示歌名、歌手和進度，暫停時不顯示'),
+            value: ref.watch(discordPresenceOnProvider),
+            onChanged: ref.read(discordPresenceOnProvider.notifier).set,
+          ),
       ],
       SettingTile(
         action: '開啟',

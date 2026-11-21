@@ -7,6 +7,7 @@
 //   GET /windows/v0.23.0/OuOPlayer-0.23.0-windows-setup.exe
 //   GET /components/ytdlp-0.18.1/arm64-v8a/python.zip  download parts (v1.15.0)
 //   GET /hello                                        anonymous daily count (v1.18.0)
+//   GET /whats-new/1.21.0.json                        a version's 新功能 lines (v1.21.0)
 //   GET /stats?key=…                                  the counts, for the developer
 // Everything else gets a plain 404, so scanners learn nothing.
 //
@@ -20,6 +21,7 @@ const APP_ID = 'ouoplayer';
 const APK = /^\/v\d+\.\d+\.\d+\/OuOPlayer-\d+\.\d+\.\d+-(arm64-v8a|armeabi-v7a|x86_64)\.apk$/;
 const SETUP = /^\/windows\/v\d+\.\d+\.\d+\/OuOPlayer-\d+\.\d+\.\d+-windows-setup\.exe$/;
 const COMPONENT = /^\/components\/ytdlp-\d+\.\d+\.\d+\/(arm64-v8a|armeabi-v7a|x86_64)\/(python|ffmpeg)\.zip$/;
+const WHATS_NEW = /^\/whats-new\/\d+\.\d+\.\d+\.json$/;
 
 const notFound = () => new Response('Not found', { status: 404 });
 const ID = /^[0-9a-f]{16}$/;
@@ -72,7 +74,7 @@ export default {
       const { success } = await env.CHECK_LIMIT.limit({ key: ip });
       return success ? hello(request, env) : new Response('Too many requests', { status: 429 });
     }
-    const latest = path === '/latest.json' || path === '/latest-windows.json';
+    const latest = path === '/latest.json' || path === '/latest-windows.json' || WHATS_NEW.test(path);
     const setup = SETUP.test(path);
     const component = COMPONENT.test(path);
     if (!latest && !setup && !component && !APK.test(path)) return notFound();

@@ -82,6 +82,12 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Set from outside (an ouoplayer:// link, 1.21.0): the box follows.
+    ref.listen(searchStateProvider.select((s) => s.text), (_, text) {
+      if (_ctrl.text == text) return;
+      _ctrl.text = text;
+      setState(() => _libraryQuery = text);
+    });
     final s = ref.watch(searchStateProvider);
     final q = s.text;
     final online = s.online;

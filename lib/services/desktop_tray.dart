@@ -6,6 +6,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../data/db/database.dart';
 import 'audio_handler.dart';
+import 'listen_link.dart' show LinkInbox;
 import 'window_state.dart';
 
 /// Windows, when 關閉視窗時縮到系統匣 is on (設定 → 播放): closing the window
@@ -27,6 +28,11 @@ class DesktopTray with TrayListener, WindowListener {
     // one run).
     const MethodChannel('ouoplayer/instance').setMethodCallHandler((call) async {
       if (call.method == 'show') await tray._show();
+      // An ouoplayer:// link from a second start (1.21.0).
+      if (call.method == 'open' && call.arguments is String) {
+        await tray._show();
+        LinkInbox.add(call.arguments as String);
+      }
     });
     // Previous / play-pause / next under the taskbar thumbnail (flutter_window.cpp).
     const taskbar = MethodChannel('ouoplayer/taskbar');

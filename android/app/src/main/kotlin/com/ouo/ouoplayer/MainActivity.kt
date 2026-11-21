@@ -14,6 +14,8 @@ class MainActivity : AudioServiceActivity() {
     private var downloads: DownloadNotifierPlugin? = null
     private var widget: PlayerWidgetPlugin? = null
     private var share: MethodChannel? = null
+    private var link: MethodChannel? = null
+    private var pendingLink: String? = null
     private var shortcuts: ShortcutsPlugin? = null
     private var pendingShare: String? = null
 
@@ -105,6 +107,18 @@ class MainActivity : AudioServiceActivity() {
                 result.success(false)
             }
         }
+        // ouoplayer://play links (1.21.0): the song plays, or is searched for.
+        pendingLink = openedLink(intent)
+        link = MethodChannel(messenger, "ouo/link").apply {
+            setMethodCallHandler { call, result ->
+                if (call.method == "initial") {
+                    result.success(pendingLink)
+                    pendingLink = null
+                } else {
+                    result.notImplemented()
+                }
+            }
+        }
         // Links shared from other apps (YouTube, browser…) go to the downloader.
         pendingShare = sharedText(intent)
         share = MethodChannel(messenger, "ouo/share").apply {
@@ -138,6 +152,7 @@ class MainActivity : AudioServiceActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         sharedText(intent)?.let { share?.invokeMethod("shared", it) }
+        openedLink(intent)?.let { link?.invokeMethod("open", it) }
         intent.getStringExtra(DownloadForegroundService.EXTRA_OPEN)?.let { downloads?.deliver(it) }
         intent.getStringExtra(ShortcutsPlugin.EXTRA)?.let { shortcuts?.deliver(it) }
     }
@@ -149,6 +164,9 @@ class MainActivity : AudioServiceActivity() {
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
     }
+
+    private fun openedLink(intent: Intent?): String? =
+        if (intent?.action == Intent.ACTION_VIEW && intent.data?.scheme == "ouoplayer") intent.dataString else null
 
     private fun sharedText(intent: Intent?): String? =
         if (intent?.action == Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT) else null

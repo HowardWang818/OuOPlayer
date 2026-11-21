@@ -19,6 +19,7 @@ import 'services/desktop_tray.dart';
 import 'services/audio_handler.dart';
 import 'services/artist_merge.dart';
 import 'services/library_scanner.dart';
+import 'services/listen_link.dart' show LinkInbox;
 import 'services/moved_files.dart';
 import 'services/volume_normalizer.dart' show loudnessProvider;
 import 'services/window_state.dart';
@@ -30,6 +31,11 @@ Future<void> main(List<String> args) async {
   if (Platform.isWindows || Platform.isLinux) {
     JustAudioMediaKit.ensureInitialized(windows: true, linux: true);
     JustAudioMediaKit.title = 'OuOPlayer';
+  }
+
+  // Started by an ouoplayer:// link (1.21.0): taken once the app is up.
+  for (final a in args) {
+    if (a.startsWith('ouoplayer:')) LinkInbox.add(a);
   }
 
   final db = await AppDatabase.open();

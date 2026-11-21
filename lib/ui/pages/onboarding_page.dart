@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../config/version.dart';
 import '../../providers/providers.dart';
+import '../../services/updater.dart';
 import 'privacy_page.dart';
 import 'settings/library_settings.dart' show addMusicFolder;
 
@@ -52,8 +53,14 @@ class _FirstRunGateState extends ConsumerState<FirstRunGate> {
 /// shows then). Copies from before 1.18.0 never stored [seenVersion].
 bool whatsNewDue({required bool firstRun, required String? seenVersion}) => !firstRun && seenVersion != appVersion;
 
-/// The lines of assets/whats_new.txt (written for each version).
-Future<List<String>> whatsNewLines() async {
+/// This version's 新功能 lines: from the update server first (1.21.0, so they
+/// can change without a release), else assets/whats_new.txt.
+Future<List<String>> whatsNewLines({Future<List<String>?> Function()? online}) async {
+  List<String>? remote;
+  try {
+    remote = await (online ?? () => Updater.whatsNewOnline(appVersion))();
+  } catch (_) {}
+  if (remote != null && remote.isNotEmpty) return remote;
   try {
     final text = await rootBundle.loadString('assets/whats_new.txt');
     return [for (final l in text.split('\n')) if (l.trim().isNotEmpty) l.trim()];
