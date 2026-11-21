@@ -90,6 +90,51 @@ class SendWindow {
   void sent(DateTime now) => _at.add(now);
 }
 
+/// The songs' covers on the internet for the Discord status (1.21.2): one
+/// lookup per song at a time (1.21.1 ran several at once, iTunes turned
+/// them away, and the song was then remembered as having no cover). A
+/// lookup that failed is tried again after a minute; only 「none found」 is
+/// remembered.
+class CoverLookup {
+  CoverLookup(this._find, {DateTime Function()? clock}) : _clock = clock ?? DateTime.now;
+
+  /// The cover's address, null when there is none; throws when it can't tell.
+  final Future<String?> Function(Track t) _find;
+  final DateTime Function() _clock;
+  final _found = <String, String?>{};
+  final _running = <String, Future<String?>>{};
+  final _failedAt = <String, DateTime>{};
+
+  static const retryAfter = Duration(minutes: 1);
+
+  /// The cover already known (null: none yet, or none at all).
+  String? known(Track t) => t.art != null && t.art!.startsWith('https://') ? t.art : _found[t.id];
+
+  /// Nothing more to look up for [t] now.
+  bool settled(Track t) {
+    if (known(t) != null || _found.containsKey(t.id)) return true;
+    final failed = _failedAt[t.id];
+    return failed != null && _clock().difference(failed) < retryAfter;
+  }
+
+  Future<String?> get(Track t) {
+    if (settled(t)) return Future.value(known(t));
+    return _running[t.id] ??= () async {
+      try {
+        final url = await _find(t);
+        _found[t.id] = url;
+        _failedAt.remove(t.id);
+        return url;
+      } catch (_) {
+        _failedAt[t.id] = _clock();
+        return null;
+      } finally {
+        _running.remove(t.id);
+      }
+    }();
+  }
+}
+
 // ---------- the pipe (Windows) ----------
 
 typedef _CreateFileC = IntPtr Function(Pointer<Utf16>, Uint32, Uint32, Pointer<Void>, Uint32, Uint32, IntPtr);
@@ -200,7 +245,14 @@ class DiscordPresence {
   final _subs = <StreamSubscription<Object?>>[];
   Timer? _retry, _later, _drain;
   final _window = SendWindow();
-  final _covers = <String, String?>{};
+  late final _covers = CoverLookup((t) async {
+    final hit = await CoverFinder(_ref.read(iTunesSearchProvider), pause: Duration.zero).find(t);
+    return hit != null && hit.level == MatchLevel.sure ? hit.song.artwork : null;
+  });
+
+  /// Changes this close together go out as one (1.21.2: a song change
+  /// brings several at once).
+  static const settle = Duration(milliseconds: 300);
   var _nonce = 0;
   bool _live = true;
 
@@ -237,7 +289,8 @@ class DiscordPresence {
   void _soon() {
     if (!_live) return;
     _later?.cancel();
-    _later = Timer(_window.wait(DateTime.now()), () => unawaited(_send()));
+    final wait = _window.wait(DateTime.now());
+    _later = Timer(wait > settle ? wait : settle, () => unawaited(_send()));
   }
 
   /// The state now. A new song goes out without waiting for its cover: the
@@ -251,7 +304,7 @@ class DiscordPresence {
         playing: playing,
         position: handler.player.position,
         duration: handler.player.duration,
-        cover: track == null ? null : _knownCover(track),
+        cover: track == null ? null : _covers.known(track),
         nowMs: DateTime.now().millisecondsSinceEpoch);
     if (!_connect()) return;
     _window.sent(DateTime.now());
@@ -259,12 +312,10 @@ class DiscordPresence {
       _lost();
       return;
     }
-    if (track == null || !playing || _knownCover(track) != null || _covers.containsKey(track.id)) return;
-    final url = await _cover(track);
+    if (track == null || !playing || _covers.settled(track)) return;
+    final url = await _covers.get(track);
     if (url != null && _live && handler.currentTrack?.id == track.id && handler.player.playing) _soon();
   }
-
-  String? _knownCover(Track t) => t.art != null && t.art!.startsWith('https://') ? t.art : _covers[t.id];
 
   bool _connect() {
     if (_pipe != null) return true;
@@ -289,18 +340,5 @@ class DiscordPresence {
     _pipe?.close();
     _pipe = null;
     _soon();
-  }
-
-  /// The song's cover on the internet (iTunes), remembered; null when none.
-  Future<String?> _cover(Track t) async {
-    if (t.art != null && t.art!.startsWith('https://')) return t.art;
-    if (_covers.containsKey(t.id)) return _covers[t.id];
-    String? url;
-    try {
-      final hit = await CoverFinder(_ref.read(iTunesSearchProvider), pause: Duration.zero).find(t);
-      if (hit != null && hit.level == MatchLevel.sure) url = hit.song.artwork;
-    } catch (_) {}
-    _covers[t.id] = url;
-    return url;
   }
 }

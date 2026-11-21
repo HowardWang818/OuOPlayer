@@ -101,6 +101,55 @@ void main() {
       expect(w.wait(t0.add(const Duration(seconds: 20))), Duration.zero, reason: 'the first one has left the 20 seconds');
     });
 
+    test('1.21.2: one cover lookup per song at a time', () async {
+      var calls = 0;
+      final c = CoverLookup((t) async {
+        calls++;
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        return 'https://x/cover.jpg';
+      });
+      final song = _t('春を告げる', artist: 'yama');
+      final got = await Future.wait([c.get(song), c.get(song), c.get(song)]);
+      expect(got, everyElement('https://x/cover.jpg'));
+      expect(calls, 1);
+      expect(c.known(song), 'https://x/cover.jpg');
+      expect(await c.get(song), 'https://x/cover.jpg');
+      expect(calls, 1);
+    });
+
+    test('1.21.2: a failed lookup is not 「no cover」; tried again after a minute', () async {
+      var now = DateTime(2026, 11, 21, 12);
+      var fail = true;
+      final c = CoverLookup((t) async {
+        if (fail) throw 'iTunes said no';
+        return 'https://x/cover.jpg';
+      }, clock: () => now);
+      final song = _t('群青');
+      expect(await c.get(song), isNull);
+      expect(c.settled(song), isTrue, reason: 'not asked again at once');
+      fail = false;
+      now = now.add(const Duration(minutes: 1));
+      expect(c.settled(song), isFalse);
+      expect(await c.get(song), 'https://x/cover.jpg');
+    });
+
+    test('1.21.2: none found is remembered', () async {
+      var calls = 0;
+      final c = CoverLookup((t) async {
+        calls++;
+        return null;
+      });
+      final song = _t('x y');
+      expect(await c.get(song), isNull);
+      expect(c.settled(song), isTrue);
+      await c.get(song);
+      expect(calls, 1);
+    });
+
+    test('1.21.2: changes close together go out as one', () {
+      expect(DiscordPresence.settle, const Duration(milliseconds: 300));
+    });
+
     test('Discord takes 2 to 128 characters', () {
       final short = DiscordActivity.of(_t('A', artist: '未知演出者'), playing: true, position: Duration.zero, nowMs: 0)!;
       expect((short['details']! as String).length, 2);
