@@ -21,9 +21,9 @@ import 'song_matcher.dart' show MatchLevel;
 /// pipe on this computer; Discord on phones has no such thing.
 class DiscordActivity {
   /// The activity for [track] at [position], or null when there is none to
-  /// show (nothing playing, or paused).
+  /// show (nothing playing, paused, or a 試聽).
   static Map<String, Object?>? of(Track? track, {required bool playing, required Duration position, Duration? duration, String? cover, required int nowMs}) {
-    if (track == null || !playing) return null;
+    if (track == null || !playing || track.source == TrackSource.preview) return null;
     final start = nowMs - position.inMilliseconds;
     final length = duration ?? (track.durationMs == null ? null : Duration(milliseconds: track.durationMs!));
     final button = ListenLink.webUrl(track);
@@ -369,7 +369,16 @@ class DiscordPresence {
   DiscordPresence(this._ref, {DiscordPipe? Function() open = WindowsDiscordPipe.open}) : _open = open;
   final Ref _ref;
   final DiscordPipe? Function() _open;
-  late final _connection = DiscordConnection(open: _open, onReady: _soon);
+  late final _connection = DiscordConnection(open: _open, onReady: _onReady);
+
+  /// This connection was told there is nothing to show. Saying so again
+  /// would only use up [SendWindow] (several previews in a row, 1.22.3).
+  bool _cleared = false;
+
+  void _onReady() {
+    _cleared = false; // A new connection hasn't been told anything.
+    _soon();
+  }
   final _subs = <StreamSubscription<Object?>>[];
   Timer? _later;
   final _window = SendWindow();
@@ -441,9 +450,11 @@ class DiscordPresence {
         duration: handler.player.duration,
         cover: track == null ? null : _covers.known(track),
         nowMs: DateTime.now().millisecondsSinceEpoch);
+    if (activity == null && _cleared) return;
+    _cleared = activity == null;
     _window.sent(DateTime.now());
     _connection.send(DiscordActivity.setActivity(activity, pid: pid, nonce: '${_nonce++}'));
-    if (track == null || !playing || _covers.settled(track)) return;
+    if (activity == null || track == null || _covers.settled(track)) return;
     final url = await _covers.get(track);
     if (url != null && _live && handler.currentTrack?.id == track.id && handler.player.playing) _soon();
   }
