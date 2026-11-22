@@ -6,6 +6,7 @@ import 'dart:typed_data';
 
 // ignore: depend_on_referenced_packages
 import 'package:fake_async/fake_async.dart';
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_audio/just_audio.dart';
@@ -13,6 +14,8 @@ import 'package:ouoplayer/data/models/track.dart';
 import 'package:ouoplayer/providers/providers.dart';
 import 'package:ouoplayer/services/audio_handler.dart';
 import 'package:ouoplayer/services/discord_presence.dart';
+// ignore: depend_on_referenced_packages
+import 'package:rxdart/rxdart.dart' show BehaviorSubject;
 
 class FakeDiscord {
   FakeDiscord(this.time);
@@ -111,6 +114,8 @@ class _Handler implements OuoAudioHandler {
   final _Player player = _Player();
   @override
   Track? currentTrack = _song('first');
+  @override
+  BehaviorSubject<MediaItem?> get mediaItem => BehaviorSubject.seeded(currentTrack?.toMediaItem());
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

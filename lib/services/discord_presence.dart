@@ -385,10 +385,19 @@ class DiscordPresence {
   bool _live = true;
 
   void start() {
-    final player = _ref.read(audioHandlerProvider).player;
+    final handler = _ref.read(audioHandlerProvider);
+    final player = handler.player;
     _subs
       ..add(player.playingStream.listen((_) => _soon()))
-      ..add(player.currentIndexStream.listen((_) => _soon()))
+      // The index comes again with every move of the progress (about 17 a
+      // second on Windows): only a different one is a change (1.22.2).
+      ..add(player.currentIndexStream.distinct().listen((_) => _soon()))
+      // Another song in the same place (a new queue, a preview), or renamed;
+      // not the lyric line that may stand in for the artist.
+      ..add(handler.mediaItem.map((item) {
+        final track = item?.extras?['track'];
+        return (item?.id, item?.title, track is Map ? track['artist'] : null);
+      }).distinct().listen((_) => _soon()))
       ..add(player.durationStream.listen((_) => _soon()))
       ..add(player.positionDiscontinuityStream.listen((_) => _soon()));
     _soon();
@@ -404,11 +413,12 @@ class DiscordPresence {
     _connection.close();
   }
 
-  /// At once while there is room ([SendWindow]); otherwise the latest state
-  /// once there is.
+  /// [settle] after the first change while there is room ([SendWindow]),
+  /// otherwise once there is: the state of that moment. More changes don't
+  /// put it off (1.21.2 counted from the last one, so while a song played
+  /// nothing went out).
   void _soon() {
-    if (!_live) return;
-    _later?.cancel();
+    if (!_live || (_later?.isActive ?? false)) return;
     final wait = _window.wait(DateTime.now());
     _later = Timer(wait > settle ? wait : settle, () => unawaited(_send()));
   }
