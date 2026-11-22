@@ -87,6 +87,7 @@ Get it from [Releases](https://github.com/HowardWang818/OuOPlayer/releases/lates
 - Sidebar, now-playing panel and full-screen player, with a layout you can drag to fit
 - Customizable keyboard shortcuts, and keyboard media keys
 - Keep playing in the system tray when the window closes, and start with Windows
+- Show the song you're playing on Discord, with an "Open OuOPlayer" button for others to play the same song (off by default)
 
 **Library**
 - Scans the music on your phone or PC, sorted by album, artist and song
@@ -184,6 +185,7 @@ It only goes online for the following, and only sends what's listed:
 | Cover art, podcast search | Apple iTunes | Title and artist, or your search text | Only when you use them |
 | Online search, downloading missing songs | The platform you pick (YT Music, YouTube, SoundCloud) | Your search text, or title and artist | Only when you use them |
 | Sync | Your own Google Drive | Chosen playlists, song details and files, lyrics, listening history | Off by default, 設定 → 同步 (Settings → Sync) |
+| Discord status (Windows) | Discord on your PC; Apple iTunes for the cover | Title, artist, progress, cover address, a link holding the song's details; iTunes gets only the title, artist and album name | Off by default, 設定 → 播放 (Settings → Playback) |
 | Update checks | OuOPlayer's update server | An update request only | 設定 → 關於與更新 (Settings → About and updates) |
 | Anonymous user count | OuOPlayer's update server | Once a day: a random id, the version, the platform (no IP kept, deleted after 90 days) | — |
 | Original-language titles | mora, OTOTOY, YouTube Music | Title and artist | Only when you use it |

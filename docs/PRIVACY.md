@@ -1,6 +1,6 @@
 # OuOPlayer 隱私權政策
 
-最後更新：2026 年 11 月 10 日
+最後更新：2026 年 11 月 22 日
 
 OuOPlayer 是在 Android 和 Windows 上播放本機音樂的開源 App。它沒有廣告，不需要註冊帳號，也不收集你的音樂庫、播放紀錄或個人資料。開發者唯一收到的，是下面「匿名使用人數」說明的匿名統計。
 
@@ -19,6 +19,7 @@ OuOPlayer 是在 Android 和 Windows 上播放本機音樂的開源 App。它沒
 | 找原文歌名 | mora、OTOTOY、YouTube Music | 歌名和歌手 |
 | 檢查更新、下載元件 | OuOPlayer 的更新伺服器 | 只送出更新檢查請求，不含你的音樂或帳號資料 |
 | 匿名使用人數 | OuOPlayer 的更新伺服器 | 隨機代碼、版本號、平台，每天一次 |
+| 在 Discord 顯示正在聽的歌（Windows，預設關閉） | 電腦上的 Discord，再由 Discord 傳送 | 歌名、歌手、播放進度、封面網址、含歌名／歌手／長度的「Open OuOPlayer」連結 |
 | 下載、串流、Podcast | 你自己貼上或訂閱的網址 | 取得內容所需的請求 |
 
 這些服務各有自己的隱私權政策，網路連線本身也會讓對方看到你的 IP 位址。
@@ -26,6 +27,16 @@ OuOPlayer 是在 Android 和 Windows 上播放本機音樂的開源 App。它沒
 ## 匿名使用人數
 
 每天一次送出隨機代碼、版本號和平台到 OuOPlayer 的更新伺服器，用來統計使用人數；不含個人資料，不記錄 IP 位址，保留 90 天。
+
+## Discord 狀態
+
+這是 Windows 版的選用功能，預設關閉，在「設定 → 播放」開啟或關閉。
+
+- 開啟且正在播放時，上表的資料會交給電腦上的 Discord，看得到你 Discord 狀態的人都會看到正在聽的歌。誰看得到由你的 Discord 設定決定。
+- 暫停、試聽或關掉這個功能時會清掉狀態。
+- 為了顯示封面，會用歌名、歌手和專輯名向 Apple iTunes 查詢，不會上傳你的封面或歌曲檔案。
+- 別人按下「Open OuOPlayer」時，瀏覽器會開啟 OuOPlayer 在 GitHub Pages 上的網頁，網址裡含歌名、歌手和長度，GitHub 會收到這個網址。
+- 這些資料不會經過開發者的伺服器。
 
 ## Google 雲端硬碟同步
 
@@ -74,7 +85,7 @@ OuOPlayer 不是專為兒童設計，也不會刻意收集兒童的資料。
 
 # OuOPlayer Privacy Policy
 
-Last updated: November 10, 2026
+Last updated: November 22, 2026
 
 OuOPlayer is an open-source app for playing local music on Android and Windows. It has no ads, needs no account, and collects none of your library, listening history or personal data. The only thing the developer receives is the anonymous count described under Anonymous user count.
 
@@ -93,6 +104,7 @@ The app goes online only in these cases, and sends only what is listed:
 | Original-language titles | mora, OTOTOY, YouTube Music | Title and artist |
 | Checking for updates, download parts | OuOPlayer's update server | An update request only, with none of your music or account data |
 | Anonymous user count | OuOPlayer's update server | A random id, the version and the platform, once a day |
+| Showing the current song on Discord (Windows, off by default) | Discord on your PC, which passes it on | Title, artist, progress, cover address, and an "Open OuOPlayer" link holding the title, artist and length |
 | Downloads, streams, podcasts | Addresses you enter or subscribe to | The requests needed to fetch them |
 
 Each service has its own privacy policy, and any connection shows your IP address to that service.
@@ -100,6 +112,16 @@ Each service has its own privacy policy, and any connection shows your IP addres
 ## Anonymous user count
 
 Once a day the app sends a random id, its version and platform to OuOPlayer's update server to count users; no personal data, no IP address kept, deleted after 90 days.
+
+## Discord status
+
+An optional feature of the Windows app, off by default and switched in Settings → Playback.
+
+- While it is on and a song plays, the data in the table above is handed to Discord on your PC, and anyone who can see your Discord status sees the song. Your Discord settings decide who that is.
+- The status is cleared when you pause, play a preview or switch the feature off.
+- To show a cover, the title, artist and album name are looked up on Apple iTunes. Your cover and song files are not uploaded.
+- When someone presses "Open OuOPlayer", their browser opens OuOPlayer's page on GitHub Pages. Its address holds the title, artist and length, so GitHub receives them.
+- None of this goes through a server of the developer.
 
 ## Google Drive sync
 
