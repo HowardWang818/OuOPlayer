@@ -150,7 +150,10 @@ class Playlist {
 
   /// Songs listed but not on the device (greyed placeholders), not in [count].
   final int missing;
-  const Playlist(this.id, this.name, this.count, this.art, {this.cover, this.folderId, this.missing = 0});
+
+  /// How this list is shown (an encoded sort); null: its own order. Not synced.
+  final String? sort;
+  const Playlist(this.id, this.name, this.count, this.art, {this.cover, this.folderId, this.missing = 0, this.sort});
 }
 
 /// A folder of playlists in the library (one level, no nesting).

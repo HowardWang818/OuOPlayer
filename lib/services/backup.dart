@@ -81,6 +81,7 @@ Future<Map<String, Object?>> buildBackup(AppDatabase app, {Directory? lyricsDir}
       // Its place in sync: without it a restored list is another list.
       'uid': pl['uid'],
       'synced': pl['synced'],
+      'sort': pl['sort'],
       'items': [for (final r in rows) r['item_id']],
     });
   }
@@ -315,6 +316,8 @@ Future<RestoreReport> restoreBackup(AppDatabase app, LibraryScanner scanner, Map
         'folder_id': folderIds[pl['folder']],
         'uid': uid ?? here,
         'synced': uid != null ? pl['synced'] ?? 0 : (here != null ? 1 : 0),
+        // Backups before 1.22.0 have none: the list's own order.
+        'sort': pl['sort'] is String ? pl['sort'] : null,
       });
       final ids = playlistIds[i];
       for (var j = 0; j < ids.length; j++) {

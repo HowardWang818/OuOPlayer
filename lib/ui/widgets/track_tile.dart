@@ -84,7 +84,7 @@ class TrackTile extends ConsumerWidget {
         title: Text(track.title,
             maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: cs.onSurface.withValues(alpha: 0.45))),
         subtitle: Text('缺少 • ${track.artist}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.6))),
-        trailing: selecting ? null : Icon(Icons.cloud_off_outlined, color: cs.onSurfaceVariant.withValues(alpha: 0.6)),
+        trailing: selecting ? null : _missingTrailing(cs.onSurfaceVariant.withValues(alpha: 0.6)),
       );
       return selection == null ? tile : GestureDetector(onSecondaryTap: select, child: tile);
     }
@@ -137,6 +137,18 @@ class TrackTile extends ConsumerWidget {
     );
     // Right-click starts selecting on desktop.
     return selection == null ? tile : GestureDetector(onSecondaryTap: select, child: tile);
+  }
+
+  /// A missing song's cloud; left of the ≡ it takes the ⋮ button's place, so
+  /// the handles line up.
+  Widget _missingTrailing(Color color) {
+    final cloud = Icon(Icons.cloud_off_outlined, color: color);
+    if (dragHandle == null) return cloud;
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      // Not a button: a tap there is a tap on the row.
+      IgnorePointer(child: ExcludeSemantics(child: IconButton(disabledColor: color, onPressed: null, icon: cloud))),
+      dragHandle!,
+    ]);
   }
 }
 

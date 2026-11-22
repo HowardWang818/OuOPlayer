@@ -20,6 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ouoplayer/data/models/track.dart';
 import 'package:ouoplayer/services/missing_songs.dart';
 import 'package:ouoplayer/services/sync2/now_playing.dart';
+import 'package:ouoplayer/services/track_sort.dart';
 
 import 'harness.dart';
 
@@ -330,6 +331,46 @@ void tree(bool overlap) {
       expect(await phone.listNames(), await pc.listNames());
       await expectStable([phone, pc]);
       expect((await phone.listNames()).where((n) => n == '通勤').length, lessThanOrEqualTo(1));
+    });
+
+    test('2.20 拖曳缺少的歌（1.22.0）：兩台同一個順序', () async {
+      await phone.db.addToPlaylist(id, [await phone.song('m')]);
+      // The list is here, the song not yet.
+      await phone.sync();
+      await pc.sync();
+      expect(await pc.titles('通勤'), ['a', 'b', 'c', '~m']);
+      await pc.db.reorderPlaylist(await pc.listId('通勤'), 3, 1);
+      expect(await pc.titles('通勤'), ['a', '~m', 'b', 'c']);
+      await settle([phone, pc]);
+      expect(await phone.titles('通勤'), ['a', 'm', 'b', 'c']);
+      expect(await pc.titles('通勤'), ['a', 'm', 'b', 'c']);
+      await expectStable([phone, pc]);
+    });
+
+    test('2.21 ↓ 時拖曳（1.22.0）：另一台收到存的順序，排序不跟著變', () async {
+      final pid = await pc.listId('通勤');
+      await pc.db.setPlaylistSort(pid, 'custom:desc');
+      final order = TrackSort.decode('custom:desc').order(await pc.db.playlistTracks(pid)); // c b a
+      await pc.db.reorderPlaylist(pid, order[0], order[2]); // shown b a c
+      expect(await pc.titles('通勤'), ['c', 'a', 'b']);
+      await settle([phone, pc]);
+      expect(await phone.titles('通勤'), ['c', 'a', 'b']);
+      expect((await phone.db.playlists()).firstWhere((p) => p.id == id).sort, isNull);
+      expect((await pc.db.playlists()).firstWhere((p) => p.id == pid).sort, 'custom:desc');
+      await expectStable([phone, pc]);
+    });
+
+    test('2.22 只改排序（1.22.0）：不寫雲端，另一台改順序時排序留著', () async {
+      await settle([phone, pc]);
+      final drive = cloud.fingerprint;
+      await phone.db.setPlaylistSort(id, 'title:desc');
+      await phone.sync();
+      expect(cloud.fingerprint, drive);
+      await pc.db.reorderPlaylist(await pc.listId('通勤'), 2, 0);
+      await settle([phone, pc]);
+      expect(await phone.titles('通勤'), ['c', 'a', 'b']);
+      expect((await phone.db.playlists()).firstWhere((p) => p.id == id).sort, 'title:desc');
+      await expectStable([phone, pc]);
     });
 
     test('2.18 空的清單也會同步', () async {
@@ -791,6 +832,30 @@ void tree(bool overlap) {
       expect(await phone.heard('a'), [40]);
       expect(await phone.heard('b'), [60]);
       expect(await pc.plays(), 2);
+      await expectStable([phone, pc]);
+    });
+
+    test('6.12 試聽回來後被接續（1.22.0）：還是同一次播放', () async {
+      final began = await phone.play('a', seconds: 30);
+      await settle([phone, pc]);
+      // Back from a preview: paused on the same play; then it goes on there.
+      await phone.nowPlaying(['a', 'b'], positionMs: 30000, began: began, heardMs: 30000);
+      final latest = (await pc.engine.nowPlaying.others(pc.id)).first;
+      await pc.carryOn('a', latest.began!, latest.heardMs, seconds: 25);
+      await settle([phone, pc]);
+      expect(await phone.heard('a'), [55]);
+      expect(await pc.heard('a'), [55]);
+      await expectStable([phone, pc]);
+    });
+
+    test('6.13 試聽後自己接著聽（1.22.0）：兩台都一筆', () async {
+      final began = await phone.play('a', seconds: 30);
+      await settle([phone, pc]);
+      await phone.carryOn('a', began, 30000, seconds: 20);
+      await settle([phone, pc]);
+      expect(await phone.heard('a'), [50]);
+      expect(await pc.heard('a'), [50]);
+      expect((await pc.db.playCounts())[(await pc.track('a')).id], 1);
       await expectStable([phone, pc]);
     });
 

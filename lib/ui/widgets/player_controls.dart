@@ -56,9 +56,13 @@ class _SeekBarState extends ConsumerState<SeekBar> {
 }
 
 class PlayPauseButton extends ConsumerWidget {
-  const PlayPauseButton({super.key, this.size = 56, this.filled = true});
+  const PlayPauseButton({super.key, this.size = 56, this.filled = true, this.color});
   final double size;
   final bool filled;
+
+  /// The symbol's colour when not [filled]. An IconTheme around the button
+  /// can't give it one: the theme's own button colour wins over that.
+  final Color? color;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -68,7 +72,7 @@ class PlayPauseButton extends ConsumerWidget {
     final handler = ref.read(audioHandlerProvider);
     final icon = Icon(playing ? Icons.pause : Icons.play_arrow, size: size * 0.55);
     if (!filled) {
-      return IconButton(iconSize: size * 0.7, onPressed: playing ? handler.pause : handler.play, icon: icon);
+      return IconButton(color: color, iconSize: size * 0.7, onPressed: playing ? handler.pause : handler.play, icon: icon);
     }
     final onBg = AppTheme.control(context);
     return SizedBox(
@@ -129,7 +133,10 @@ class TransportControls extends ConsumerWidget {
 }
 
 class FavoriteButton extends ConsumerWidget {
-  const FavoriteButton({super.key, this.activeColor});
+  const FavoriteButton({super.key, this.activeColor, this.color});
+
+  /// Colour of the empty heart; defaults to the theme's button colour.
+  final Color? color;
 
   /// Colour of the filled heart; defaults to the accent colour.
   final Color? activeColor;
@@ -142,6 +149,7 @@ class FavoriteButton extends ConsumerWidget {
     // A preview: ♥ downloads the song and likes the file, not the address.
     final preview = previewSourceOf(track.id);
     return IconButton(
+      color: color,
       tooltip: fav ? '從已按讚的歌曲移除' : '加到已按讚的歌曲',
       icon: Icon(fav ? Icons.favorite : Icons.favorite_border, color: fav ? (activeColor ?? AppTheme.accent(context)) : null),
       onPressed: preview != null

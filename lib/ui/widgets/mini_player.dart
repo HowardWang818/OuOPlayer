@@ -60,11 +60,8 @@ class MiniPlayer extends ConsumerWidget {
                 ),
                 OutputDeviceChip(dense: true, color: fg),
                 PodcastSpeedButton(color: fg),
-                IconTheme(data: IconThemeData(color: fg), child: FavoriteButton(activeColor: fg)),
-                IconTheme(
-                  data: IconThemeData(color: fg),
-                  child: const PlayPauseButton(size: 40, filled: false),
-                ),
+                FavoriteButton(color: fg, activeColor: fg),
+                PlayPauseButton(size: 40, filled: false, color: fg),
                 IconButton(icon: Icon(Icons.skip_next, color: fg), onPressed: handler.skipToNext),
               ]),
             ),

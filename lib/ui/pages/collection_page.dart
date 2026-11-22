@@ -96,11 +96,16 @@ class CollectionPage extends ConsumerWidget {
       CollectionKind.folder => ref.watch(folderTracksProvider(folder)),
       CollectionKind.smart => ref.watch(smartTracksProvider(smart!)),
     };
-    final source = tracksAsync.value ?? const <Track>[];
+    final infoAsync = playlistId == null ? null : ref.watch(playlistInfoProvider(playlistId!));
+    final info = infoAsync?.value;
+    // A playlist waits for its sort, so it doesn't show in one order and jump.
+    final waitingSort = infoAsync != null && infoAsync.isLoading && !infoAsync.hasValue;
+    final source = waitingSort ? const <Track>[] : tracksAsync.value ?? const <Track>[];
     // Shown order; [order] maps each row back to its place in [source] so
     // removing from a playlist hits the right song.
     final sortScope = kind == CollectionKind.smart ? 'smart_${smart!.name}' : kind.name;
-    final sort = TrackSort.decode(ref.watch(sortProvider(sortScope)));
+    // Each playlist has its own; the other kinds share one per kind.
+    final sort = TrackSort.decode(kind == CollectionKind.playlist ? info?.sort : ref.watch(sortProvider(sortScope)));
     final order = sort.order(source);
     final tracks = [for (final i in order) source[i]];
     // Identifies this list for the shuffle button and the search box.
@@ -108,12 +113,11 @@ class CollectionPage extends ConsumerWidget {
     final search = ref.watch(listSearchProvider(pageKey));
     final words = foldText(search ?? '').split(' ').where((w) => w.isNotEmpty).toList();
     // Rows shown (indexes into [tracks]); playing a found song still plays the whole list from it.
-    final reorderable = kind == CollectionKind.playlist && sort.key == TrackSortKey.custom && !sort.descending && words.isEmpty;
+    final reorderable = kind == CollectionKind.playlist && sort.key == TrackSortKey.custom && words.isEmpty;
     final rows = [
       for (var i = 0; i < tracks.length; i++)
         if (words.isEmpty || words.every(foldText('${tracks[i].title} ${tracks[i].artist} ${tracks[i].album}').contains)) i,
     ];
-    final info = playlistId == null ? null : ref.watch(playlistInfoProvider(playlistId!)).value;
     final synced = playlistId != null && syncAvailable && (ref.watch(playlistSyncedProvider(playlistId!)).value ?? false);
     // A custom playlist cover wins over the first song's cover.
     // An artist page shows the artist's photo when one was found.
@@ -436,7 +440,9 @@ class CollectionPage extends ConsumerWidget {
                     },
                   _ => '預設順序',
                 },
-                onChanged: (v) => ref.read(sortProvider(sortScope).notifier).set(v.encode()),
+                onChanged: (v) => kind == CollectionKind.playlist
+                    ? db.setPlaylistSort(playlistId!, v.encode())
+                    : ref.read(sortProvider(sortScope).notifier).set(v.encode()),
               ),
                   ]),
                 ),
@@ -457,16 +463,17 @@ class CollectionPage extends ConsumerWidget {
             ]),
           ),
         ),
-        if (tracksAsync.isLoading && tracks.isEmpty)
+        if ((waitingSort || tracksAsync.isLoading) && tracks.isEmpty)
           const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
         else if (tracks.isEmpty)
           const SliverFillRemaining(hasScrollBody: false, child: EmptyState(icon: Icons.queue_music_rounded, title: '尚無歌曲'))
         else
         if (reorderable)
-          // A playlist in its own order: drag the ≡ handle to move a song.
+          // A playlist in its own order, either way round: drag the ≡ handle
+          // to move a song ([order] gives both rows' places in the playlist).
           SliverReorderableList(
             itemCount: tracks.length,
-            onReorderItem: (from, to) => db.reorderPlaylist(playlistId!, from, to),
+            onReorderItem: (from, to) => db.reorderPlaylist(playlistId!, order[from], order[to]),
             proxyDecorator: (child, _, __) => Material(elevation: 6, color: theme.colorScheme.surfaceContainerHigh, child: child),
             itemBuilder: (context, i) => TrackTile(
               key: ValueKey('${tracks[i].id}#$i'),

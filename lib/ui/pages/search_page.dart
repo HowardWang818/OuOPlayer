@@ -281,10 +281,16 @@ class _OnlineSongTileState extends ConsumerState<_OnlineSongTile> {
         return;
       }
       previewSources[clip] = (url: song.url, title: song.title);
-      await ref.read(audioHandlerProvider).playTracks([
+      final ok = await ref.read(audioHandlerProvider).playPreview(
         Track.fromUrl(clip, title: '${song.title}（試聽）', artist: song.artist, album: song.album ?? '', art: song.artwork, durationMs: 30000, source: TrackSource.preview),
-      ]);
-      if (mounted) toast(context, '試聽 30 秒');
+      );
+      // Null: something else was played meanwhile.
+      if (!mounted || ok == null) return;
+      if (ok) {
+        toast(context, '試聽 30 秒');
+      } else {
+        toast(context, '無法試聽');
+      }
     } catch (_) {
       if (mounted) toast(context, '無法試聽');
     } finally {

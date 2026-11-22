@@ -74,7 +74,7 @@ class AppDatabase {
     return AppDatabase._(db);
   }
 
-  static const schemaVersion = 14;
+  static const schemaVersion = 15;
 
   /// Schema changes since version 1; existing data is kept.
   static Future<void> migrate(Database db, int from, int to) async {
@@ -168,6 +168,10 @@ class AppDatabase {
     if (from < 14 && to >= 14) {
       // v1.20.9: songs passed on the way while deleting several were logged.
       await dropSkippedThrough(db);
+    }
+    if (from < 15 && to >= 15) {
+      // v1.22.0: each playlist keeps its own sort (all in their own order at first).
+      await db.execute('ALTER TABLE playlists ADD COLUMN sort TEXT');
     }
   }
 
@@ -733,7 +737,7 @@ class AppDatabase {
   Future<List<Playlist>> playlists({int? folder, bool topLevel = false}) async {
     final where = folder != null ? 'WHERE p.folder_id = ?' : (topLevel ? 'WHERE p.folder_id IS NULL' : '');
     // Placeholders for songs not on the device count apart (「缺 N 首」).
-    final rows = await db.rawQuery('''SELECT p.id, p.name, p.cover, p.folder_id,
+    final rows = await db.rawQuery('''SELECT p.id, p.name, p.cover, p.folder_id, p.sort,
       COUNT(CASE WHEN t0.source IS NULL OR t0.source != 'missing' THEN pt.track_id END) AS c,
       COUNT(CASE WHEN t0.source = 'missing' THEN 1 END) AS m,
       (SELECT t.art FROM playlist_tracks x JOIN tracks t ON t.id = x.track_id WHERE x.playlist_id = p.id AND t.art IS NOT NULL ORDER BY x.position LIMIT 1) AS art
@@ -749,12 +753,19 @@ class AppDatabase {
               cover: r['cover'] as String?,
               folderId: r['folder_id'] as int?,
               missing: (r['m'] as int?) ?? 0,
+              sort: r['sort'] as String?,
             ))
         .toList();
   }
 
   Future<void> setPlaylistCover(int id, String? cover) async {
     await db.update('playlists', {'cover': cover}, where: 'id = ?', whereArgs: [id]);
+    _notify();
+  }
+
+  /// Only how the list is shown here: never synced.
+  Future<void> setPlaylistSort(int id, String sort) async {
+    await db.update('playlists', {'sort': sort}, where: 'id = ?', whereArgs: [id]);
     _notify();
   }
 
