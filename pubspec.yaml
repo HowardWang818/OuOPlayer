@@ -1,7 +1,7 @@
 name: ouoplayer
 description: "OuOPlayer - a music player for Android and Windows, with playlist sync."
 publish_to: 'none'
-version: 1.22.3+124
+version: 1.23.0+125
 
 environment:
   sdk: ^3.6.0
@@ -37,6 +37,9 @@ dependencies:
   tray_manager: 0.5.0
   window_manager: ^0.5.2
   screen_retriever: ^0.2.0
+  # Wi-Fi or mobile data, also when only the media service started the app.
+  ouo_network:
+    path: third_party/ouo_network
 
 dependency_overrides:
   # Patched copy that lets us set mpv's audio filter (volume normalization on Windows).

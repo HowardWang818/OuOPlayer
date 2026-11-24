@@ -81,7 +81,7 @@ Get it from [Releases](https://github.com/HowardWang818/OuOPlayer/releases/lates
 - A song missing from a synced playlist always goes to the device without it, even when the two name it differently (romaji vs. the original)
 - Deleting a synced playlist deletes it on that device only; the other keeps it
 - Edited song details, lyrics and listening history sync too
-- Resume: carry on from the same song and position on the other device
+- Resume: carry on from the same song and position on the other device; when both played apart, choose which one to carry on from
 
 **Windows**
 - Sidebar, now-playing panel and full-screen player, with a layout you can drag to fit

@@ -185,6 +185,54 @@ class AutoBackup {
     await prune(dir);
   }
 
+  /// Automatic backups from before 1.23.0 that hold song covers (the big
+  /// ones). Backups the user saved aren't among them.
+  static Future<List<BackupFile>> withCovers(String dir, {Future<List<int>> Function(String path)? read}) async {
+    final out = <BackupFile>[];
+    for (final f in await list(dir)) {
+      if (!f.automatic) continue;
+      try {
+        if (holdsCovers(await (read ?? _bytes)(f.path))) out.add(f);
+      } catch (_) {
+        // Unreadable: left alone.
+      }
+    }
+    return out;
+  }
+
+  static Future<List<int>> _bytes(String path) async => BackupTree.isTree(path) ? await BackupTree.read(path) : await File(path).readAsBytes();
+
+  /// The file's "covers" isn't empty (written with indents or without).
+  static bool holdsCovers(List<int> bytes) {
+    const key = '"covers":';
+    final text = latin1.decode(bytes, allowInvalid: true);
+    var at = text.indexOf(key);
+    while (at >= 0) {
+      var i = at + key.length;
+      while (i < text.length && ' \r\n\t'.contains(text[i])) {
+        i++;
+      }
+      if (i < text.length && text[i] == '{') {
+        i++;
+        while (i < text.length && ' \r\n\t'.contains(text[i])) {
+          i++;
+        }
+        return i < text.length && text[i] != '}';
+      }
+      at = text.indexOf(key, at + 1);
+    }
+    return false;
+  }
+
+  /// Deletes [files] (only after a new backup was written).
+  static Future<void> remove(List<BackupFile> files) async {
+    for (final f in files) {
+      try {
+        BackupTree.isTree(f.path) ? await BackupTree.delete(f.path) : await File(f.path).delete();
+      } catch (_) {}
+    }
+  }
+
   /// Only automatic backups are removed; ones the user saved stay.
   static Future<void> prune(String dir) async {
     final auto = (await list(dir)).where((f) => f.automatic).toList()

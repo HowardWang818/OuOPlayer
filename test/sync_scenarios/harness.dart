@@ -127,6 +127,7 @@ class Dev {
     final d = Dev._(name, id ?? name, db, dir ?? await Directory.systemTemp.createTemp('ouo_$name'), cloud);
     Directory('${d.dir.path}/music').createSync(recursive: true);
     cloud.devs.add(d);
+    await db.setSetting('sync_device_id', d.id);
     d.engine = SyncEngine(
       db: db,
       drive: cloud,
@@ -247,9 +248,9 @@ class Dev {
 
   /// 接續播放 (1.20.9): carries on the play that began at [began] (heard
   /// [heardMs] so far there), [seconds] more here — as the player does.
-  Future<void> carryOn(String title, int began, int heardMs, {int seconds = 30}) async {
-    final (id, heard, _) = await db.continueListening(await track(title), began, heardMs);
-    await db.updateListening(id, Duration(milliseconds: heard + seconds * 1000));
+  Future<void> carryOn(String title, int began, int heardMs, {int seconds = 30, Map<String, int>? parts}) async {
+    final (id, _, _) = await db.continueListening(await track(title), began, heardMs, parts: parts);
+    await db.addListened(id, seconds * 1000);
   }
 
   /// How long each play of [title] was heard, in seconds.

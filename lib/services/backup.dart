@@ -28,13 +28,16 @@ const _privateSettings = {
   'sync_requests', 'sync_history_seen', 'sync_history_sent', 'sync_library_sent', 'sync_resume_seen', 'sync_declined', 'sync_skip', 'start_with_windows', 'sync_pushes', 'sync_cloud_library', 'gdrive_file_scope',
 };
 
-/// Covers replaced by hand are kept up to this much in a backup: all the
-/// library's covers wouldn't fit in one file, and most are in the songs' tags.
-const _coverLimit = 64 << 20;
-
 /// Where the plays of a backup from before v1.14.6 came from: unknown, so
 /// sync never sends them as this device's own.
 const restoredOrigin = 'restored';
+
+/// A play another device heard part of, as well as whoever's entry it is.
+bool _shared(Map<String, Object?> row) {
+  if (row['parts'] == null) return false;
+  final parts = AppDatabase.partsFrom(row['parts']);
+  return parts.length > (row['origin'] == null ? 0 : 1);
+}
 
 Future<Directory?> _lyricsDir() async {
   try {
@@ -46,9 +49,15 @@ Future<Directory?> _lyricsDir() async {
 
 /// Builds a backup of everything the user made: playlists (with custom
 /// covers), folders, likes, play counts, podcast subscriptions and progress,
-/// download history and settings, and the library's song details, lyrics and
-/// replaced covers. Songs are listed with path, title, artist and length so
-/// they can be found again on another device.
+/// download history and settings, and the library's song details and lyrics.
+/// Songs are listed with path, title, artist and length so they can be found
+/// again on another device.
+///
+/// No song covers since 1.23.0: every downloaded song's counted as replaced,
+/// so each put its whole picture in the file (30 songs: 12 to 47 MB). They
+/// are in the songs' files, or found again. [restoreBackup] still puts back
+/// those an older backup holds. A playlist's own cover stays: it is nowhere
+/// else.
 Future<Map<String, Object?>> buildBackup(AppDatabase app, {Directory? lyricsDir}) async {
   final db = app.db;
   final tracks = {for (final r in await db.query('tracks')) r['id'] as String: r};
@@ -86,17 +95,8 @@ Future<Map<String, Object?>> buildBackup(AppDatabase app, {Directory? lyricsDir}
     });
   }
   final settings = await app.allSettings();
+  final me = settings['sync_device_id'];
   final edits = await db.query('track_edits');
-  var coverBytes = 0;
-  final covers = <String, String>{};
-  for (final e in edits) {
-    final art = tracks[e['track_id']]?['art'] as String?;
-    if (e['cover'] == null || art == null || art.startsWith('http') || !File(art).existsSync()) continue;
-    final size = File(art).lengthSync();
-    if (coverBytes + size > _coverLimit) continue;
-    coverBytes += size;
-    covers[tracks[e['track_id']]!['uri'] as String] = base64Encode(await File(art).readAsBytes());
-  }
   final lyrics = lyricsDir ?? await _lyricsDir();
   return {
     'app': 'OuOPlayer',
@@ -112,7 +112,6 @@ Future<Map<String, Object?>> buildBackup(AppDatabase app, {Directory? lyricsDir}
       for (final e in edits)
         if (tracks[e['track_id']] != null) {...e, 'uri': tracks[e['track_id']]!['uri']},
     ],
-    'covers': covers,
     'lyrics': {
       if (lyrics != null && lyrics.existsSync())
         for (final f in lyrics.listSync().whereType<File>())
@@ -137,6 +136,10 @@ Future<Map<String, Object?>> buildBackup(AppDatabase app, {Directory? lyricsDir}
           // stays theirs and isn't sent out again as this one's.
           'origin': r['origin'],
           'remote_id': r['remote_id'],
+          // Each device's share by its name (1.23.0): restored on a new
+          // install, the old one's share isn't counted as the new one's too.
+          // Only for the few plays several devices heard (it was 12% more file).
+          if (_shared(r)) 'parts': AppDatabase.sharesOf(r, me),
         },
     ],
     'podcasts': await db.query('podcasts'),
@@ -159,7 +162,7 @@ class RestoreReport {
 /// The parts of a backup that can be restored on their own.
 enum RestorePart {
   settings('設定'),
-  songs('歌名、封面和歌詞'),
+  songs('歌名和歌詞'),
   playlists('播放清單和資料夾'),
   likes('已按讚的歌曲'),
   history('播放次數和收聽紀錄'),
@@ -253,6 +256,7 @@ Future<RestoreReport> restoreBackup(AppDatabase app, LibraryScanner scanner, Map
     if (id != null) favorites.add((id, (f as Map)['added_at']));
   }
   final listening = <Map<String, Object?>>[];
+  final me = (await app.allSettings())['sync_device_id'];
   final history = parts.contains(RestorePart.history);
   for (final r in history ? (backup['listening'] as List? ?? const []).cast<Map>() : const <Map>[]) {
     // Podcast episodes aren't library songs: keep their ids as they were.
@@ -268,6 +272,14 @@ Future<RestoreReport> restoreBackup(AppDatabase app, LibraryScanner scanner, Map
       // out as this device's (the device that played it already did).
       'origin': r.containsKey('origin') ? r['origin'] : restoredOrigin,
       'remote_id': r['remote_id'],
+      'parts': switch (r['parts']) {
+        final Map shares => jsonEncode({
+            for (final e in shares.entries)
+              // This device's own share isn't kept apart.
+              if (r['origin'] != null || e.key != me) '${e.key}': e.value,
+          }),
+        _ => null,
+      },
     });
   }
   final plays = <(String, Object?, Object?)>[];
@@ -380,8 +392,8 @@ Map<String, Map> _namesIn(Map<String, Object?> backup) {
   return names;
 }
 
-/// Puts back what only lived in the app: song names, replaced covers and
-/// lyrics. Returns how many songs changed.
+/// Puts back what only lived in the app: song names and lyrics, and the
+/// covers in a backup from before 1.23.0. Returns how many songs changed.
 Future<int> _restoreSongs(AppDatabase app, LibraryScanner scanner, Map<String, Object?> backup, Directory? lyricsDir) async {
   final names = _namesIn(backup);
   final covers = (backup['covers'] as Map? ?? const {}).cast<String, Object?>();

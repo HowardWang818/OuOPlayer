@@ -12,6 +12,7 @@ import 'data/db/database.dart';
 import 'config/demo.dart';
 import 'config/demo_seed.dart';
 import 'providers/providers.dart';
+import 'providers/sync_provider.dart';
 import 'providers/theme_provider.dart';
 import 'theme/looks.dart';
 import 'services/car_browser.dart';
@@ -41,7 +42,8 @@ Future<void> main(List<String> args) async {
   final db = await AppDatabase.open();
   final settings = await AppSettings.load(db);
   final handler = await AudioService.init(
-    builder: () => OuoAudioHandler(db),
+    // A media button may press play before the providers below exist.
+    builder: () => OuoAudioHandler(db)..expectBeforePlay(),
     config: const AudioServiceConfig(
       androidNotificationChannelId: 'com.ouo.ouoplayer.audio',
       androidNotificationChannelName: 'OuOPlayer 播放',
@@ -79,6 +81,10 @@ Future<void> main(List<String> args) async {
     initialThemeChoiceProvider.overrideWithValue(ThemeChoice.fromSettings(saved)),
     initialLooksProvider.overrideWithValue(Looks.fromSettings(saved)),
   ]);
+
+  // 接續播放 (1.23.0): a play without a screen may start from the other device's.
+  container.read(resumeTrackerProvider);
+  handler.beforePlay = (cancelled, deadline) => container.read(syncProvider.notifier).beforePlay(cancelled, deadline);
 
   // Android Auto browsing; podcast episodes come from their feeds.
   handler.carBrowser = CarBrowser(db, episodes: (url) async => (await container.read(podcastServiceProvider).fetch(url)).episodes);

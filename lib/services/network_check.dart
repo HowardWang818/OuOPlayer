@@ -5,14 +5,23 @@ import 'package:flutter/services.dart';
 
 /// Whether the phone is on mobile data right now (connected, but not over
 /// Wi-Fi or Ethernet). Always false off Android.
-Future<bool> onMobileData() async {
+Future<bool> onMobileData() async => await mobileDataNow() ?? false;
+
+/// [onMobileData], null when it can't be told. The channel is a plugin
+/// (third_party/ouo_network): an app started in the background by the media
+/// service has no MainActivity to answer.
+Future<bool?> mobileDataNow() async {
   if (!Platform.isAndroid) return false;
   try {
-    return await const MethodChannel('ouo/network').invokeMethod<bool>('mobileData') ?? false;
+    return await const MethodChannel('ouo/network').invokeMethod<bool>('mobileData');
   } catch (_) {
-    return false;
+    return null;
   }
 }
+
+/// Whether songs may move by themselves: not on mobile data, and not when it
+/// can't be told ([read]: for tests).
+Future<bool> songsMayTransfer([Future<bool?> Function() read = mobileDataNow]) async => await read() == false;
 
 /// The every-minute sync retry is skipped on mobile data (phone).
 Future<bool> everyMinuteSkipped() => onMobileData();

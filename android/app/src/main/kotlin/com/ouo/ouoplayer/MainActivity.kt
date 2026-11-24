@@ -38,18 +38,8 @@ class MainActivity : AudioServiceActivity() {
         downloads = DownloadNotifierPlugin(applicationContext, messenger).also {
             it.pendingAction = intent?.getStringExtra(DownloadForegroundService.EXTRA_OPEN)
         }
-        // Mobile data check before downloads.
-        MethodChannel(messenger, "ouo/network").setMethodCallHandler { call, result ->
-            if (call.method != "mobileData") return@setMethodCallHandler result.notImplemented()
-            val cm = getSystemService(android.net.ConnectivityManager::class.java)
-            val caps = cm?.getNetworkCapabilities(cm.activeNetwork)
-            result.success(
-                caps != null &&
-                    caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) &&
-                    !caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) &&
-                    !caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET),
-            )
-        }
+        // "ouo/network" is third_party/ouo_network's: it has to answer without
+        // this activity too (the media service can start the app).
         // 回報問題: the phone model and Android version for the report.
         MethodChannel(messenger, "ouo/device").setMethodCallHandler { call, result ->
             if (call.method != "info") return@setMethodCallHandler result.notImplemented()

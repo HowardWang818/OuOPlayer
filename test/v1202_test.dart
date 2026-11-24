@@ -30,12 +30,15 @@ void main() {
       expect(check('this device is newer: x <= y'), '上次檢查：這台的播放較新');
       expect(check('loaded: a:1'), '上次檢查：已接續');
       expect(check('nothing from another device'), '上次檢查：另一台沒有播放紀錄');
+      expect(check('two: b:1'), '上次檢查：有另一個進度');
+      expect(check('already asked (two): b:1'), '上次檢查：有另一個進度');
+      expect(check('already asked (one): b:1'), '上次檢查：已詢問過');
     });
   });
 
   test('a play position that could not be sent is sent again', () {
     final src = File('lib/providers/sync_provider.dart').readAsStringSync();
-    expect(src, contains('nowPending = true'));
+    expect(src, contains('nowFailed = true'));
     expect(src, contains('if (notifier.nowPending) unawaited(notifier.pushNowPlaying());'));
   });
 

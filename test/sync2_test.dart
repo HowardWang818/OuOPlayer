@@ -485,9 +485,11 @@ void main() {
   group('接續播放', () {
     final now = DateTime(2026, 10, 30, 20);
     NowPlaying from(DateTime at) => NowPlaying(device: 'phone', deviceName: '手機', at: at.millisecondsSinceEpoch, songs: const [{'t': 'a', 'a': 'A'}], index: 0, positionMs: 1000);
-    ResumeStep step(ResumeMode mode, {NowPlaying? latest, DateTime? here, bool playing = false, String? asked}) => resumeStep(
+    ResumeStep step(ResumeMode mode, {NowPlaying? latest, DateTime? here, bool playing = false, String? asked}) => resumePlan(
           mode: mode,
-          latest: latest ?? from(now.subtract(const Duration(minutes: 5))),
+          others: [latest ?? from(now.subtract(const Duration(minutes: 5)))],
+          me: 'pc',
+          state: ResumeState(),
           now: now,
           lastPlayedHere: here,
           playingHere: playing,

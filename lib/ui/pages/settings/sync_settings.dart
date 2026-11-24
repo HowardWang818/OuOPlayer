@@ -156,7 +156,7 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
           ),
         for (final (mode, label, sub) in const [
           ('ask', '每次詢問', null),
-          ('auto', '自動接續', '不再詢問，直接換掉這台的佇列；不會自動開始播放'),
+          ('auto', '自動接續', '直接換掉這台的佇列，不會自動開始播放；兩台都播過時會詢問'),
           ('never', '不接續', '不詢問也不接續；另一台還是能接這台的進度'),
         ])
           SettingTile(
@@ -171,10 +171,15 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
             },
           ),
         if (_s['sync_now'] != 'false')
-          ListTile(
+          SettingTile(
+            action: '選擇',
             leading: const Icon(Icons.info_outline),
             title: const Text('接續播放狀態'),
             subtitle: Text(resumeStatus(_s), style: TextStyle(color: muted)),
+            onTap: () async {
+              await n.chooseProgress(context);
+              await _load();
+            },
           ),
         if (_s['sync_plays'] != 'false' && !ref.watch(settingsProvider).recordPlays)
           Padding(
@@ -222,6 +227,7 @@ String resumeStatus(Map<String, String> s) {
     final why = debug.substring(27);
     final at = RegExp(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2})').firstMatch(why)?.group(1);
     final text = switch (why) {
+      _ when why.startsWith('two') || why.startsWith('already asked (two)') => '有另一個進度',
       _ when why.startsWith('older than 12 h') => '另一台的播放超過 12 小時${at == null ? '' : '（$at）'}',
       _ when why.startsWith('this device is newer') => '這台的播放較新',
       _ when why.startsWith('already asked') => '已詢問過',
@@ -229,6 +235,7 @@ String resumeStatus(Map<String, String> s) {
       _ when why.startsWith('nothing from another device') => '另一台沒有播放紀錄',
       _ when why.startsWith('loaded') || why.startsWith('asked') => '已接續',
       _ when why.startsWith('set to never') => '設為不接續',
+      _ when why.startsWith('not on screen') => '等待打開 App',
       _ => '無法檢查',
     };
     lines.add('上次檢查：$text');

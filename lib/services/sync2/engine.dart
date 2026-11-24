@@ -751,7 +751,7 @@ class SyncEngine implements SyncHooks {
   /// This device's plays to Drive; the other devices' brought in.
   Future<(int, int)> _syncPlays(String me, List<DriveFile> files) async {
     final name = 'v2-plays-$me.json';
-    final mine = await plays.export();
+    final mine = await plays.export(me);
     final body = jsonEncode({'device': me, 'plays': mine});
     final last = int.tryParse((await _settings())['sync2_sent_play'] ?? '');
     final newest = mine.isEmpty ? (last ?? 0) : mine.last['id'] as int;
@@ -765,7 +765,7 @@ class SyncEngine implements SyncHooks {
     for (final f in files.where((f) => f.name.startsWith('v2-plays-') && f.name != name)) {
       try {
         final j = jsonDecode(utf8.decode(await drive.download(f.id))) as Map;
-        received += await plays.import('${j['device']}', (j['plays'] as List?) ?? const []);
+        received += await plays.import('${j['device']}', (j['plays'] as List?) ?? const [], me: me);
       } catch (_) {}
     }
     return (sent, received);

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
@@ -74,7 +75,7 @@ class AppDatabase {
     return AppDatabase._(db);
   }
 
-  static const schemaVersion = 15;
+  static const schemaVersion = 16;
 
   /// Schema changes since version 1; existing data is kept.
   static Future<void> migrate(Database db, int from, int to) async {
@@ -173,6 +174,38 @@ class AppDatabase {
       // v1.22.0: each playlist keeps its own sort (all in their own order at first).
       await db.execute('ALTER TABLE playlists ADD COLUMN sort TEXT');
     }
+    if (from < 16 && to >= 16) {
+      // v1.23.0: how long the other devices heard of a play ({device: ms});
+      // this device's share is listened_ms less those. Null: a play from
+      // before, whose time can't be split (the longer one counts).
+      await db.execute('ALTER TABLE listening_log ADD COLUMN parts TEXT');
+    }
+  }
+
+  static Map<String, int> partsFrom(Object? json) {
+    try {
+      return {for (final e in (jsonDecode('$json') as Map).entries) '${e.key}': (e.value as num).toInt()};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  static int partsTotal(Map<String, int> parts) => parts.values.fold(0, (a, b) => a + b);
+
+  /// Every device's share of a play from its row (null: can't be split).
+  /// [me] is this device; the row of another device's play has none of it.
+  static Map<String, int>? sharesOf(Map<String, Object?> row, String? me) {
+    if (row['parts'] == null) return null;
+    final parts = partsFrom(row['parts']);
+    final here = (row['listened_ms'] as int) - partsTotal(parts);
+    if (row['origin'] == null && me != null && me.isNotEmpty && here > 0) parts[me] = here;
+    return parts;
+  }
+
+  /// [sharesOf] the play that began at [began].
+  Future<Map<String, int>?> playParts(int began, String me) async {
+    final rows = await db.query('listening_log', columns: ['listened_ms', 'origin', 'parts'], where: 'played_at = ?', whereArgs: [began], limit: 1);
+    return rows.isEmpty ? null : sharesOf(rows.first, me);
   }
 
   /// Plays of 0 s that came in a run, at least three each within a second
@@ -637,6 +670,7 @@ class AppDatabase {
         'played_at': at.millisecondsSinceEpoch,
         'listened_ms': 0,
         'source': t.source,
+        'parts': '{}',
       });
 
   /// 接續播放 (1.20.9): carries on the play that began at [began] on
@@ -644,17 +678,58 @@ class AppDatabase {
   /// when coming back) is used and becomes this device's, so the time heard
   /// here is sent on; else one is made with that start. Returns the entry,
   /// the time heard so far, and whether it was new here.
-  Future<(int, int, bool)> continueListening(Track t, int began, int heard) async {
-    final rows = await db.query('listening_log', columns: ['id', 'listened_ms'], where: 'played_at = ?', whereArgs: [began], limit: 1);
+  Future<(int, int, bool)> continueListening(Track t, int began, int heard, {Map<String, int>? parts}) async {
+    final me = (await allSettings())['sync_device_id'];
+    // [parts] (1.23.0): what each of the others heard of it.
+    final theirs = parts == null ? null : ({...parts}..remove(me));
+    final rows = await db.query('listening_log', where: 'played_at = ?', whereArgs: [began], limit: 1);
     if (rows.isNotEmpty) {
-      final id = rows.first['id'] as int;
-      final ms = max(rows.first['listened_ms'] as int, heard);
-      await db.update('listening_log', {'listened_ms': ms, 'origin': null, 'remote_id': null}, where: 'id = ?', whereArgs: [id]);
+      final row = rows.first;
+      final id = row['id'] as int;
+      var ms = row['listened_ms'] as int;
+      final origin = row['origin'] as String?;
+      final change = <String, Object?>{'origin': null, 'remote_id': null};
+      if (row['parts'] == null && origin == null) {
+        ms = max(ms, heard);
+      } else {
+        final known = row['parts'] == null ? {origin!: ms} : partsFrom(row['parts']);
+        // All of another device's play is theirs: no share of this one's yet.
+        var here = origin == null ? ms - partsTotal(known) : 0;
+        here += known.remove(me) ?? 0;
+        if (theirs != null) {
+          theirs.forEach((device, v) => known[device] = max(known[device] ?? 0, v));
+        } else {
+          // Only a total: what it has beyond this is of whoever's play it is.
+          final more = heard - max<int>(0, here) - partsTotal(known);
+          if (more > 0) {
+            if (origin == null) {
+              here += more;
+            } else {
+              known[origin] = (known[origin] ?? 0) + more;
+            }
+          }
+        }
+        ms = max(0, here) + partsTotal(known);
+        change['parts'] = jsonEncode(known);
+      }
+      change['listened_ms'] = ms;
+      await db.update('listening_log', change, where: 'id = ?', whereArgs: [id]);
       return (id, ms, false);
     }
-    final id = await db.insert('listening_log', {'track_id': t.id, 'played_at': began, 'listened_ms': heard, 'source': t.source});
-    return (id, heard, true);
+    final ms = parts == null ? heard : partsTotal(parts);
+    final id = await db.insert('listening_log', {
+      'track_id': t.id,
+      'played_at': began,
+      'listened_ms': ms,
+      'source': t.source,
+      'parts': theirs == null ? null : jsonEncode(theirs),
+    });
+    return (id, ms, true);
   }
+
+  /// [ms] more heard here of a play.
+  Future<void> addListened(int id, int ms) =>
+      db.rawUpdate('UPDATE listening_log SET listened_ms = listened_ms + ? WHERE id = ?', [ms, id]);
 
   Future<void> updateListening(int id, Duration listened) =>
       db.update('listening_log', {'listened_ms': listened.inMilliseconds}, where: 'id = ?', whereArgs: [id]);

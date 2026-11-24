@@ -1,0 +1,19 @@
+name: ouo_network
+description: OuOPlayer's check for mobile data. A plugin, so it also answers when only the media service started the app.
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.6.0
+  flutter: '>=3.24.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.ouo.network
+        pluginClass: OuoNetworkPlugin

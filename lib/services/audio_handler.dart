@@ -78,6 +78,58 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   bool get _previewing => _before != null || _returning != null || _previewOnly;
 
+  /// A preview has the player, or is on its way back.
+  bool get previewing => _previewing;
+
+  /// A queue is loading: the index and second don't belong together yet.
+  bool get loadingQueue => _loadingQueue;
+
+  // ---------- 接續播放 (1.23.0) ----------
+
+  /// Where playback is gets saved (ResumeTracker counts up to then).
+  void Function()? onSave;
+
+  /// The queue is about to be replaced by the user's choice, or by a progress
+  /// picked up ([pickUp]). Not by 自動接著播 at the queue's end.
+  void Function({required bool pickUp})? onNewQueue;
+
+  /// Asked before [play] starts a paused player: with no screen to ask on it
+  /// may load another device's progress first (自動接續), by [deadline] and
+  /// unless [cancelled].
+  Future<void> Function(bool Function() cancelled, DateTime deadline)? get beforePlay => _beforePlay;
+  Future<void> Function(bool Function() cancelled, DateTime deadline)? _beforePlay;
+  set beforePlay(Future<void> Function(bool Function() cancelled, DateTime deadline)? f) {
+    _beforePlay = f;
+    final waiting = _beforePlaySet;
+    if (f != null && waiting != null && !waiting.isCompleted) waiting.complete();
+  }
+
+  Completer<void>? _beforePlaySet;
+
+  /// A media button can start the app and press play before the providers
+  /// exist: [play] then waits for [beforePlay] to be set.
+  void expectBeforePlay() => _beforePlaySet ??= Completer<void>();
+
+  /// How long a play may wait for the other device's progress.
+  static const playWait = Duration(seconds: 2);
+
+  Future<void>? _startingPlay;
+
+  /// Goes up when a waiting play no longer holds (pause, other songs).
+  int _playRun = 0;
+
+  /// The system is told it plays while [play] waits: pause cancels it, and
+  /// Android gets its foreground notification in time after a cold start.
+  bool _waitingToPlay = false;
+
+  void _cancelPlay() {
+    _playRun++;
+    _startingPlay = null;
+    if (!_waitingToPlay) return;
+    _waitingToPlay = false;
+    _broadcastState(player.playbackEvent);
+  }
+
   /// Another queue takes the player's place: no going back any more.
   void _replaced() {
     _queueRun++;
@@ -393,7 +445,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     if (continueAfterQueue && !_previewOnly) {
       final more = await _db.randomTracks(20, exclude: _tracks.map((t) => t.id).toSet());
       if (more.isNotEmpty) {
-        await playTracks(more);
+        await playTracks(more, goesOn: true);
         return;
       }
     }
@@ -412,6 +464,9 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   // ---- Listening log: how long each play was really heard ----
   int? _logId;
   Duration _heard = Duration.zero;
+
+  /// How much of [_heard] is in the entry already.
+  int _flushedMs = 0;
   DateTime? _playingSince;
   Timer? _logTimer;
 
@@ -420,7 +475,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   /// 接續播放 (1.20.9): the other device's play of the song just picked up,
   /// carried on in the same entry instead of a new one when it plays.
-  ({Track track, int began, int heard})? _continueFrom;
+  ({Track track, int began, int heard, Map<String, int>? parts})? _continueFrom;
 
   /// The play being logged: when it began and how long it was heard so far
   /// (sent with 接續播放, so the other device carries on in the same play).
@@ -456,7 +511,13 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   void _flushLog() {
     final id = _logId;
-    if (id != null) _db.updateListening(id, _heardNow).catchError((_) {});
+    if (id == null) return;
+    final ms = _heardNow.inMilliseconds;
+    final more = ms - _flushedMs;
+    if (more <= 0) return;
+    _flushedMs = ms;
+    // Added, not written over: sync may have put another device's share in meanwhile.
+    _db.addListened(id, more).catchError((_) {});
   }
 
   /// A new song: close the previous entry and open one (previews aren't logged).
@@ -469,6 +530,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     _logId = null;
     _logBegan = null;
     _heard = Duration.zero;
+    _flushedMs = 0;
     _playingSince = null;
   }
 
@@ -478,6 +540,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     _logId = null;
     _logBegan = null;
     _heard = Duration.zero;
+    _flushedMs = 0;
     _playingSince = player.playing ? DateTime.now() : null;
     final cont = _continueFrom;
     _continueFrom = null;
@@ -486,10 +549,12 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     try {
       if (cont != null && identical(cont.track, t)) {
         // Picked up from the other device: the same play goes on.
-        final (id, heard, isNew) = await _db.continueListening(t, cont.began, cont.heard);
+        final (id, heard, isNew) = await _db.continueListening(t, cont.began, cont.heard, parts: cont.parts);
         _logId = id;
         _logBegan = cont.began;
-        _heard = Duration(milliseconds: heard);
+        // Paused again meanwhile: what played until then counts too.
+        _heard += Duration(milliseconds: heard);
+        _flushedMs = heard;
         // First time this device has the play at all: it counts here once.
         if (isNew && recordPlays) unawaited(_db.addHistory(t));
       } else {
@@ -602,7 +667,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   }
 
   void _broadcastState(PlaybackEvent event) {
-    final playing = player.playing;
+    final playing = player.playing || _waitingToPlay;
     playbackState.add(playbackState.value.copyWith(
       controls: [
         MediaControl.skipToPrevious,
@@ -655,13 +720,16 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   /// on and starts from a random song; if shuffle is already on, the chosen
   /// song plays first and the rest are shuffled (like Spotify).
   /// [inOrder] plays the list in its own order even while shuffle is on.
-  Future<void> playTracks(List<Track> list, {int index = 0, bool shuffle = false, bool inOrder = false, String? source}) async {
+  /// [goesOn]: the player goes on by itself at the queue's end.
+  Future<void> playTracks(List<Track> list, {int index = 0, bool shuffle = false, bool inOrder = false, bool goesOn = false, String? source}) async {
     final playable = list.where((t) => t.fileExists).toList();
     if (playable.isEmpty) return;
     if (playable.every((t) => t.source == TrackSource.preview)) {
       await playPreview(playable.first);
       return;
     }
+    _cancelPlay();
+    if (!goesOn) onNewQueue?.call(pickUp: false);
     final start = list[index.clamp(0, list.length - 1)];
     var startIndex = playable.indexOf(start);
     if (startIndex < 0) startIndex = 0;
@@ -702,6 +770,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   /// else was played meanwhile.
   Future<bool?> playPreview(Track preview) async {
     final run = ++_queueRun;
+    _cancelPlay();
     // Still on the way back from the last preview: still the same queue.
     _before ??= _returning;
     _returning = null;
@@ -811,7 +880,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       if (run != _queueRun) return;
       if (_tracks.isEmpty) mediaItem.add(null);
       final t = b.current, play = b.play;
-      _continueFrom = t == null || play == null ? null : (track: t, began: play.began, heard: play.heard);
+      _continueFrom = t == null || play == null ? null : (track: t, began: play.began, heard: play.heard, parts: null);
       await _applyPreviewLoop();
       _scheduleSave();
     } finally {
@@ -865,7 +934,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   void updateTrackInfo(Track t) {
     if (_before?.replace((x) => x.id == t.id ? t : null) ?? false) _scheduleSave();
     final cont = _continueFrom;
-    if (cont != null && cont.track.id == t.id) _continueFrom = (track: t, began: cont.began, heard: cont.heard);
+    if (cont != null && cont.track.id == t.id) _continueFrom = (track: t, began: cont.began, heard: cont.heard, parts: cont.parts);
     var changed = false;
     for (var i = 0; i < _tracks.length; i++) {
       if (_tracks[i].id == t.id) {
@@ -889,7 +958,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     if (_before?.replace((t) => moved[t.id]) ?? false) _scheduleSave();
     final cont = _continueFrom;
     final contTo = cont == null ? null : moved[cont.track.id];
-    if (contTo != null) _continueFrom = (track: contTo, began: cont!.began, heard: cont.heard);
+    if (contTo != null) _continueFrom = (track: contTo, began: cont!.began, heard: cont.heard, parts: cont.parts);
     final cur = player.currentIndex;
     var changed = false;
     for (var i = 0; i < _tracks.length; i++) {
@@ -978,6 +1047,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   DateTime? lastPlayedAt;
 
   Future<void> saveSession() async {
+    onSave?.call();
     // During a preview, the queue it goes back to is what's saved (the app
     // closed meanwhile opens on it).
     final before = _before ?? _returning;
@@ -1059,13 +1129,29 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   /// 接續播放: the other device's queue, at its song and second, not playing
   /// yet. Songs not on this device are left out.
-  /// [began], [heardMs]: the other device's play of the song at [index]
-  /// (1.20.9), carried on here in the same entry.
+  /// [began], [heardMs], [parts]: the other device's play of the song at
+  /// [index] (1.20.9), carried on here in the same entry.
+  /// [unlessPlaying]: not if it started playing here meanwhile. A queue that
+  /// plays is paused first: picked up never starts sound by itself.
   Future<bool> loadResume(List<Track?> list, int index, Duration position,
-      {List<int>? original, LoopMode loop = LoopMode.off, int? began, int heardMs = 0}) async {
+      {List<int>? original,
+      LoopMode loop = LoopMode.off,
+      int? began,
+      int heardMs = 0,
+      Map<String, int>? parts,
+      bool unlessPlaying = false}) async {
     final start = index >= 0 && index < list.length ? list[index] : null;
     final keep = [for (final t in list) if (t != null && t.fileExists) t];
     if (keep.isEmpty) return false;
+    // The last queue still loading would end up over this one.
+    await _restoring;
+    if (player.playing) {
+      if (unlessPlaying) return false;
+      await _stopFade();
+      await player.pause();
+    }
+    onNewQueue?.call(pickUp: true);
+    _continueFrom = null;
     var at = start == null ? -1 : keep.indexOf(start);
     final pos = at < 0 ? Duration.zero : position;
     if (at < 0) at = 0;
@@ -1084,16 +1170,33 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     });
     await _setLoop(loop);
     if (began != null && start != null && at < keep.length && identical(keep[at], start)) {
-      _continueFrom = (track: start, began: began, heard: heardMs);
+      _continueFrom = (track: start, began: began, heard: heardMs, parts: parts);
     }
+    // Play was pressed while it loaded: that play is logged too.
+    if (player.playing) _onPlayingForLog(true);
     _scheduleSave();
     return true;
   }
 
   Future<bool> restoreSession({bool autoPlay = false}) async {
+    // Start-up's is still at it: that one, not a second over it.
+    final running = _restoring;
+    if (running != null) {
+      final ok = await running;
+      if (ok && autoPlay) unawaited(player.play());
+      return ok;
+    }
     if (_tracks.isNotEmpty) return true;
-    return _restore('last_session', autoPlay: autoPlay);
+    final run = _restore('last_session', autoPlay: autoPlay);
+    _restoring = run;
+    try {
+      return await run;
+    } finally {
+      _restoring = null;
+    }
   }
+
+  Future<bool>? _restoring;
 
   Future<bool> _restore(String key, {bool autoPlay = false}) async {
     final raw = (await _db.allSettings())[key];
@@ -1136,6 +1239,51 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   // ---------- audio_service overrides ----------
   @override
   Future<void> play() async {
+    final asks = _beforePlay != null || _beforePlaySet != null;
+    if (asks && !player.playing && !_previewing) {
+      // Pressed again while it waits: the same play.
+      final waiting = _startingPlay;
+      if (waiting != null) return waiting;
+      final run = _playRun;
+      final start = _playAfterAsking(run);
+      _startingPlay = start;
+      try {
+        return await start;
+      } finally {
+        if (identical(_startingPlay, start)) _startingPlay = null;
+      }
+    }
+    return _play();
+  }
+
+  Future<void> _playAfterAsking(int run) async {
+    final deadline = DateTime.now().add(playWait);
+    bool cancelled() => run != _playRun;
+    _waitingToPlay = true;
+    _broadcastState(player.playbackEvent);
+    try {
+      if (_beforePlay == null) await _beforePlaySet?.future.timeout(playWait).catchError((_) {});
+      await _restoring;
+      if (!cancelled()) await _beforePlay?.call(cancelled, deadline);
+    } catch (_) {
+      // Couldn't look: this device's own plays.
+    }
+    if (cancelled()) return;
+    // Playing from here on: a press now is an ordinary one.
+    _startingPlay = null;
+    try {
+      await _play(started: () => _waitingToPlay = false);
+    } finally {
+      if (_waitingToPlay && !cancelled()) {
+        _waitingToPlay = false;
+        _broadcastState(player.playbackEvent);
+      }
+    }
+  }
+
+  /// [started]: the player was told to play ([AudioPlayer.play] itself only
+  /// returns when playback stops).
+  Future<void> _play({void Function()? started}) async {
     if (_tracks.isEmpty) {
       if (!await restoreSession()) return;
     }
@@ -1146,12 +1294,15 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     } else {
       await _stopFade();
     }
-    await player.play();
+    final playing = player.play();
+    started?.call();
+    await playing;
   }
 
   /// Fades out first (unless [fade] is false, e.g. headphones unplugged).
   @override
   Future<void> pause({bool fade = true}) async {
+    _cancelPlay();
     if (fade && fadeMs > 0 && player.playing) {
       await _fadeTo(0);
       // Cancelled by a play() during the fade: keep playing.
@@ -1164,6 +1315,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   @override
   Future<void> stop() async {
+    _cancelPlay();
     await saveSession();
     await player.stop();
     await super.stop();
@@ -1202,6 +1354,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   @override
   Future<void> skipToQueueItem(int index) async {
     if (index < 0 || index >= _tracks.length) return;
+    _cancelPlay();
     await _ready(_tracks[index]);
     await player.seek(Duration.zero, index: index);
     player.play();

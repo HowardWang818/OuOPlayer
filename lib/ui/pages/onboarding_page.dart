@@ -8,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../config/version.dart';
 import '../../providers/providers.dart';
 import '../../services/updater.dart';
+import '../../providers/auto_backup_provider.dart';
+import '../widgets/backup_cleanup.dart';
 import 'privacy_page.dart';
 import 'settings/library_settings.dart' show addMusicFolder;
 
@@ -43,6 +45,13 @@ class _FirstRunGateState extends ConsumerState<FirstRunGate> {
     }
     await db.setSetting('onboarded', 'true');
     await db.setSetting('seen_version', appVersion);
+    // 1.23.0: the old backups holding song covers, once (not on a new install).
+    if (first) {
+      await db.setSetting(backupCleanupKey, 'new install');
+    } else if (mounted) {
+      final backups = ref.read(autoBackupProvider);
+      await offerBackupCleanup(context, db, ref.read(autoBackupProvider.notifier), backups.loaded ? backups.dir : null);
+    }
   }
 
   @override

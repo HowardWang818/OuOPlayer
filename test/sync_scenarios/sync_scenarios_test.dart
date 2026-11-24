@@ -18,6 +18,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ouoplayer/data/models/track.dart';
+import 'package:ouoplayer/services/backup.dart';
+import 'package:ouoplayer/services/library_scanner.dart';
 import 'package:ouoplayer/services/missing_songs.dart';
 import 'package:ouoplayer/services/sync2/now_playing.dart';
 import 'package:ouoplayer/services/track_sort.dart';
@@ -624,6 +626,34 @@ void tree(bool overlap) {
       await expectStable([phone, pc]);
     });
 
+    test('4.19 備份不含封面（1.23.0）：重裝還原後從另一台拿回封面', () async {
+      await phone.setCover('b', 'cat');
+      await settle([phone, pc]);
+      final dir = await Directory.systemTemp.createTemp('ouo_cover_backup');
+      final backup = jsonDecode(jsonEncode(await buildBackup(phone.db, lyricsDir: dir))) as Map<String, dynamic>;
+      expect(backup.containsKey('covers'), isFalse);
+      final again = await phone.reinstall();
+      await restoreBackup(again.db, LibraryScanner(again.db), backup, coverDir: dir, lyricsDir: dir);
+      await settle([again, pc]);
+      expect(await again.cover('b'), 'picture cat');
+      expect(await pc.cover('b'), 'picture cat');
+      expect(cloud.count('v2-cover-'), 0);
+      await expectStable([again, pc]);
+    });
+
+    test('4.20 備份不含封面、哪台都沒有那張了：不會一直重傳', () async {
+      await phone.setCover('b', 'cat');
+      await settle([phone, pc]);
+      final dir = await Directory.systemTemp.createTemp('ouo_cover_gone');
+      final backup = jsonDecode(jsonEncode(await buildBackup(phone.db, lyricsDir: dir))) as Map<String, dynamic>;
+      final again = await phone.reinstall();
+      await restoreBackup(again.db, LibraryScanner(again.db), backup, coverDir: dir, lyricsDir: dir);
+      await pc.db.db.update('tracks', {'art': null}, where: 'id = ?', whereArgs: [(await pc.track('b')).id]);
+      await settle([again, pc]);
+      expect(await again.cover('b'), isNull);
+      await expectStable([again, pc]);
+    });
+
     /// A download: its YouTube thumbnail first, the official cover a moment later.
     Future<void> download(Dev d, String title) async {
       final t = await d.song(title);
@@ -735,10 +765,16 @@ void tree(bool overlap) {
       await settle([phone, pc]);
     });
 
-    Future<({ResumeStep step, String why})> check({ResumeMode mode = ResumeMode.ask, DateTime? lastHere, bool playing = false, String? asked}) async {
-      final latest = (await pc.engine.nowPlaying.others(pc.id)).firstOrNull;
-      return resumeStep(
-          mode: mode, latest: latest, now: DateTime.fromMillisecondsSinceEpoch(Clock.now), lastPlayedHere: lastHere, playingHere: playing, asked: asked);
+    Future<ResumePlan> check({ResumeMode mode = ResumeMode.ask, DateTime? lastHere, bool playing = false, String? asked, ResumeState? state}) async {
+      return resumePlan(
+          mode: mode,
+          others: await pc.engine.nowPlaying.others(pc.id),
+          me: pc.id,
+          state: state ?? ResumeState(),
+          now: DateTime.fromMillisecondsSinceEpoch(Clock.now),
+          lastPlayedHere: lastHere,
+          playingHere: playing,
+          asked: asked);
     }
 
     test('6.1 手機在播：電腦看得到，問要不要接著播', () async {
@@ -774,6 +810,89 @@ void tree(bool overlap) {
       expect((await check(mode: ResumeMode.auto)).step, ResumeStep.load);
       expect((await check(mode: ResumeMode.never)).step, ResumeStep.none);
       expect((await check(playing: true)).step, ResumeStep.none);
+    });
+
+    test('6.14 兩台同時續聽同一首：時間相加（1.23.0）', () async {
+      final began = await phone.play('a', seconds: 60);
+      await settle([phone, pc]);
+      final shares = {'phone': 60000};
+      await phone.carryOn('a', began, 60000, seconds: 90);
+      await pc.carryOn('a', began, 60000, seconds: 40, parts: shares);
+      await settle([phone, pc]);
+      expect(await phone.heard('a'), [190]);
+      expect(await pc.heard('a'), [190]);
+      expect((await pc.db.playCounts())[(await pc.track('a')).id], 1);
+      await expectStable([phone, pc]);
+    });
+
+    test('6.15 還沒同步就接著聽：之後相加', () async {
+      final began = await phone.play('a', seconds: 60);
+      await pc.carryOn('a', began, 60000, seconds: 40, parts: {'phone': 60000});
+      await phone.carryOn('a', began, 60000, seconds: 90);
+      await settle([pc, phone]);
+      expect(await phone.heard('a'), [190]);
+      expect(await pc.heard('a'), [190]);
+      await expectStable([phone, pc]);
+    });
+
+    test('6.16 三台各自續聽同一首：相加、只有一次播放', () async {
+      final tablet = await Dev.make('平板', cloud, id: 'tablet');
+      await tablet.song('a');
+      await tablet.song('b');
+      final began = await phone.play('a', seconds: 30);
+      await settle([phone, pc, tablet]);
+      await pc.carryOn('a', began, 30000, seconds: 20, parts: {'phone': 30000});
+      await tablet.carryOn('a', began, 30000, seconds: 45, parts: {'phone': 30000});
+      await phone.carryOn('a', began, 30000, seconds: 10);
+      await settle([phone, pc, tablet]);
+      for (final d in [phone, pc, tablet]) {
+        expect(await d.heard('a'), [105], reason: d.name);
+      }
+      // The phone's play here is only a log entry (Dev.play): counted on the others once.
+      for (final d in [pc, tablet]) {
+        expect((await d.db.playCounts())[(await d.track('a')).id], 1, reason: d.name);
+      }
+      await expectStable([phone, pc, tablet]);
+    });
+
+    test('6.17 更新前的播放（分不開）：取較長的，不會變兩倍', () async {
+      final began = Clock.tick();
+      for (final d in [phone, pc]) {
+        await d.db.db.insert('listening_log', {
+          'track_id': (await d.track('a')).id,
+          'played_at': began,
+          'listened_ms': d == phone ? 70000 : 50000,
+          'source': 'local',
+        });
+      }
+      await settle([phone, pc]);
+      expect(await phone.heard('a'), [70]);
+      expect(await pc.heard('a'), [70]);
+      await expectStable([phone, pc]);
+    });
+
+    test('6.18 一台更新前、一台更新後的同一次播放：一致', () async {
+      final began = await phone.play('a', seconds: 60);
+      await settle([phone, pc]);
+      // The PC's row as a version before 1.23.0 left it: only a total.
+      await pc.db.db.update('listening_log', {'parts': null, 'origin': null, 'remote_id': null, 'listened_ms': 100000},
+          where: 'played_at = ?', whereArgs: [began]);
+      await settle([phone, pc]);
+      expect(await phone.heard('a'), [100]);
+      expect(await pc.heard('a'), [100]);
+      await expectStable([phone, pc]);
+    });
+
+    test('6.19 兩台各自播過：問要從哪裡，自動接續也問（1.23.0）', () async {
+      final at = Clock.tick();
+      await phone.engine.nowPlaying.put(NowPlaying(
+          device: phone.id, deviceName: phone.name, at: at, songs: const [{'t': 'a', 'a': 'A'}], index: 0, positionMs: 91000, mark: 91000, session: 's1'));
+      final mine = ResumeState()..heard(40000, Clock.tick());
+      for (final mode in [ResumeMode.ask, ResumeMode.auto]) {
+        expect((await check(mode: mode, state: mine)).step, ResumeStep.choose);
+      }
+      expect((await check(mode: ResumeMode.auto)).step, ResumeStep.load);
+      await expectStable([phone, pc]);
     });
 
     test('6.6 重新安裝後：舊安裝留下的舊紀錄不會蓋過新的', () async {
