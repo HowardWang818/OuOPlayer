@@ -8,7 +8,7 @@
 // ├─ 3 已按讚的歌曲
 // ├─ 4 歌曲資料（歌名、歌手、專輯、封面、歌詞）
 // ├─ 5 收聽紀錄
-// ├─ 6 接續播放
+// ├─ 6 同一次播放跨裝置（收聽時間）
 // ├─ 7 外觀主題
 // ├─ 8 傳歌（雲端中繼站、斷線、暫停）
 // ├─ 9 同步紀錄
@@ -21,7 +21,6 @@ import 'package:ouoplayer/data/models/track.dart';
 import 'package:ouoplayer/services/backup.dart';
 import 'package:ouoplayer/services/library_scanner.dart';
 import 'package:ouoplayer/services/missing_songs.dart';
-import 'package:ouoplayer/services/sync2/now_playing.dart';
 import 'package:ouoplayer/services/track_sort.dart';
 
 import 'harness.dart';
@@ -758,58 +757,11 @@ void tree(bool overlap) {
     });
   });
 
-  group('6 接續播放', () {
+  group('6 同一次播放跨裝置（收聽時間）', () {
     setUp(() async {
       final a = await phone.song('a'), b = await phone.song('b');
       await phone.playlist('通勤', [a, b]);
       await settle([phone, pc]);
-    });
-
-    Future<ResumePlan> check({ResumeMode mode = ResumeMode.ask, DateTime? lastHere, bool playing = false, String? asked, ResumeState? state}) async {
-      return resumePlan(
-          mode: mode,
-          others: await pc.engine.nowPlaying.others(pc.id),
-          me: pc.id,
-          state: state ?? ResumeState(),
-          now: DateTime.fromMillisecondsSinceEpoch(Clock.now),
-          lastPlayedHere: lastHere,
-          playingHere: playing,
-          asked: asked);
-    }
-
-    test('6.1 手機在播：電腦看得到，問要不要接著播', () async {
-      await phone.nowPlaying(['a', 'b'], index: 1, positionMs: 42000);
-      final latest = (await pc.engine.nowPlaying.others(pc.id)).first;
-      expect(latest.current['t'], 'b');
-      expect(latest.positionMs, 42000);
-      expect((await check()).step, ResumeStep.ask);
-    });
-
-    test('6.2 電腦之後播過：不問', () async {
-      await phone.nowPlaying(['a']);
-      Clock.tick();
-      expect((await check(lastHere: DateTime.fromMillisecondsSinceEpoch(Clock.now))).step, ResumeStep.none);
-    });
-
-    test('6.3 超過 12 小時：不問', () async {
-      await phone.nowPlaying(['a']);
-      Clock.pass(const Duration(hours: 13));
-      expect((await check()).why, startsWith('older than 12 h'));
-    });
-
-    test('6.4 同一筆只問一次；手機再播就再問', () async {
-      await phone.nowPlaying(['a']);
-      final latest = (await pc.engine.nowPlaying.others(pc.id)).first;
-      expect((await check(asked: '${latest.device}:${latest.at}')).step, ResumeStep.none);
-      await phone.nowPlaying(['b']);
-      expect((await check(asked: '${latest.device}:${latest.at}')).step, ResumeStep.ask);
-    });
-
-    test('6.5 自動接續 / 不接續 / 這台正在播', () async {
-      await phone.nowPlaying(['a']);
-      expect((await check(mode: ResumeMode.auto)).step, ResumeStep.load);
-      expect((await check(mode: ResumeMode.never)).step, ResumeStep.none);
-      expect((await check(playing: true)).step, ResumeStep.none);
     });
 
     test('6.14 兩台同時續聽同一首：時間相加（1.23.0）', () async {
@@ -883,48 +835,12 @@ void tree(bool overlap) {
       await expectStable([phone, pc]);
     });
 
-    test('6.19 兩台各自播過：問要從哪裡，自動接續也問（1.23.0）', () async {
-      final at = Clock.tick();
-      await phone.engine.nowPlaying.put(NowPlaying(
-          device: phone.id, deviceName: phone.name, at: at, songs: const [{'t': 'a', 'a': 'A'}], index: 0, positionMs: 91000, mark: 91000, session: 's1'));
-      final mine = ResumeState()..heard(40000, Clock.tick());
-      for (final mode in [ResumeMode.ask, ResumeMode.auto]) {
-        expect((await check(mode: mode, state: mine)).step, ResumeStep.choose);
-      }
-      expect((await check(mode: ResumeMode.auto)).step, ResumeStep.load);
-      await expectStable([phone, pc]);
-    });
-
-    test('6.6 重新安裝後：舊安裝留下的舊紀錄不會蓋過新的', () async {
-      await phone.nowPlaying(['a'], at: Clock.now - 3600000);
-      final again = await phone.reinstall();
-      await again.nowPlaying(['b']);
-      final latest = (await pc.engine.nowPlaying.others(pc.id)).first;
-      expect(latest.current['t'], 'b');
-    });
-
-    test('6.7 佇列裡的歌：改過名的、這台沒有的都對得上', () async {
-      await phone.rename('a', 'A!');
-      await settle([phone, pc]);
-      final extra = await phone.song('only-phone');
-      expect(extra.title, 'only-phone');
-      await phone.nowPlaying(['A!', 'only-phone', 'b']);
-      final latest = (await pc.engine.nowPlaying.others(pc.id)).first;
-      final queue = queueHere(latest, await pc.db.tracks(), await pc.db.db.query('track_edits'));
-      expect([for (final t in queue) t?.title], ['A!', null, 'b']);
-    });
-
     test('6.9 手機聽 → 電腦接續 → 回手機接續：同一次播放，兩台都一筆、時間加總', () async {
       final began = await phone.play('a', seconds: 30);
       await settle([phone, pc]);
-      await phone.nowPlaying(['a', 'b'], began: began, heardMs: 30000);
-      final latest = (await pc.engine.nowPlaying.others(pc.id)).first;
-      expect((latest.began, latest.heardMs), (began, 30000));
-      await pc.carryOn('a', latest.began!, latest.heardMs, seconds: 40);
+      await pc.carryOn('a', began, 30000, seconds: 40);
       await settle([phone, pc]);
-      await pc.nowPlaying(['a', 'b'], began: began, heardMs: 70000);
-      final back = (await phone.engine.nowPlaying.others(phone.id)).first;
-      await phone.carryOn('a', back.began!, back.heardMs, seconds: 20);
+      await phone.carryOn('a', began, 70000, seconds: 20);
       await settle([phone, pc]);
       expect(await phone.heard('a'), [90]);
       expect(await pc.heard('a'), [90]);
@@ -934,7 +850,6 @@ void tree(bool overlap) {
 
     test('6.10 電腦接續時還沒收到手機那筆：之後仍合成一筆', () async {
       final began = await phone.play('a', seconds: 30);
-      await phone.nowPlaying(['a'], began: began, heardMs: 30000);
       await pc.carryOn('a', began, 30000, seconds: 40);
       await settle([phone, pc]);
       expect(await phone.heard('a'), [70]);
@@ -958,9 +873,7 @@ void tree(bool overlap) {
       final began = await phone.play('a', seconds: 30);
       await settle([phone, pc]);
       // Back from a preview: paused on the same play; then it goes on there.
-      await phone.nowPlaying(['a', 'b'], positionMs: 30000, began: began, heardMs: 30000);
-      final latest = (await pc.engine.nowPlaying.others(pc.id)).first;
-      await pc.carryOn('a', latest.began!, latest.heardMs, seconds: 25);
+      await pc.carryOn('a', began, 30000, seconds: 25);
       await settle([phone, pc]);
       expect(await phone.heard('a'), [55]);
       expect(await pc.heard('a'), [55]);
@@ -978,10 +891,6 @@ void tree(bool overlap) {
       await expectStable([phone, pc]);
     });
 
-    test('6.8 自己的紀錄不算另一台的', () async {
-      await pc.nowPlaying(['a']);
-      expect(await pc.engine.nowPlaying.others(pc.id), isEmpty);
-    });
   });
 
   group('7 外觀主題', () {

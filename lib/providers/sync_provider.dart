@@ -5,7 +5,6 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:just_audio/just_audio.dart' show LoopMode;
 
 import '../app.dart' show rootNavigatorKey;
 import '../config/google_config.dart';
@@ -13,16 +12,16 @@ import '../data/models/track.dart';
 import '../services/app_screen.dart';
 import '../services/desktop_tray.dart';
 import '../services/network_check.dart';
+import '../data/db/database.dart';
 import '../services/sync/drive_client.dart';
 import '../services/sync/google_auth.dart';
 import '../services/sync2/engine.dart';
-import '../services/sync2/now_playing.dart';
-import '../services/sync2/resume_tracker.dart';
+import '../services/list_queues.dart';
+import '../services/sync2/queue_sync.dart';
 import '../services/sync2/sync_log.dart';
 import '../services/tag_backlog.dart';
 import '../services/tag_editor.dart';
 import '../ui/widgets/dialogs.dart';
-import '../ui/widgets/resume_dialog.dart';
 import 'providers.dart';
 import 'theme_provider.dart';
 
@@ -35,10 +34,9 @@ bool? debugSyncAvailable;
 
 final googleAuthProvider = Provider<GoogleAuth>((ref) => GoogleAuth(ref.watch(dbProvider)));
 
-final syncEngineProvider = Provider<SyncEngine>((ref) {
+/// This device's id in sync (made the first time).
+final deviceIdProvider = Provider<Future<String> Function()>((ref) {
   final db = ref.watch(dbProvider);
-  final scanner = ref.watch(scannerProvider);
-  final lyrics = ref.watch(lyricsServiceProvider);
   Future<String> readId() async {
     final s = await db.allSettings();
     final id = s['sync_device_id'];
@@ -51,16 +49,23 @@ final syncEngineProvider = Provider<SyncEngine>((ref) {
 
   // One for all: asked twice at once on a new install, two were made.
   Future<String>? id;
-  Future<String> deviceId() => id ??= readId().catchError((Object e, StackTrace st) {
+  return () => id ??= readId().catchError((Object e, StackTrace st) {
         id = null;
         Error.throwWithStackTrace(e, st);
       });
+});
+
+final syncEngineProvider = Provider<SyncEngine>((ref) {
+  final db = ref.watch(dbProvider);
+  final scanner = ref.watch(scannerProvider);
+  final lyrics = ref.watch(lyricsServiceProvider);
+  final deviceId = ref.watch(deviceIdProvider);
 
   final engine = SyncEngine(
     db: db,
     drive: CachedDrive(DriveClient(ref.watch(googleAuthProvider))),
     deviceId: deviceId,
-    deviceName: Platform.isAndroid ? '手機' : '電腦（${Platform.localHostname}）',
+    deviceName: defaultDeviceName(),
     importFile: (path) => scanner.importFile(path, source: TrackSource.download),
     storeArt: scanner.storeArt,
     downloadDir: () => ref.read(settingsProvider).downloadDir,
@@ -75,6 +80,8 @@ final syncEngineProvider = Provider<SyncEngine>((ref) {
       if (!await writeTagsQuietly(t.uri, edit)) await TagBacklog.add(db, [t.id]);
     },
   );
+  // 裝置名稱 (1.24.0): chosen in 設定 → 同步; the phone's model by default.
+  unawaited(deviceNameOf(db).then((n) => engine.deviceName = n).catchError((_) => engine.deviceName));
   // Another device's colour theme: repaint in it.
   engine.onThemeChanged = () {
     ref.read(themeChoiceProvider.notifier).reload();
@@ -83,16 +90,30 @@ final syncEngineProvider = Provider<SyncEngine>((ref) {
   return engine;
 });
 
-/// 接續播放's clock and eyes (tests have their own).
-final resumeClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+/// 裝置名稱 when none was chosen: 手機 or 電腦 with the computer's name (the
+/// phone's model is added by [deviceNameOf]).
+String defaultDeviceName() => Platform.isAndroid ? '手機' : '電腦（${Platform.localHostname}）';
+
+const deviceNameKey = 'sync_device_name';
+
+/// This device's name in sync: the one chosen, else 手機（model） / 電腦（name）.
+Future<String> deviceNameOf(AppDatabase db) async {
+  final chosen = (await db.allSettings())[deviceNameKey]?.trim();
+  if (chosen != null && chosen.isNotEmpty) return chosen;
+  if (!Platform.isAndroid) return defaultDeviceName();
+  final model = await phoneModel();
+  return model == null || model.isEmpty ? '手機' : '手機（$model）';
+}
+
+/// The list queues' clock and eyes (tests have their own).
+final queueClockProvider = Provider<int Function()>((ref) => () => DateTime.now().millisecondsSinceEpoch);
 final appOnScreenProvider = Provider<Future<bool> Function()>((ref) => appOnScreen);
 
-final resumeTrackerProvider = Provider<ResumeTracker>((ref) {
-  final engine = ref.read(syncEngineProvider);
-  final tracker = ResumeTracker(ref.read(dbProvider), ref.read(audioHandlerProvider),
-      deviceId: engine.deviceId, deviceName: engine.deviceName, clock: ref.read(resumeClockProvider));
-  ref.onDispose(tracker.dispose);
-  return tracker;
+/// 1.24.0: each playlist's and the liked songs' own queue.
+final listQueuesProvider = Provider<ListQueues>((ref) {
+  final queues = ListQueues(ref.read(dbProvider), ref.read(audioHandlerProvider), deviceId: ref.read(deviceIdProvider), clock: ref.read(queueClockProvider));
+  ref.onDispose(queues.dispose);
+  return queues;
 });
 
 /// What the 同步 page shows.
@@ -203,7 +224,8 @@ class SyncNotifier extends Notifier<SyncState> {
     }
     _endedAt = DateTime.now();
     state = state.copyWith(running: false, last: DateTime.now(), message: message);
-    unawaited(pushNowPlaying());
+    // Lists may have become synced: their queues too.
+    unawaited(syncQueues());
     unawaited(_tagBacklog());
     if (_again) {
       _again = false;
@@ -278,323 +300,73 @@ class SyncNotifier extends Notifier<SyncState> {
   }
 
 
-  // ---------- 接續播放 ----------
 
-  Future<bool> _nowOn() async => syncAvailable && state.signedIn && (await ref.read(dbProvider).allSettings())['sync_now'] != 'false';
 
-  ResumeTracker get _tracker => ref.read(resumeTrackerProvider);
-  DateTime _clock() => ref.read(resumeClockProvider)();
+  // ---------- 佇列同步 (1.24.0, instead of 接續播放) ----------
 
-  Future<void>? _pushing;
-  bool _pushAgain = false;
+  ListQueues get _queues => ref.read(listQueuesProvider);
+  QueueSync? _queueSyncer;
+  QueueSync get _queueSync => _queueSyncer ??= QueueSync(db: ref.read(dbProvider), drive: _engine.drive, deviceId: _engine.deviceId, queues: _queues);
 
-  /// The real progress here, to Drive (every minute while playing, on a new
-  /// song, on pause, when the app is left, and on opening if it didn't get
-  /// through before the app was closed).
-  ///
-  /// One upload at a time, each with what is newest when it starts: two at
-  /// once could end with the older one on Drive (1.23.0).
-  Future<void> pushNowPlaying() {
-    _tracker.flush();
-    final running = _pushing;
+  Future<bool> _queuesOn() async {
+    if (!syncAvailable) return false;
+    if (state.signedIn) return true;
+    // Just started (by a media button): the state may not be read yet.
+    final s = await ref.read(dbProvider).allSettings();
+    return s['sync_signed_in'] == 'true' || (s['gdrive_refresh'] ?? '').isNotEmpty;
+  }
+
+  Future<void>? _queueing;
+  bool _queueAgain = false;
+
+  /// The synced lists' queues: this device's up, the others' newer ones
+  /// taken. One at a time; asked meanwhile, once more right after.
+  Future<void> syncQueues() {
+    final running = _queueing;
     if (running != null) {
-      _pushAgain = true;
+      _queueAgain = true;
       return running;
     }
-    return _pushing = _push().whenComplete(() {
-      _pushing = null;
-      // Asked just as the last one finished.
-      if (_pushAgain) {
-        _pushAgain = false;
-        unawaited(pushNowPlaying());
+    return _queueing = _syncQueues().whenComplete(() {
+      _queueing = null;
+      if (_queueAgain) {
+        _queueAgain = false;
+        unawaited(syncQueues());
       }
     });
   }
 
-  Future<void> _push() async {
+  Future<void> _syncQueues() async {
     do {
-      _pushAgain = false;
-      final t = _tracker;
-      await t.ready;
-      if (!await _nowOn()) return;
-      if (!t.state.pending) {
-        nowFailed = false;
-        return;
-      }
-      final rev = t.state.rev;
+      _queueAgain = false;
+      if (!await _queuesOn()) return;
       try {
-        final send = await t.withParts(t.state.toSend()!);
-        await _engine.nowPlaying.put(send);
-        nowFailed = false;
-        t.markSent(rev);
-        await ref.read(dbProvider).setSetting(nowPushedKey, '${DateTime.now().millisecondsSinceEpoch}');
+        await _queueSync.run();
+        queueFailed = false;
       } catch (_) {
-        // No network (power saving cuts it in the background): sent again as
-        // soon as one gets through (the minute timer, coming back, a sync,
-        // the next start).
-        nowFailed = true;
+        // No network: tried again by the minute timer, coming back, a sync.
+        queueFailed = true;
         return;
       }
-    } while (_pushAgain);
+    } while (_queueAgain);
   }
 
-  /// The last upload didn't get through.
-  bool nowFailed = false;
+  /// The last queue sync didn't get through.
+  bool queueFailed = false;
 
-  /// The progress here isn't all on Drive yet (kept over a restart).
-  bool get nowPending => nowFailed || _tracker.state.pending;
-  static const nowPushedKey = 'sync_now_pushed';
-
-  bool _asking = false;
-
-  /// Why the last check didn't ask (read from the database when it doesn't
-  /// show up). Only written when it changes.
-  String? _resumeNote;
-  void _note(String why) {
-    if (why == _resumeNote) return;
-    _resumeNote = why;
-    ref.read(dbProvider).setSetting('sync_resume_debug', '${DateTime.now()} $why').catchError((_) {});
-  }
-
-  Future<ResumePlan> _look({required ResumeMode mode, required bool playing, List<NowPlaying>? fetched}) async {
-    final t = _tracker;
-    final others = fetched ?? await _engine.nowPlaying.others(await _engine.deviceId());
-    t.flush();
-    final plan = resumePlan(
-      mode: mode,
-      others: others,
-      me: await _engine.deviceId(),
-      state: t.state,
-      now: _clock(),
-      playingHere: playing,
-      lastPlayedHere: ref.read(audioHandlerProvider).lastPlayedAt,
-      asked: (await ref.read(dbProvider).allSettings())['sync_resume_asked'],
-    );
-    // Past 12 hours: dealt with, so the next play here is the one to follow.
-    if (plan.expired.isNotEmpty) t.settle(plan.expired);
-    // Both played: the other's kept at once, it goes on and replaces its file.
-    if (plan.both) await t.keep(plan.offers);
-    return plan;
-  }
-
-  /// With a screen to ask on and nothing playing (opened, come back to,
-  /// paused, every minute): another device really played since (30 seconds,
-  /// within 12 hours) → 「要接著播嗎？」, or its queue right away, or nothing
-  /// ([ResumeMode]). Both played → 「要從哪裡接著播？」, also with 自動接續.
-  Future<void> offerResume() async {
-    if (_asking) return _note('already asking');
-    if (!await _nowOn()) return _note('off or signed out');
-    final h = ref.read(audioHandlerProvider);
-    final db = ref.read(dbProvider);
-    final mode = ResumeMode.parse((await db.allSettings())['sync_resume_mode']);
-    if (mode == ResumeMode.never) return _note('set to never');
-    if (_asking) return;
-    _asking = true;
-    try {
-      await _tracker.ready;
-      final plan = await _look(mode: mode, playing: h.player.playing);
-      if (plan.step == ResumeStep.none) return _note(plan.why);
-      if (h.previewing) return _note('previewing');
-      // Not asked where nobody sees it (1.23.0): it would count as asked.
-      final onScreen = ref.read(appOnScreenProvider);
-      if (!await onScreen()) return _note(plan.both ? 'two: not on screen' : 'not on screen');
-      if (h.player.playing) return _note(plan.both ? 'two: playing here' : 'playing here');
-      if (plan.step == ResumeStep.load) {
-        _note(plan.why);
-        await _follow(plan.offers.first);
-        return;
-      }
-      final ctx = rootNavigatorKey.currentContext;
-      if (ctx == null || !ctx.mounted) return _note('no screen to ask on');
-      _note(plan.why);
-      if (plan.step == ResumeStep.ask) {
-        await _askOne(ctx, plan.offers.first);
-      } else {
-        await _askWhich(ctx, plan.offers);
-      }
-    } catch (e) {
-      _note('error: $e');
-    } finally {
-      _asking = false;
-    }
-  }
-
-  Future<void> _askOne(BuildContext ctx, NowPlaying offer) async {
-    final h = ref.read(audioHandlerProvider);
-    final answer = await showResumeAsk(ctx, offer, playing: h.player.playingStream);
-    // Play was pressed: asked again when it's paused.
-    if (answer == startedPlaying) return _note('playing here');
-    final t = _tracker;
-    if (answer is! ({bool yes, bool remember})) {
-      // Closed without answering (tapped outside): nothing is decided.
-      t.hush([offer]);
-      return;
-    }
-    if (answer.remember) {
-      await ref.read(dbProvider).setSetting('sync_resume_mode', (answer.yes ? ResumeMode.auto : ResumeMode.never).name);
-    }
-    if (answer.yes) {
-      await _pickUp(offer, settle: [offer]);
-    } else {
-      t.settle([offer]);
-      await t.keep([offer]);
-      unawaited(pushNowPlaying());
-    }
-  }
-
-  Future<void> _askWhich(BuildContext ctx, List<NowPlaying> offers) async {
-    final h = ref.read(audioHandlerProvider);
-    final t = _tracker;
-    final here = t.here();
-    await t.keep(offers);
-    if (!ctx.mounted) return;
-    final picked = await showResumeChoice(
-      ctx,
-      [for (final o in offers) ResumeChoice(o.deviceName, o), if (here != null) ResumeChoice(hereLabel, here, here: true)],
-      playing: h.player.playingStream,
-    );
-    if (picked == startedPlaying) return _note('two: playing here');
-    if (picked is! ResumeChoice) {
-      t.hush(offers);
-    } else if (picked.here) {
-      t.settle(offers);
-      unawaited(pushNowPlaying());
-    } else {
-      await _pickUp(picked.progress, settle: offers);
-    }
-  }
-
-  static const hereLabel = '這台';
-
-  /// 自動接續: what is replaced is kept, and one listening says so once.
-  Future<void> _follow(NowPlaying o, {bool Function()? cancelled, bool quiet = false}) async {
-    final before = _tracker.state.settled[o.device];
-    final again = before != null && before.took && before.session == o.sessionKey;
-    await _pickUp(o, settle: [o], keepHere: !again, quiet: quiet || again, cancelled: cancelled);
-  }
-
-  /// [latest]'s queue here, at its song and second, not playing yet.
-  /// [settle]: what this decides about. [byHand]: chosen in 設定, so it may
-  /// replace what plays (paused then).
-  Future<void> _pickUp(NowPlaying latest,
-      {required List<NowPlaying> settle, bool keepHere = true, bool quiet = false, bool byHand = false, bool Function()? cancelled}) async {
-    final db = ref.read(dbProvider);
-    final h = ref.read(audioHandlerProvider);
-    final t = _tracker;
-    final list = queueHere(latest, await db.tracks(), await db.db.query('track_edits'));
-    final none = !list.any((s) => s != null && s.fileExists);
-    if (none) {
-      // Not again for this listening.
-      t.hush(settle);
-    } else {
-      if (cancelled?.call() ?? false) return;
-      if (!byHand && h.player.playing) return;
-      t.flush();
-      // During a preview: the progress before it.
-      final here = t.here() ?? (h.previewing ? t.state.snap : null);
-      if (keepHere && here != null && !sameProgress(here, latest)) await t.keep([await t.withParts(here)]);
-      if (cancelled?.call() ?? false) return;
-      final loop = LoopMode.values.where((m) => m.name == latest.loop).firstOrNull ?? LoopMode.off;
-      final began = latest.began;
-      final done = await h.loadResume(list, latest.index, Duration(milliseconds: latest.positionMs),
-          original: latest.original,
-          loop: loop,
-          began: began,
-          heardMs: latest.heardMs,
-          // A version before 1.23.0 sends only the total: all of it theirs.
-          parts: began == null ? null : latest.parts ?? {latest.device: latest.heardMs},
-          unlessPlaying: !byHand);
-      if (!done) return;
-      t.settle(settle, took: latest);
-      unawaited(pushNowPlaying());
-    }
-    if (quiet) return;
-    final ctx = rootNavigatorKey.currentContext;
-    if (ctx != null && ctx.mounted) {
-      final missing = list.where((s) => s == null).length;
-      final from = latest.device == await _engine.deviceId() ? '先前' : latest.deviceName;
-      if (!ctx.mounted) return;
-      toast(ctx, none ? '這台沒有那份佇列裡的歌' : (missing == 0 ? '已接著$from的進度，按播放繼續聽' : '已接著播，這台沒有的 $missing 首略過'));
-    }
-  }
-
-  /// Play pressed with no screen to ask on (widget, headset, car, tray, media
-  /// key). 自動接續 and only the other device played: from there, looked up
-  /// by [deadline]. Otherwise, or not found in time: this device's own.
+  /// Play pressed with no screen (widget, headset, car, tray, media key):
+  /// the other devices' queues first, by [deadline]; not in time, this
+  /// device's own.
   Future<void> beforePlay(bool Function() cancelled, DateTime deadline) async {
-    if (!syncAvailable) return;
-    final db = ref.read(dbProvider);
-    final s = await db.allSettings();
-    if (ResumeMode.parse(s['sync_resume_mode']) != ResumeMode.auto || s['sync_now'] == 'false') return;
-    // Read here: just started by the button, [state] may not be loaded yet.
-    if (s['sync_signed_in'] != 'true' && (s['gdrive_refresh'] ?? '').isEmpty) return;
+    if (!await _queuesOn()) return;
     final onScreen = ref.read(appOnScreenProvider);
     if (await onScreen()) return;
+    if (!ListQueues.isList(ref.read(audioHandlerProvider).queueSource)) return;
     final left = deadline.difference(DateTime.now());
-    if (left <= Duration.zero) return;
+    if (left <= Duration.zero || cancelled()) return;
     try {
-      final others = await () async {
-        await _tracker.ready;
-        return _engine.nowPlaying.others(await _engine.deviceId());
-      }()
-          .timeout(left);
-      if (cancelled()) return;
-      final plan = await _look(mode: ResumeMode.auto, playing: false, fetched: others);
-      if (plan.step != ResumeStep.load) return _note(plan.both ? 'two: played here in the background' : plan.why);
-      _note(plan.why);
-      await _follow(plan.offers.first, cancelled: cancelled, quiet: true);
-    } catch (e) {
-      _note('error: $e');
-    }
-  }
-
-  /// 設定 → 同步 → 接續播放狀態: the same choice again, with what was kept.
-  Future<void> chooseProgress(BuildContext context) async {
-    final t = _tracker;
-    await t.ready;
-    final me = await _engine.deviceId();
-    var live = const <NowPlaying>[];
-    try {
-      live = await _engine.nowPlaying.others(me).timeout(const Duration(seconds: 3));
-    } catch (_) {
-      // Offline: what was kept.
-    }
-    t.flush();
-    final here = t.here();
-    final others = [for (final o in live) if (!o.over) o];
-    final choices = <ResumeChoice>[];
-    void add(String label, NowPlaying n, {bool isHere = false}) {
-      if (choices.any((c) => sameProgress(c.progress, n))) return;
-      choices.add(ResumeChoice(label, n, here: isHere));
-    }
-
-    if (here != null) add(hereLabel, here, isHere: true);
-    for (final o in others) {
-      add(o.deviceName, o);
-    }
-    for (final k in t.kept) {
-      add(k.device == me ? '這台（先前）' : k.deviceName, k);
-    }
-    if (!context.mounted) return;
-    if (!choices.any((c) => !c.here)) {
-      toast(context, '沒有其他進度');
-      return;
-    }
-    if (_asking) return;
-    // No question on top of this one (pausing to pick up would bring one).
-    _asking = true;
-    try {
-      final picked = await showResumeChoice(context, choices);
-      if (picked is! ResumeChoice) return;
-      if (picked.here) {
-        t.settle(others);
-        unawaited(pushNowPlaying());
-        return;
-      }
-      await _pickUp(picked.progress, settle: [picked.progress, for (final o in others) if (!identical(o, picked.progress)) o], byHand: true);
-    } finally {
-      _asking = false;
-    }
+      await syncQueues().timeout(left);
+    } catch (_) {}
   }
 
   /// Another device changed something since the last sync: syncs now.
@@ -650,32 +422,35 @@ final playlistSyncedProvider = FutureProvider.family<bool, int>((ref, id) {
 
 /// Syncs a few seconds after start-up, when the app is left, every 15
 /// minutes, and within 10 s of a change (not the changes sync itself makes).
+/// The lists' queues (1.24.0): at once on start-up and coming back, after
+/// each song and pause, before a song ends, and when the app is closed.
 final syncTriggersProvider = Provider<void>((ref) {
   if (!syncAvailable) return;
   ref.watch(syncEngineProvider); // hooks the library's playlist actions
   final notifier = ref.read(syncProvider.notifier);
-  final tracker = ref.read(resumeTrackerProvider);
-  tracker.onCounts = notifier.pushNowPlaying;
-  final started = Timer(const Duration(seconds: 8), () async {
-    // First: what didn't get through before the app was closed.
-    await notifier.pushNowPlaying();
-    await notifier.run(auto: true);
-    await notifier.offerResume();
-  });
-  // In front (not minimised, in the tray, or behind a locked screen).
-  var front = true;
-  Future<void> look() async {
-    await notifier.checkOthers();
-    await notifier.offerResume();
+  final h = ref.read(audioHandlerProvider);
+  final queues = ref.read(listQueuesProvider);
+  Timer? queueSoon;
+  void queueLater() {
+    queueSoon?.cancel();
+    queueSoon = Timer(const Duration(seconds: 1), () => unawaited(notifier.syncQueues()));
   }
 
+  queues.onAction = (_) => queueLater();
+  h
+    ..onNearEnd = (() => unawaited(notifier.syncQueues()))
+    ..onLeaving = notifier.syncQueues;
+  unawaited(Future<void>.delayed(const Duration(milliseconds: 500), notifier.syncQueues));
+  final started = Timer(const Duration(seconds: 8), () => notifier.run(auto: true));
+  // In front (not minimised, in the tray, or behind a locked screen).
+  var front = true;
   var seen = visibleIn(WidgetsBinding.instance.lifecycleState);
   DateTime? lookedAt;
   final listener = AppLifecycleListener(
     onHide: () {
       front = false;
       notifier.run(auto: true);
-      notifier.pushNowPlaying();
+      unawaited(notifier.syncQueues());
     },
     // Not onShow: opened after a start in the background there was no hiding
     // before. On Windows also a window back from the tray (only focus tells).
@@ -690,23 +465,13 @@ final syncTriggersProvider = Provider<void>((ref) {
           (lookedAt == null || now.difference(lookedAt!) > const Duration(seconds: 15));
       if (wasSeen && !focused) return;
       lookedAt = now;
-      if (notifier.nowPending) unawaited(notifier.pushNowPlaying());
-      unawaited(notifier.offerResume());
+      unawaited(notifier.syncQueues());
       unawaited(notifier.checkOthers());
     },
   );
-  // 接續播放: what plays here, every minute while playing, on a new song, on pause.
-  final h = ref.read(audioHandlerProvider);
-  Timer? paused;
+  // Paused: the other devices' queues looked at too.
   final playing = h.player.playingStream.distinct().skip(1).listen((on) {
-    notifier.pushNowPlaying();
-    // 兩台各自播過: playing is never interrupted, so it's asked on pausing.
-    paused?.cancel();
-    if (!on) paused = Timer(const Duration(seconds: 1), notifier.offerResume);
-  });
-  final song = h.player.currentIndexStream.distinct().skip(1).listen((_) => notifier.pushNowPlaying());
-  final nowTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-    if (h.player.playing) notifier.pushNowPlaying();
+    if (!on) queueLater();
   });
   final every = Timer.periodic(const Duration(minutes: 15), (_) => notifier.run(auto: true));
   // Every minute: songs still missing on a device are tried again until both
@@ -714,14 +479,13 @@ final syncTriggersProvider = Provider<void>((ref) {
   // data (the phone then syncs on opening, coming to the front, after a
   // change here, and every 15 minutes).
   final retry = Timer.periodic(const Duration(minutes: 1), (_) async {
-    // 接續播放 that didn't get through: tiny, so tried even on mobile data.
-    if (notifier.nowPending) unawaited(notifier.pushNowPlaying());
+    // Queues are tiny: tried even on mobile data.
+    if (notifier.queueFailed || front) unawaited(notifier.syncQueues());
     if (await everyMinuteSkipped()) return;
     if (notifier.incomplete) {
       notifier.run(auto: true, retry: true);
-      if (front) notifier.offerResume();
     } else if (front) {
-      look();
+      unawaited(notifier.checkOthers());
     }
   });
   Timer? soon;
@@ -732,12 +496,13 @@ final syncTriggersProvider = Provider<void>((ref) {
   });
   ref.onDispose(() {
     started.cancel();
-    paused?.cancel();
-    tracker.onCounts = null;
+    queueSoon?.cancel();
+    queues.onAction = null;
+    h
+      ..onNearEnd = null
+      ..onLeaving = null;
     listener.dispose();
     playing.cancel();
-    song.cancel();
-    nowTimer.cancel();
     every.cancel();
     retry.cancel();
     soon?.cancel();

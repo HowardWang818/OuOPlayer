@@ -82,8 +82,9 @@ Future<void> main(List<String> args) async {
     initialLooksProvider.overrideWithValue(Looks.fromSettings(saved)),
   ]);
 
-  // 接續播放 (1.23.0): a play without a screen may start from the other device's.
-  container.read(resumeTrackerProvider);
+  // 1.24.0: each list's own queue; a play without a screen takes the other
+  // devices' queues first.
+  container.read(listQueuesProvider);
   handler.beforePlay = (cancelled, deadline) => container.read(syncProvider.notifier).beforePlay(cancelled, deadline);
 
   // Android Auto browsing; podcast episodes come from their feeds.

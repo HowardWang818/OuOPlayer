@@ -9,7 +9,6 @@ import 'package:ouoplayer/data/models/track.dart';
 import 'package:ouoplayer/services/sync/drive_client.dart';
 import 'package:ouoplayer/services/sync2/engine.dart';
 import 'package:ouoplayer/services/sync2/merge.dart';
-import 'package:ouoplayer/services/sync2/now_playing.dart';
 
 import 'v0120_test.dart' show openDb;
 
@@ -431,19 +430,6 @@ void main() {
     expect((await phone.db.listening(DateTime(2026), DateTime(2027))).length, 2);
   });
 
-  test('what plays on one device can be picked up on the other', () async {
-    final store = NowPlayingStore(drive);
-    await store.put(const NowPlaying(device: 'phone', deviceName: '手機', at: 99, songs: [
-      {'t': 'a', 'a': 'A', 'ms': 200000},
-      {'t': 'b', 'a': 'A', 'ms': 200000},
-    ], index: 1, positionMs: 83000, original: [1, 0], loop: 'all'));
-    await store.put(const NowPlaying(device: 'phone', deviceName: '手機', at: 100, songs: [{'t': 'c', 'a': 'A'}], index: 0, positionMs: 1000));
-    final seen = await NowPlayingStore(drive).others('pc');
-    expect(seen.length, 1); // one file per device, the latest
-    expect(seen.single.current['t'], 'c');
-    expect(await NowPlayingStore(drive).others('phone'), isEmpty);
-  });
-
   test('sent and received count what really moved, once', () async {
     final a = await phone.song('a'), b = await phone.song('b');
     await pc.song('a');
@@ -480,40 +466,6 @@ void main() {
     await pc.sync();
     expect(await pc.engine.othersChanged(), isFalse);
     expect(await phone.engine.othersChanged(), isFalse);
-  });
-
-  group('接續播放', () {
-    final now = DateTime(2026, 10, 30, 20);
-    NowPlaying from(DateTime at) => NowPlaying(device: 'phone', deviceName: '手機', at: at.millisecondsSinceEpoch, songs: const [{'t': 'a', 'a': 'A'}], index: 0, positionMs: 1000);
-    ResumeStep step(ResumeMode mode, {NowPlaying? latest, DateTime? here, bool playing = false, String? asked}) => resumePlan(
-          mode: mode,
-          others: [latest ?? from(now.subtract(const Duration(minutes: 5)))],
-          me: 'pc',
-          state: ResumeState(),
-          now: now,
-          lastPlayedHere: here,
-          playingHere: playing,
-          asked: asked,
-        ).step;
-
-    test('asks, loads or leaves it by the setting', () {
-      expect(step(ResumeMode.ask), ResumeStep.ask);
-      expect(step(ResumeMode.auto), ResumeStep.load);
-      expect(step(ResumeMode.never), ResumeStep.none);
-      expect(ResumeMode.parse(null), ResumeMode.ask);
-      expect(ResumeMode.parse('auto'), ResumeMode.auto);
-    });
-
-    test('automatic pick-up keeps the same limits as asking', () {
-      final old = from(now.subtract(const Duration(hours: 13)));
-      for (final mode in [ResumeMode.ask, ResumeMode.auto]) {
-        expect(step(mode, latest: old), ResumeStep.none);
-        expect(step(mode, playing: true), ResumeStep.none);
-        expect(step(mode, here: now), ResumeStep.none);
-        final latest = from(now.subtract(const Duration(minutes: 5)));
-        expect(step(mode, latest: latest, asked: 'phone:${latest.at}'), ResumeStep.none);
-      }
-    });
   });
 
   test('merging is the same in either order', () {

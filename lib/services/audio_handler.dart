@@ -93,9 +93,82 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   /// picked up ([pickUp]). Not by 自動接著播 at the queue's end.
   void Function({required bool pickUp})? onNewQueue;
 
-  /// Asked before [play] starts a paused player: with no screen to ask on it
-  /// may load another device's progress first (自動接續), by [deadline] and
-  /// unless [cancelled].
+  // ---------- each list's own queue (1.24.0) ----------
+
+  /// The next round of a list's queue when it ends (ListQueues), null for
+  /// anything else ([source]: the queue's list).
+  Future<List<Track>?> Function(String? source)? roundFor;
+
+  /// Shuffle turned on / off while a list plays: true when ListQueues took it.
+  Future<bool> Function(bool on)? onListShuffle;
+
+  /// About 15 seconds before the song ends (the other devices' queue is
+  /// looked at, so the next song is theirs if they went on).
+  void Function()? onNearEnd;
+  int? _nearEndOf;
+  static const nearEnd = Duration(seconds: 15);
+
+  /// The app is being closed (swiped away): a last chance to send.
+  Future<void> Function()? onLeaving;
+
+  /// What the queue was started with, for 繼續加歌曲's next round of anything
+  /// that isn't a list with its own queue.
+  List<Track> _round = [];
+
+  /// [list] as the queue, at [index] and [position], playing unless [play]
+  /// is false. [shuffled]: shown as shuffled (the order is [list]'s as it is;
+  /// turning shuffle off leaves it so). [goesOn]: the next round, by itself.
+  Future<void> loadList(List<Track> list,
+      {required int index, Duration position = Duration.zero, required bool shuffled, required String source, bool play = true, bool goesOn = false}) async {
+    final playable = [for (final t in list) if (t.fileExists) t];
+    if (playable.isEmpty) return;
+    // Loaded to play: a play still waiting gives way. Loaded paused (another
+    // device's queue taken while that play waits): the play goes on with it.
+    if (play) _cancelPlay();
+    if (!goesOn) onNewQueue?.call(pickUp: false);
+    await _restoring;
+    final at = index.clamp(0, playable.length - 1);
+    await _ready(playable[at]);
+    await _loadQueue(() async {
+      _replaced();
+      queueSource = source;
+      _upNext.clear();
+      _tracks = playable;
+      _round = playable;
+      _unshuffled = [];
+      _setShuffled(shuffled);
+      queue.add(_tracks.map(_item).toList());
+      try {
+        await player.setShuffleModeEnabled(false);
+        await player.setAudioSources(_tracks.map(_source).toList(), initialIndex: at, initialPosition: position).timeout(const Duration(seconds: 20));
+      } catch (_) {}
+    });
+    _broadcastState(player.playbackEvent);
+    await _applyPreviewLoop();
+    if (play) {
+      await _stopFade();
+      unawaited(player.play());
+    }
+    _scheduleSave();
+  }
+
+  /// Shown as shuffled or not, the order left as it is (a list's shuffle off).
+  void markShuffled(bool on) {
+    _unshuffled = [];
+    _setShuffled(on);
+    _broadcastState(player.playbackEvent);
+  }
+
+  /// What comes after the song playing becomes [tail] (it plays on).
+  Future<void> replaceUpcoming(List<Track> tail) async {
+    final cur = player.currentIndex;
+    if (cur == null || _tracks.isEmpty || _previewing) return;
+    await _replaceTail(cur, [for (final t in tail) if (t.fileExists) t]);
+  }
+
+  /// Asked before [play] starts a paused player: with no screen, the other
+  /// devices' list queues are taken first (1.24.0), by [deadline] and unless
+  /// [cancelled].
   Future<void> Function(bool Function() cancelled, DateTime deadline)? get beforePlay => _beforePlay;
   Future<void> Function(bool Function() cancelled, DateTime deadline)? _beforePlay;
   set beforePlay(Future<void> Function(bool Function() cancelled, DateTime deadline)? f) {
@@ -333,6 +406,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       _onPlayingForLog(playing);
     });
     player.positionStream.listen(_trackPodcastPosition);
+    player.positionStream.listen(_watchNearEnd);
     _db.changes.listen((_) {
       _refreshLiked();
       // Playlists, likes and new songs show up in the car too (batched).
@@ -346,6 +420,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     if (i == null || i >= _tracks.length) return;
     final t = _tracks[i];
     if (identical(t, _currentListenedTrack)) return;
+    _nearEndOf = null;
     // Only act when the player really holds this track at [i].
     final sequence = player.sequence;
     final tag = i < sequence.length ? sequence[i].tag : null;
@@ -443,9 +518,18 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   Future<void> _onQueueEnd() async {
     if (_before != null) return _endPreview();
     if (continueAfterQueue && !_previewOnly) {
-      final more = await _db.randomTracks(20, exclude: _tracks.map((t) => t.id).toSet());
-      if (more.isNotEmpty) {
-        await playTracks(more, goesOn: true);
+      // 1.24.0 繼續加歌曲: the same list (or songs) once more, shuffled again
+      // when shuffle is on, else in their order.
+      final source = queueSource;
+      final shuffled = _shuffled;
+      final list = await roundFor?.call(source);
+      if (list != null && list.isNotEmpty) {
+        await loadList(list, index: 0, shuffled: shuffled, source: source!, goesOn: true);
+        return;
+      }
+      final again = [for (final t in _round) if (t.fileExists) t];
+      if (again.isNotEmpty) {
+        await playTracks(again, shuffle: shuffled, inOrder: !shuffled, goesOn: true, source: source);
         return;
       }
     }
@@ -748,6 +832,7 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       _upNext
         ..clear()
         ..addAll(waiting);
+      _round = playable;
       _tracks = order;
       _unshuffled = shuffleOn ? playable : [];
       _setShuffled(shuffleOn);
@@ -1363,6 +1448,8 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   @override
   Future<void> setShuffleMode(AudioServiceShuffleMode shuffleMode) async {
     final on = shuffleMode != AudioServiceShuffleMode.none;
+    // A list's own queue (1.24.0): off leaves the order, on shuffles it anew.
+    if (_before == null && (await onListShuffle?.call(on) ?? false)) return;
     if (on == _shuffled) return;
     final heard = on ? await _heardTest() : null;
     final before = _before;
@@ -1462,8 +1549,20 @@ class OuoAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         LoopMode.one: LoopMode.off,
       }[_loopBeforePreview ?? player.loopMode]!);
 
+  void _watchNearEnd(Duration pos) {
+    final d = player.duration;
+    final i = player.currentIndex;
+    if (d == null || i == null || !player.playing || _loadingQueue || _previewing) return;
+    if (d - pos > nearEnd || _nearEndOf == i) return;
+    _nearEndOf = i;
+    onNearEnd?.call();
+  }
+
   @override
   Future<void> onTaskRemoved() async {
+    try {
+      await onLeaving?.call().timeout(const Duration(seconds: 2));
+    } catch (_) {}
     if (_before != null) {
       // Closed during a preview: the app opens on the queue before it.
       await saveSession();

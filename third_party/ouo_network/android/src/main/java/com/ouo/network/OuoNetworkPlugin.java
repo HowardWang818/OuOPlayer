@@ -10,7 +10,7 @@ import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 
-/** Whether the phone is on mobile data. Needs no activity. */
+/** Whether the phone is on mobile data, and its model. Needs no activity. */
 public class OuoNetworkPlugin implements FlutterPlugin, MethodChannel.MethodCallHandler {
     private MethodChannel channel;
     private Context context;
@@ -29,6 +29,10 @@ public class OuoNetworkPlugin implements FlutterPlugin, MethodChannel.MethodCall
 
     @Override
     public void onMethodCall(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
+        if (call.method.equals("model")) {
+            result.success(android.os.Build.MODEL);
+            return;
+        }
         if (!call.method.equals("mobileData")) {
             result.notImplemented();
             return;

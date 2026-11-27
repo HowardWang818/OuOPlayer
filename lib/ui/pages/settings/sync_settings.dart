@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../providers/providers.dart';
 import '../../../providers/sync_provider.dart';
-import '../../../services/sync2/now_playing.dart';
 import '../../widgets/dialogs.dart';
 import '../../widgets/power_tile.dart';
 import 'section_page.dart';
@@ -108,6 +107,26 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
           ),
         ),
         SettingTile(
+          action: '更改',
+          leading: const Icon(Icons.edit_outlined),
+          title: const Text('裝置名稱'),
+          subtitle: FutureBuilder<String>(
+            future: deviceNameOf(ref.read(dbProvider)),
+            builder: (_, snap) => Text(snap.data ?? '', style: TextStyle(color: muted)),
+          ),
+          onTap: () async {
+            final db = ref.read(dbProvider);
+            final now = await deviceNameOf(db);
+            if (!context.mounted) return;
+            final name = await promptText(context, title: '裝置名稱', initial: now);
+            if (name == null) return;
+            await db.setSetting(deviceNameKey, name);
+            engine.deviceName = await deviceNameOf(db);
+            await _load();
+            await n.run();
+          },
+        ),
+        SettingTile(
           action: '同步',
           leading: sync.running ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.sync),
           title: Text(sync.running ? '同步中…' : '立即同步'),
@@ -141,7 +160,6 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
         for (final (key, title, sub) in const [
           ('sync_edits', '歌曲資料', '同步清單裡的歌：歌名、歌手、專輯、封面、歌詞的修改，另一台同一首歌也跟著改'),
           ('sync_plays', '收聽紀錄', '播放次數、最近播放、收聽統計與年度回顧算兩台加起來（只傳歌名和時間，不傳檔案）'),
-          ('sync_now', '接續播放', '打開 App 時，另一台 12 小時內聽得比較新，會問要不要從那裡接著播'),
           ('sync_theme', '外觀主題', '設定 → 外觀 選的顏色主題（含自訂顏色）：在一台換了，另一台同步後也跟著換；深色／淺色各自設定'),
         ])
           SettingSwitch(
@@ -152,33 +170,6 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
               await ref.read(dbProvider).setSetting(key, '$v');
               await _load();
               if (v) await n.run();
-            },
-          ),
-        for (final (mode, label, sub) in const [
-          ('ask', '每次詢問', null),
-          ('auto', '自動接續', '直接換掉這台的佇列，不會自動開始播放；兩台都播過時會詢問'),
-          ('never', '不接續', '不詢問也不接續；另一台還是能接這台的進度'),
-        ])
-          SettingTile(
-            action: '選擇',
-            enabled: _s['sync_now'] != 'false',
-            leading: Icon(ResumeMode.parse(_s['sync_resume_mode']).name == mode ? Icons.radio_button_checked : Icons.radio_button_unchecked),
-            title: Text(label),
-            subtitle: sub == null ? null : Text(sub),
-            onTap: ResumeMode.parse(_s['sync_resume_mode']).name == mode ? null : () async {
-              await ref.read(dbProvider).setSetting('sync_resume_mode', mode);
-              await _load();
-            },
-          ),
-        if (_s['sync_now'] != 'false')
-          SettingTile(
-            action: '選擇',
-            leading: const Icon(Icons.info_outline),
-            title: const Text('接續播放狀態'),
-            subtitle: Text(resumeStatus(_s), style: TextStyle(color: muted)),
-            onTap: () async {
-              await n.chooseProgress(context);
-              await _load();
             },
           ),
         if (_s['sync_plays'] != 'false' && !ref.watch(settingsProvider).recordPlays)
@@ -216,29 +207,3 @@ class _SyncSettingsPageState extends ConsumerState<SyncSettingsPage> {
   }
 }
 
-/// 接續播放狀態: when this device last sent what it plays, and what the last
-/// check of the other device's found.
-String resumeStatus(Map<String, String> s) {
-  String when(DateTime d) => '${d.month}/${d.day} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-  final pushed = int.tryParse(s['sync_now_pushed'] ?? '');
-  final lines = <String>['上次上傳：${pushed == null ? '尚未上傳' : when(DateTime.fromMillisecondsSinceEpoch(pushed))}'];
-  final debug = s['sync_resume_debug'];
-  if (debug != null && debug.length > 27) {
-    final why = debug.substring(27);
-    final at = RegExp(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2})').firstMatch(why)?.group(1);
-    final text = switch (why) {
-      _ when why.startsWith('two') || why.startsWith('already asked (two)') => '有另一個進度',
-      _ when why.startsWith('older than 12 h') => '另一台的播放超過 12 小時${at == null ? '' : '（$at）'}',
-      _ when why.startsWith('this device is newer') => '這台的播放較新',
-      _ when why.startsWith('already asked') => '已詢問過',
-      _ when why.startsWith('playing here') => '這台正在播放',
-      _ when why.startsWith('nothing from another device') => '另一台沒有播放紀錄',
-      _ when why.startsWith('loaded') || why.startsWith('asked') => '已接續',
-      _ when why.startsWith('set to never') => '設為不接續',
-      _ when why.startsWith('not on screen') => '等待打開 App',
-      _ => '無法檢查',
-    };
-    lines.add('上次檢查：$text');
-  }
-  return lines.join('\n');
-}

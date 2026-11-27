@@ -4,44 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ouoplayer/data/models/track.dart';
 import 'package:ouoplayer/services/sync2/edits.dart';
 import 'package:ouoplayer/services/sync2/merge.dart';
-import 'package:ouoplayer/ui/pages/settings/sync_settings.dart';
 
 import 'sync2_test.dart' show FakeDrive;
 import 'v0120_test.dart' show openDb;
 
 void main() {
-  group('接續播放狀態', () {
-    test('shows when this device last sent and what the last check found', () {
-      final at = DateTime(2026, 11, 12, 22, 5).millisecondsSinceEpoch;
-      final text = resumeStatus({
-        'sync_now_pushed': '$at',
-        'sync_resume_debug': '2026-11-12 22:11:41.256920 older than 12 h: 2026-11-12 07:16:48.187',
-      });
-      expect(text, contains('上次上傳：11/12 22:05'));
-      expect(text, contains('上次檢查：另一台的播放超過 12 小時（2026-11-12 07:16）'));
-    });
-
-    test('nothing sent yet', () {
-      expect(resumeStatus({}), '上次上傳：尚未上傳');
-    });
-
-    test('each check result in words', () {
-      String check(String why) => resumeStatus({'sync_resume_debug': '2026-11-12 22:11:41.256920 $why'}).split('\n').last;
-      expect(check('this device is newer: x <= y'), '上次檢查：這台的播放較新');
-      expect(check('loaded: a:1'), '上次檢查：已接續');
-      expect(check('nothing from another device'), '上次檢查：另一台沒有播放紀錄');
-      expect(check('two: b:1'), '上次檢查：有另一個進度');
-      expect(check('already asked (two): b:1'), '上次檢查：有另一個進度');
-      expect(check('already asked (one): b:1'), '上次檢查：已詢問過');
-    });
-  });
-
-  test('a play position that could not be sent is sent again', () {
-    final src = File('lib/providers/sync_provider.dart').readAsStringSync();
-    expect(src, contains('nowFailed = true'));
-    expect(src, contains('if (notifier.nowPending) unawaited(notifier.pushNowPlaying());'));
-  });
-
   test('不受省電限制 asks Android to take the app off battery optimisation', () {
     expect(File('android/app/src/main/AndroidManifest.xml').readAsStringSync(), contains('REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'));
     expect(File('lib/ui/pages/settings/sync_settings.dart').readAsStringSync(), contains('const PowerTile()'));

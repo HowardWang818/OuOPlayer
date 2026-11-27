@@ -3,7 +3,8 @@ import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:window_manager/window_manager.dart';
 
-/// Whether the app's screen can be seen (接續播放 asks only then).
+/// Whether the app's screen can be seen (a play without one syncs the list
+/// queues first).
 ///
 /// Started by the media service (widget, headset button, car) the app has no
 /// lifecycle state at all: that is no screen, though it used to pass for one.

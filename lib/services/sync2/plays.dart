@@ -4,7 +4,13 @@ import 'dart:math';
 import '../../data/db/database.dart';
 import '../../data/models/track.dart';
 import 'merge.dart';
-import 'now_playing.dart' show msByDevice;
+
+/// {device: ms} as read from JSON.
+Map<String, int> msByDevice(Object? j) => {
+      if (j is Map)
+        for (final e in j.entries)
+          if (e.value is num) '${e.key}': (e.value as num).toInt(),
+    };
 
 /// Plays (v1.12.0): each device lists its own plays (song names, when, how
 /// long, no file paths) in `v2-plays-<device>.json`; the others bring them

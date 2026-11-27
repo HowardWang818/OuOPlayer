@@ -11,7 +11,6 @@ import 'package:ouoplayer/data/db/database.dart';
 import 'package:ouoplayer/data/models/track.dart';
 import 'package:ouoplayer/services/sync/drive_client.dart';
 import 'package:ouoplayer/services/sync2/engine.dart';
-import 'package:ouoplayer/services/sync2/now_playing.dart';
 import 'package:ouoplayer/services/sync2/sync_log.dart';
 
 import '../v0120_test.dart' show openDb;
@@ -283,21 +282,6 @@ class Dev {
     } finally {
       cloud.running = before;
     }
-  }
-
-  /// What plays here, as 接續播放 sends it.
-  Future<void> nowPlaying(List<String> queue, {int index = 0, int positionMs = 30000, int? at, int? began, int heardMs = 0}) async {
-    final lib = {for (final t in await db.tracks()) t.title: t};
-    await engine.nowPlaying.put(NowPlaying(
-      device: id,
-      deviceName: name,
-      at: at ?? Clock.tick(),
-      songs: [for (final q in queue) SyncEngine.ref(lib[q]!)],
-      index: index,
-      positionMs: positionMs,
-      began: began,
-      heardMs: heardMs,
-    ));
   }
 
   /// Everything a user sees of the library, to tell whether a sync changed anything.

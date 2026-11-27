@@ -98,8 +98,8 @@ class PlaybackSettingsPage extends ConsumerWidget {
       ),
       SettingSwitch(
         secondary: const Icon(Icons.all_inclusive),
-        title: const Text('佇列播完後繼續播放'),
-        subtitle: const Text('從音樂庫隨機接著播放'),
+        title: const Text('佇列播完後繼續加歌曲'),
+        subtitle: const Text('同一份清單再加一輪；隨機播放時重新打亂'),
         value: s.continueAfterQueue,
         onChanged: n.setContinueAfterQueue,
       ),

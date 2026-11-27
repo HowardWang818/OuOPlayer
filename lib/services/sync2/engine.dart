@@ -18,7 +18,6 @@ import '../sync/drive_client.dart';
 import 'edits.dart';
 import 'merge.dart';
 import 'sync_log.dart';
-import 'now_playing.dart';
 import 'plays.dart';
 
 /// What one sync did.
@@ -88,19 +87,16 @@ class SyncEngine implements SyncHooks {
         [if (before != after) '歌名「$before」改為「$after」', if (cover) '「$after」更換封面'].join('，'),
         device: _deviceNames[device]));
     plays = PlaySync(db);
-    nowPlaying = NowPlayingStore(drive);
   }
 
   late final EditSync edits;
   late final PlaySync plays;
 
-  /// 接續播放's files (used by the sync provider).
-  late final NowPlayingStore nowPlaying;
-
   final AppDatabase db;
   final DriveStore drive;
   final Future<String> Function() deviceId;
-  final String deviceName;
+  /// 裝置名稱 (1.24.0: chosen in 設定 → 同步).
+  String deviceName;
   final Future<Track?> Function(String path) importFile;
   final Future<String> Function(Uint8List bytes, String mime) storeArt;
   final String Function() downloadDir;
@@ -513,7 +509,7 @@ class SyncEngine implements SyncHooks {
     };
     // Written only when something changed (once a day anyway, as a sign of
     // life): every write makes the other device sync, and it would answer.
-    final mark = _canon(content);
+    final mark = _canon({...content, 'name': deviceName});
     if (mark != _lastState || now - _stateAt > const Duration(days: 1).inMilliseconds) {
       await drive.upload(mine, utf8.encode(jsonEncode({'device': me, 'name': deviceName, 'updated': now, ...content})), id: byName[mine]?.id, mime: 'application/json');
       _lastState = mark;

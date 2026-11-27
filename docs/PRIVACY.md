@@ -53,7 +53,8 @@ OuOPlayer 使用 Google Drive API 的 `drive.appdata` 權限。這個權限只�
 - 為了傳到另一台裝置而暫存的歌曲檔案，對方下載後會從雲端移除
 - 你修改過的歌曲資料和歌詞
 - 收聽紀錄：歌名、歌手、專輯、播放時間和收聽長度（含同一次播放每台各聽了多久）
-- 接續播放資訊：正在播放或最後播放的歌曲、位置和佇列、是否正在播放、這台的累計播放時間，以及已處理過其他裝置的哪一份進度
+- 同步清單的佇列：每份勾選同步的清單裡歌曲的播放順序（歌名和歌手）、播到哪一首、是否隨機播放，以及最後操作的時間和裝置（不含播放秒數）
+- 裝置名稱（可在「設定 → 同步」更改）
 - 裝置名稱和最後上線時間，用來判斷每台裝置的同步狀態
 
 **資料的去向**
@@ -138,7 +139,8 @@ OuOPlayer uses the Google Drive API `drive.appdata` scope. It reaches only OuOPl
 - Song files held for your other device, removed once that device has them
 - Song details and lyrics you edited
 - Listening history: title, artist, album, time played and time listened
-- Resume information: the current or last played song, position and queue, whether it is playing, this device's total playing time, and which progress from your other devices has been dealt with
+- The queues of synced playlists: the play order of each synced list (song titles and artists), which song it is at, whether it is shuffled, and when and on which device it was last changed (not the second within the song)
+- The device name (can be changed in Settings → Sync)
 - For a play continued on another device, how long each device played it
 - Device name and last seen time, used to track each device's sync
 

@@ -21,6 +21,7 @@ import '../../services/track_sort.dart';
 import '../widgets/track_selection.dart';
 import '../widgets/track_tile.dart';
 import '../../providers/sync_provider.dart';
+import '../../services/list_queues.dart';
 import 'cover_fix_page.dart';
 import 'folder_page.dart';
 import 'lyrics_batch_page.dart';
@@ -110,6 +111,13 @@ class CollectionPage extends ConsumerWidget {
     final tracks = [for (final i in order) source[i]];
     // Identifies this list for the shuffle button and the search box.
     final pageKey = '${kind.name}:${playlistId ?? folder ?? smart?.name ?? name}';
+    // 1.24.0: a playlist and the liked songs keep their own queue.
+    final listKey = switch (kind) {
+      CollectionKind.playlist => ListQueues.keyFor(playlistId),
+      CollectionKind.favorites => ListQueues.favorites,
+      _ => null,
+    };
+    final queues = listKey == null ? null : ref.read(listQueuesProvider);
     final search = ref.watch(listSearchProvider(pageKey));
     final words = foldText(search ?? '').split(' ').where((w) => w.isNotEmpty).toList();
     // Rows shown (indexes into [tracks]); playing a found song still plays the whole list from it.
@@ -127,6 +135,7 @@ class CollectionPage extends ConsumerWidget {
     final theme = Theme.of(context);
     final handler = ref.read(audioHandlerProvider);
     final db = ref.read(dbProvider);
+    void playRow(int i) => queues == null ? handler.playTracks(tracks, index: i, source: pageKey) : queues.playFrom(listKey!, tracks, tracks[i]);
     // Light theme: the header's gradient can be any colour, so its buttons and
     // text take white or near-black by what is behind them (the text sits
     // low in the gradient, the buttons at the top).
@@ -390,8 +399,22 @@ class CollectionPage extends ConsumerWidget {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(children: [
-              // Lit while this list plays shuffled: tap to shuffle-play it, tap
-              // again to go back to the list's order (the song keeps playing).
+              // A list with its own queue: lit until tapped again (off leaves
+              // the queue as it is; on shuffles it anew and plays at once).
+              // Others: lit while this list plays shuffled.
+              if (queues != null)
+                StreamBuilder<String>(
+                  stream: queues.changes.where((k) => k == listKey),
+                  builder: (context, _) {
+                    final lit = queues.shuffledOf(listKey!);
+                    return IconButton(
+                      tooltip: lit ? '關閉隨機播放' : '隨機播放',
+                      icon: Icon(Icons.shuffle, color: lit ? AppTheme.accent(context) : null),
+                      onPressed: tracks.isEmpty ? null : () => queues.toggleShuffle(listKey, tracks),
+                    );
+                  },
+                )
+              else
               StreamBuilder<bool>(
                 stream: handler.shuffleStream,
                 builder: (context, snap) {
@@ -448,17 +471,27 @@ class CollectionPage extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              IconButton.filled(
-                iconSize: 32,
-                style: IconButton.styleFrom(backgroundColor: AppTheme.accent(context), foregroundColor: Theme.of(context).colorScheme.onPrimary, fixedSize: const Size(56, 56)),
-                icon: const Icon(Icons.play_arrow),
-                // In the list's order, unless this list's shuffle is lit.
-                onPressed: tracks.isEmpty
-                    ? null
-                    : () {
-                        final lit = handler.shuffled && handler.queueSource == pageKey;
-                        handler.playTracks(tracks, shuffle: lit, inOrder: !lit, source: pageKey);
-                      },
+              StreamBuilder<bool>(
+                stream: handler.playbackState.map((s) => s.playing).distinct(),
+                builder: (context, snap) {
+                  // This list's own queue playing: pause; else play it (where it was).
+                  final mine = queues != null && (snap.data ?? false) && handler.queueSource == listKey;
+                  return IconButton.filled(
+                    iconSize: 32,
+                    tooltip: mine ? '暫停' : '播放',
+                    style: IconButton.styleFrom(backgroundColor: AppTheme.accent(context), foregroundColor: Theme.of(context).colorScheme.onPrimary, fixedSize: const Size(56, 56)),
+                    icon: Icon(mine ? Icons.pause : Icons.play_arrow),
+                    onPressed: tracks.isEmpty
+                        ? null
+                        : queues != null
+                            ? () => queues.playButton(listKey!, tracks)
+                            // In the list's order, unless this list's shuffle is lit.
+                            : () {
+                                final lit = handler.shuffled && handler.queueSource == pageKey;
+                                handler.playTracks(tracks, shuffle: lit, inOrder: !lit, source: pageKey);
+                              },
+                  );
+                },
               ),
             ]),
           ),
@@ -480,7 +513,7 @@ class CollectionPage extends ConsumerWidget {
               track: tracks[i],
               index: i,
               selectIndex: i,
-              onTap: () => handler.playTracks(tracks, index: i, source: pageKey),
+              onTap: () => playRow(i),
               onRemove: () => db.removeFromPlaylist(playlistId!, order[i]),
               // ≡ (three lines) at the far right, after the ⋮ menu.
               dragHandle: ReorderableDragStartListener(
@@ -499,7 +532,7 @@ class CollectionPage extends ConsumerWidget {
               index: i,
               selectIndex: i,
               showArt: kind != CollectionKind.album,
-              onTap: () => handler.playTracks(tracks, index: i, source: pageKey),
+              onTap: () => playRow(i),
               onRemove: kind == CollectionKind.playlist
                   ? () => db.removeFromPlaylist(playlistId!, order[i])
                   : kind == CollectionKind.favorites

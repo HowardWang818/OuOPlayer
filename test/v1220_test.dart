@@ -12,6 +12,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_audio/just_audio.dart';
 // ignore: depend_on_referenced_packages
+import 'package:rxdart/rxdart.dart' show BehaviorSubject;
+// ignore: depend_on_referenced_packages
 import 'package:just_audio_platform_interface/just_audio_platform_interface.dart';
 import 'package:ouoplayer/data/db/database.dart';
 import 'package:ouoplayer/data/models/track.dart';
@@ -20,6 +22,7 @@ import 'package:ouoplayer/providers/sync_provider.dart';
 import 'package:ouoplayer/services/audio_handler.dart';
 import 'package:ouoplayer/services/backup.dart';
 import 'package:ouoplayer/services/library_scanner.dart';
+import 'package:ouoplayer/services/list_queues.dart';
 import 'package:ouoplayer/services/preview_return.dart';
 import 'package:ouoplayer/theme/app_theme.dart';
 import 'package:ouoplayer/theme/themes.dart';
@@ -654,6 +657,7 @@ void main() {
           audioHandlerProvider.overrideWithValue(_IdleHandler()),
           currentTrackProvider.overrideWithValue(null),
           playlistSyncedProvider.overrideWith((ref, id) async => false),
+          listQueuesProvider.overrideWith((ref) => ListQueues(ref.read(dbProvider), ref.read(audioHandlerProvider), deviceId: () async => 't', attach: false)),
         ],
         child: MaterialApp(theme: AppTheme.build(presets.first.light), home: CollectionPage.playlist(id, 'list $id')),
       ));
@@ -750,6 +754,7 @@ void main() {
           audioHandlerProvider.overrideWithValue(_IdleHandler()),
           currentTrackProvider.overrideWithValue(null),
           playlistSyncedProvider.overrideWith((ref, id) async => false),
+          listQueuesProvider.overrideWith((ref) => ListQueues(ref.read(dbProvider), ref.read(audioHandlerProvider), deviceId: () async => 't', attach: false)),
         ],
         child: MaterialApp(home: CollectionPage.playlist(1, 'list')),
       ));
@@ -854,6 +859,8 @@ class _ListDb implements AppDatabase {
 class _IdleHandler implements OuoAudioHandler {
   @override
   String? queueSource;
+  @override
+  final BehaviorSubject<PlaybackState> playbackState = BehaviorSubject.seeded(PlaybackState());
   @override
   bool get shuffled => false;
   @override

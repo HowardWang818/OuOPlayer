@@ -75,7 +75,7 @@ class AppDatabase {
     return AppDatabase._(db);
   }
 
-  static const schemaVersion = 16;
+  static const schemaVersion = 17;
 
   /// Schema changes since version 1; existing data is kept.
   static Future<void> migrate(Database db, int from, int to) async {
@@ -179,6 +179,10 @@ class AppDatabase {
       // this device's share is listened_ms less those. Null: a play from
       // before, whose time can't be split (the longer one counts).
       await db.execute('ALTER TABLE listening_log ADD COLUMN parts TEXT');
+    }
+    if (from < 17 && to >= 17) {
+      // v1.24.0: each playlist's (and the liked songs') own queue (ListQueue).
+      await db.execute('CREATE TABLE list_queues(key TEXT PRIMARY KEY, state TEXT NOT NULL)');
     }
   }
 

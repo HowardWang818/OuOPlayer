@@ -7,6 +7,16 @@ import 'package:flutter/services.dart';
 /// Wi-Fi or Ethernet). Always false off Android.
 Future<bool> onMobileData() async => await mobileDataNow() ?? false;
 
+/// The phone's model (裝置名稱's default), null off Android or unknown.
+Future<String?> phoneModel() async {
+  if (!Platform.isAndroid) return null;
+  try {
+    return await const MethodChannel('ouo/network').invokeMethod<String>('model');
+  } catch (_) {
+    return null;
+  }
+}
+
 /// [onMobileData], null when it can't be told. The channel is a plugin
 /// (third_party/ouo_network): an app started in the background by the media
 /// service has no MainActivity to answer.

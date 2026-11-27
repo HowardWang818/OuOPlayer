@@ -4,7 +4,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ouoplayer/data/db/database.dart';
 import 'package:ouoplayer/data/models/track.dart';
-import 'package:ouoplayer/services/sync2/now_playing.dart';
 
 import 'v0120_test.dart' show openDb;
 
@@ -93,15 +92,5 @@ void main() {
       final (id, heard, isNew) = await db.continueListening(a, 7000, 20000);
       expect((id, heard, isNew), (own, 50000, false));
     });
-  });
-
-  test('NowPlaying carries the play: when it began and how long it was heard', () {
-    const n = NowPlaying(device: 'd', deviceName: '手機', at: 1, songs: [{'t': 'a', 'a': 'A'}], index: 0, positionMs: 5000, began: 7000, heardMs: 30000);
-    final back = NowPlaying.fromJson(n.toJson())!;
-    expect(back.began, 7000);
-    expect(back.heardMs, 30000);
-    // From a version before 1.20.9: nothing to carry on.
-    final old = NowPlaying.fromJson({'device': 'd', 'at': 1, 'songs': [{'t': 'a'}]})!;
-    expect(old.began, isNull);
   });
 }
